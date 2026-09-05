@@ -1,14 +1,30 @@
-"""Control flow as components: `Show` and `For` (M1); `Switch`, `Loading`, `Errored` follow.
+"""Control flow as components: `Show`, `For`, `Switch`/`Match`, `Loading`, `Errored`,
+`Dynamic`, `Portal`.
 
-Both return a callable, which is what a child position treats as a hole. Each builds its
+Each returns a callable, which is what a child position treats as a hole. Each builds its
 branches or rows under owners of its own, so a row that leaves disposes only itself, and the
 hole they live in moves existing nodes instead of recreating them.
 """
 
-from .reactive import Memo, Owner, Signal, get_owner, on_cleanup, run_with_owner, untrack
+from .reactive import ERRORS, LOADING, Memo, Owner, Signal, get_owner, on_cleanup, provide, run_with_owner, untrack
 from .view import Mounted, _build_nodes
 
-__all__ = ["For", "Show"]
+__all__ = ["Dynamic", "Errored", "For", "Loading", "Match", "Portal", "Show", "Switch"]
+
+
+class _Branch:
+    """What a control-flow accessor keeps between runs: the mounted branch's owner, its
+    nodes, and the key that chose it."""
+
+    def __init__(self):
+        self.owner = None
+        self.nodes = []
+        self.key = None
+
+    def dispose(self):
+        if self.owner is not None:
+            self.owner.dispose()
+            self.owner = None
 
 
 class _Renderers:
@@ -28,11 +44,11 @@ def Show(when, children, fallback=None, keyed=False):
     `children` may be a view, or a function of the value."""
     raw = Memo(when)
     condition = raw if keyed else Memo(lambda: bool(raw()))
-    state = {"key": None, "owner": None, "nodes": None}
+    state = _Branch()
     # Branches belong to whoever created the Show, not to the hole's effect: the hole
     # re-runs on every flip and disposes what it owns first, which must not be the branch.
     home = get_owner()
-    on_cleanup(lambda: state["owner"] is not None and state["owner"].dispose())
+    on_cleanup(state.dispose)
 
     def accessor():
         from . import view as _view
@@ -40,10 +56,9 @@ def Show(when, children, fallback=None, keyed=False):
         renderer = _view._current_renderer
         key = condition()
         value = raw.peek()
-        if state["owner"] is not None and state["key"] == key:
-            return Mounted(state["nodes"])
-        if state["owner"] is not None:
-            state["owner"].dispose()
+        if state.owner is not None and state.key == key:
+            return Mounted(state.nodes)
+        state.dispose()
         owner = Owner(parent=home)
         branch = children if value else fallback
         if callable(branch) and not hasattr(branch, "tag"):
@@ -51,7 +66,7 @@ def Show(when, children, fallback=None, keyed=False):
         else:
             content = branch
         nodes = run_with_owner(owner, lambda: _build(content, renderer)) if content is not None else []
-        state.update(key=key, owner=owner, nodes=nodes)
+        state.key, state.owner, state.nodes = key, owner, nodes
         return Mounted(nodes)
 
     return accessor
@@ -147,3 +162,226 @@ def _make_row(item, i, index_mode, children, renderer, home, cache):
 
     nodes = run_with_owner(owner, lambda: untrack(make))
     return {"owner": owner, "nodes": nodes, "index": index, "item": item_signal}
+
+
+# --- Switch / Match ---------------------------------------------------------------------------
+
+
+def Match(when, children):
+    """One case of a `Switch`: `(when, children)`."""
+    return (when, children)
+
+
+def Switch(cases, fallback=None):
+    """Mount the children of the first case whose `when()` is truthy, else `fallback`. The
+    mounted branch is kept until a different case wins."""
+    cases = list(cases)
+    home = get_owner()
+    state = _Branch()
+    on_cleanup(state.dispose)
+
+    def which():
+        for i in range(len(cases)):
+            when = cases[i][0]
+            if when() if callable(when) else when:
+                return i
+        return -1
+
+    index = Memo(which)
+
+    def accessor():
+        from . import view as _view
+
+        renderer = _view._current_renderer
+        key = index()
+        if state.owner is not None and state.key == key:
+            return Mounted(state.nodes)
+        state.dispose()
+        owner = Owner(parent=home)
+        branch = cases[key][1] if key >= 0 else fallback
+        content = (
+            run_with_owner(owner, lambda: untrack(branch))
+            if callable(branch) and not hasattr(branch, "tag")
+            else branch
+        )
+        nodes = run_with_owner(owner, lambda: _build(content, renderer)) if content is not None else []
+        state.key, state.owner, state.nodes = key, owner, nodes
+        return Mounted(nodes)
+
+    return accessor
+
+
+# --- Loading / Errored ------------------------------------------------------------------------
+
+
+class _LoadingScope:
+    def __init__(self):
+        self.pending = Signal(0)
+        self._resources = []
+
+    def add(self, resource):
+        if resource not in self._resources:
+            self._resources.append(resource)
+            self.pending.set(self.pending.peek() + 1)
+
+    def remove(self, resource):
+        if resource in self._resources:
+            self._resources.remove(resource)
+            self.pending.set(self.pending.peek() - 1)
+
+
+def Loading(fallback, children):
+    """Show `fallback` while any `Resource` read beneath `children` is loading. The children
+    are built once and kept; only which of the two is in the DOM changes."""
+    scope = _LoadingScope()
+    home = get_owner()
+    owner = Owner(parent=home)
+    content_state = _Branch()
+    fallback_state = _Branch()
+    on_cleanup(fallback_state.dispose)
+
+    def build_children(renderer):
+        def make():
+            provide(LOADING, scope)
+            content = untrack(children) if callable(children) and not hasattr(children, "tag") else children
+            return _build(content, renderer)
+
+        return run_with_owner(owner, make)
+
+    def accessor():
+        from . import view as _view
+
+        renderer = _view._current_renderer
+        if content_state.owner is None:
+            content_state.owner = owner
+            content_state.nodes = build_children(renderer)
+        if scope.pending() > 0:
+            if fallback_state.owner is None:
+                fb_owner = Owner(parent=home)
+                content = untrack(fallback) if callable(fallback) and not hasattr(fallback, "tag") else fallback
+                fallback_state.owner = fb_owner
+                fallback_state.nodes = (
+                    run_with_owner(fb_owner, lambda: _build(content, renderer)) if content is not None else []
+                )
+            return Mounted(fallback_state.nodes)
+        return Mounted(content_state.nodes)
+
+    return accessor
+
+
+class _ErrorScope:
+    def __init__(self):
+        self.error = Signal(None, equal=lambda a, b: a is b)
+
+    def handle(self, exc):
+        self.error.set(exc)
+
+
+def Errored(fallback, children):
+    """Catch exceptions raised in computations and handlers beneath `children`; render
+    `fallback(error, reset)` instead until `reset()` is called, which rebuilds the children."""
+    scope = _ErrorScope()
+    home = get_owner()
+    state = _Branch()
+    on_cleanup(state.dispose)
+
+    def reset():
+        scope.error.set(None)
+
+    def accessor():
+        from . import view as _view
+
+        renderer = _view._current_renderer
+        error = scope.error()
+        state.dispose()
+        owner = Owner(parent=home)
+
+        def make():
+            if error is not None:
+                content = (
+                    untrack(fallback, error, reset) if callable(fallback) and not hasattr(fallback, "tag") else fallback
+                )
+                return _build(content, renderer) if content is not None else []
+            provide(ERRORS, scope)
+            try:
+                content = untrack(children) if callable(children) and not hasattr(children, "tag") else children
+                return _build(content, renderer) if content is not None else []
+            except Exception as exc:
+                # Raised while building (not inside a computation, which routes itself):
+                # record it; this accessor re-runs at once and renders the fallback.
+                scope.handle(exc)
+                return []
+
+        nodes = run_with_owner(owner, make)
+        state.owner, state.nodes = owner, nodes
+        return Mounted(nodes)
+
+    return accessor
+
+
+# --- Dynamic / Portal -------------------------------------------------------------------------
+
+
+def Dynamic(component, **props):
+    """Render whatever component (a function returning a view, or a tag name) `component()`
+    currently yields, rebuilding when it changes."""
+    which = Memo(component) if callable(component) and not hasattr(component, "tag") else Memo(lambda: component)
+    home = get_owner()
+    state = _Branch()
+    on_cleanup(state.dispose)
+
+    def accessor():
+        from . import view as _view
+
+        renderer = _view._current_renderer
+        target = which()
+        if state.owner is not None and state.key is target:
+            return Mounted(state.nodes)
+        state.dispose()
+        owner = Owner(parent=home)
+
+        def make():
+            if isinstance(target, str):
+                return _build(_view.h(target, **props), renderer)
+            return _build(untrack(lambda: target(**props)), renderer) if target is not None else []
+
+        nodes = run_with_owner(owner, make)
+        state.key, state.owner, state.nodes = target, owner, nodes
+        return Mounted(nodes)
+
+    return accessor
+
+
+def Portal(target, children):
+    """Build `children` into another node (`target`: a node or, in the browser, a selector)
+    while this hole stays empty; removed when the owner goes."""
+    home = get_owner()
+    owner = Owner(parent=home)
+    state = _Branch()
+
+    def accessor():
+        from . import view as _view
+
+        renderer = _view._current_renderer
+        assert renderer is not None
+        if state.owner is None:
+            node = target
+            if isinstance(target, str):
+                from .dom import resolve
+
+                node = resolve(target)
+
+            def make():
+                content = untrack(children) if callable(children) and not hasattr(children, "tag") else children
+                nodes = _build(content, renderer)
+                for n in nodes:
+                    renderer.insert_node(node, n)
+                return nodes
+
+            state.owner = owner
+            state.nodes = run_with_owner(owner, make)
+            r = renderer
+            owner.on_cleanup(lambda: [r.remove_node(node, n) for n in state.nodes])
+        return Mounted([])
+
+    return accessor

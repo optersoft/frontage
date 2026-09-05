@@ -82,6 +82,10 @@ class Renderer:
     def replace_node(self, parent, new, old):
         raise NotImplementedError
 
+    def dispatch_event(self, node, name, detail=None):
+        """Fire a bubbling custom event named `name` from `node` with `detail`."""
+        raise NotImplementedError
+
     def clone_template(self, html):
         """A fresh copy of the single root element described by `html`, in one operation;
         the parse happens once per distinct string."""
@@ -260,6 +264,9 @@ class HtmlRenderer(Renderer):
 
         return remove
 
+    def dispatch_event(self, node, name, detail=None):
+        node.fire(name, detail=detail)
+
     def replace_node(self, parent, new, old):
         i = parent.children.index(old)
         if new.parent is not None:
@@ -409,6 +416,10 @@ class RecordingRenderer(Renderer):
     def replace_node(self, parent, new, old):
         self._record("replace_node")
         return self.inner.replace_node(parent, new, old)
+
+    def dispatch_event(self, node, name, detail=None):
+        self._record("dispatch_event", name)
+        return self.inner.dispatch_event(node, name, detail)
 
     def clone_template(self, html):
         self._record("clone_template")

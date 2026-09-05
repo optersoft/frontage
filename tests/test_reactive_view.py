@@ -1,7 +1,5 @@
 """SPEC §6, W1–W7 and W13, through HtmlRenderer and RecordingRenderer. No browser."""
 
-import pytest
-
 from frontage import Memo, NodeRef, RecordingRenderer, Signal, Store, component, h, mount, render_to_string
 from frontage.flow import For, Show
 
@@ -176,8 +174,8 @@ def test_bind_checked_and_group():
 
 
 def test_bind_requires_a_signal():
-    with pytest.raises(TypeError):
-        mounted(h.input(bind_value=lambda: 1))
+    root, r, _ = mounted(h.input(bind_value=lambda: 1))
+    assert "TypeError" in html(root) and "frontage-error" in html(root)  # caught by the root boundary
 
 
 def test_node_ref_holds_the_element():
@@ -306,8 +304,18 @@ def test_for_index_mode_reuses_rows_by_position():
 
 def test_for_duplicate_keys_are_an_error():
     items = Signal([1, 1])
-    with pytest.raises(ValueError):
-        mounted(h.ul(For(items, lambda item, i: h.li(item))))
+    root, r, _ = mounted(h.ul(For(items, lambda item, i: h.li(item))))
+    assert "duplicate key" in html(root)
+
+
+def test_mount_without_debug_renders_the_fallback():
+    r = RecordingRenderer()
+    root = r.inner.create_element("div")
+    mount(h.input(bind_value=lambda: 1), root, r, debug=False)
+    assert html(root) == '<p class="frontage-error">Something went wrong.</p>'
+    root2 = r.inner.create_element("div")
+    mount(h.input(bind_value=lambda: 1), root2, r, debug=False, fallback=lambda exc, reset: h.b(type(exc).__name__))
+    assert html(root2) == "<b>TypeError</b>"
 
 
 def test_for_over_a_store_list():

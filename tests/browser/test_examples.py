@@ -77,3 +77,54 @@ def test_rows(server, page: Page, interpreter):
     page.click("#clear")
     expect(rows).to_have_count(0)
     assert errors == []
+
+
+@pytest.mark.parametrize("interpreter", ["mpy", "py"])
+def test_fetch(server, page: Page, interpreter):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{server}/examples/fetch/index.html?type={interpreter}")
+    expect(page.locator("#name")).to_have_text("Ada Lovelace", timeout=60_000)
+    page.click("#u2")
+    expect(page.locator("#state")).to_have_text("state: refreshing")
+    expect(page.locator("#name")).to_have_text("Grace Hopper")
+    page.click("#u99")
+    expect(page.locator("#error")).to_contain_text("no such user: 99")
+    page.click("#retry")
+    expect(page.locator("#name")).to_have_text("Ada Lovelace")
+    assert errors == []
+
+
+@pytest.mark.parametrize("interpreter", ["mpy", "py"])
+def test_forms(server, page: Page, interpreter):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{server}/examples/forms/index.html?type={interpreter}")
+    expect(page.locator("#plan-free")).to_be_visible(timeout=60_000)
+    expect(page.locator("#save")).to_be_disabled()
+    page.fill("#name", "Ann")
+    expect(page.locator("#save")).to_be_enabled()
+    page.check("input[value=pro]")
+    expect(page.locator("#plan-pro")).to_be_visible()
+    page.check("#news")
+    page.click("#save")
+    expect(page.locator("#result")).to_have_text("saved Ann (pro, newsletter=yes)")
+    assert errors == []
+
+
+@pytest.mark.parametrize("interpreter", ["mpy", "py"])
+def test_template(server, page: Page, interpreter):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{server}/examples/template/index.html?type={interpreter}")
+    value = page.locator("#value")
+    expect(value).to_have_text("Value: 0, doubled: 0", timeout=60_000)
+    page.click("#inc")
+    page.click("#inc")
+    page.click("#inc")
+    expect(value).to_have_text("Value: 3, doubled: 6")
+    expect(page.locator("#parity")).to_have_text("odd")
+    for _ in range(3):
+        page.click("#inc")
+    expect(page.locator("#parity")).to_have_class("big")
+    assert errors == []

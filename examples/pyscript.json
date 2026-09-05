@@ -1,6 +1,7 @@
 {
   "files": {
     "/frontage/__init__.py": "frontage/__init__.py",
+    "/frontage/aio.py": "frontage/aio.py",
     "/frontage/dom.py": "frontage/dom.py",
     "/frontage/errors.py": "frontage/errors.py",
     "/frontage/flow.py": "frontage/flow.py",
@@ -8,6 +9,7 @@
     "/frontage/renderer.py": "frontage/renderer.py",
     "/frontage/runtime.py": "frontage/runtime.py",
     "/frontage/store.py": "frontage/store.py",
+    "/frontage/template.py": "frontage/template.py",
     "/frontage/version.py": "frontage/version.py",
     "/frontage/view.py": "frontage/view.py"
   }

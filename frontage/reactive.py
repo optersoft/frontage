@@ -18,7 +18,11 @@ created during its last run, which is disposed before the next run.
 The module is written in the MicroPython subset: no typing, no dataclasses, no contextlib.
 """
 
+from .errors import NotReady
+
 __all__ = [
+    "ERRORS",
+    "LOADING",
     "Context",
     "Effect",
     "Memo",
@@ -33,6 +37,7 @@ __all__ = [
     "provide",
     "run_with_owner",
     "selector",
+    "spawn",
     "untrack",
     "use",
 ]
@@ -55,6 +60,7 @@ _batch_depth = 0
 _render_queue = []  # effects to run at the end of the outermost batch, render first
 _effect_queue = []
 _flushing = False
+FLUSH_LIMIT = int(100_000)  # effect runs per batch before the flush is declared a loop
 
 
 def _current_owner() -> "Owner | None":
@@ -167,12 +173,56 @@ def provide(ctx, value):
 
 
 def use(ctx):
-    owner = _current_owner()
+    return lookup(_current_owner(), ctx)
+
+
+def lookup(owner, ctx):
+    """`use(ctx)` starting from a given owner rather than the current one."""
     while owner is not None:
         if owner._context is not None and ctx in owner._context:
             return owner._context[ctx]
         owner = owner._parent
     return ctx.default
+
+
+# The two boundary contexts. A `Loading` provides a scope with `add(resource)` /
+# `remove(resource)`; an `Errored` provides one with `handle(exc)`. They are defined here so
+# computations can find them without importing the flow module.
+LOADING = Context(None)
+ERRORS = Context(None)
+
+_SKIPPED = object()  # what a computation returns when NotReady or an error ended it
+
+
+def route_error(owner, exc):
+    """Hand `exc` to the nearest `Errored` scope above `owner`, or re-raise it."""
+    scope = lookup(owner, ERRORS)
+    if scope is None:
+        raise exc
+    scope.handle(exc)
+
+
+def spawn(coro, owner=None):
+    """Run a coroutine as a task owned by `owner` (the current owner by default): the task is
+    cancelled when the owner is disposed, and an exception in it reaches the nearest
+    `Errored` above the owner (or is raised on the loop when there is none)."""
+    import asyncio
+
+    if owner is None:
+        owner = _current_owner()
+
+    async def run():
+        try:
+            await coro
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            route_error(owner, exc)
+
+    task = asyncio.create_task(run())
+    if owner is not None:
+        owner.on_cleanup(task.cancel)
+    return task
 
 
 # --- batching and scheduling -----------------------------------------------------------------
@@ -195,6 +245,7 @@ def _flush():
     if _flushing:
         return
     _flushing = True
+    runs = 0
     try:
         while _render_queue or _effect_queue:
             queue = _render_queue if _render_queue else _effect_queue
@@ -202,6 +253,14 @@ def _flush():
             effect._queued = False
             if not effect._disposed:
                 effect._update_if_necessary()
+            runs += 1
+            if runs > FLUSH_LIMIT:
+                del _render_queue[:]
+                del _effect_queue[:]
+                raise RuntimeError(
+                    f"reactive update loop: more than {FLUSH_LIMIT} effect runs in one batch. An effect is "
+                    "writing a signal it also reads, or a Resource is being created inside a hole."
+                )
     finally:
         _flushing = False
 
@@ -323,13 +382,23 @@ class _Computation(Owner):
         self._source_ids = set()
 
     def _compute(self):
-        """Run `fn` tracked, as owner and listener, after disposing the previous run's work."""
+        """Run `fn` tracked, as owner and listener, after disposing the previous run's work.
+
+        `NotReady` ends the run quietly (the dependencies read so far stay, so the run repeats
+        when they change); any other exception goes to the nearest `Errored`. Both return
+        `_SKIPPED`, which the callers treat as "leave things as they are"."""
         self._dispose_owned()
         self._clear_sources()
         saved = (_owner, _listener)
         _set_scope(self, self)
         try:
             return self._fn()
+        except NotReady:
+            return _SKIPPED
+        except Exception as exc:
+            _set_scope(*saved)
+            route_error(self._parent, exc)
+            return _SKIPPED
         finally:
             _set_scope(*saved)
 
@@ -340,11 +409,11 @@ class _Computation(Owner):
         if self._disposed:
             return
         if self._state == CHECK:
+            # Pull every memo we read up to date first, so that none of them recomputes in
+            # the middle of our own run and marks us again (the diamond would run us twice).
             for source in list(self._sources):
                 if isinstance(source, Memo):
                     source._update_if_necessary()
-                if self._state == DIRTY:
-                    break
             if self._state == CHECK:
                 self._state = CLEAN
         if self._state == DIRTY:
@@ -389,8 +458,12 @@ class Memo(_Computation):
 
     def _run(self):
         old = self._value
+        self._state = CLEAN  # before the run: a write during it must be able to mark us again
         new = self._compute()
-        self._state = CLEAN
+        if new is _SKIPPED:
+            if old is _UNSET:
+                self._value = None  # never computed: read as None rather than a sentinel
+            return
         if old is _UNSET or not _same(self._equal, old, new):
             self._value = new
             if old is not _UNSET:
@@ -426,8 +499,10 @@ class Effect(_Computation):
             _end_batch()
 
     def _run(self):
+        self._state = CLEAN  # before the run, so a write during it re-marks and re-queues us
         value = self._compute()
-        self._state = CLEAN
+        if value is _SKIPPED:
+            return
         if self._effect is not None:
             self._run_cleanup()
             prev = None if self._value is _UNSET else self._value

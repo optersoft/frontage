@@ -19,7 +19,8 @@ property, the form inputs need), `class_active` (toggle one class), `style_color
 is an attribute; `cls` and `class_` spell `class`, and `class` may be a dict of toggles.
 """
 
-from .reactive import Owner, RenderEffect, Signal, on_cleanup
+from .errors import format_exception
+from .reactive import Owner, RenderEffect, Signal, get_owner, on_cleanup, spawn
 from .renderer import HtmlRenderer, escape
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "Text",
     "build",
     "component",
+    "emit",
     "h",
     "mount",
     "render_to_string",
@@ -493,6 +495,8 @@ def _apply_attr(node, raw_name, value, renderer):
         value.current = node
     elif kind == "event":
         _listen(node, name, value, renderer)
+    elif kind == "capture":
+        _listen(node, name, value, renderer, capture=True)
     elif kind == "bind":
         _bind(node, name, value, renderer)
     elif kind == "class-dict":
@@ -527,6 +531,8 @@ def _classify_uncached(raw):
     if raw in ("cls", "class_", "class"):
         return "class-dict", "class"
     for prefix, kind in (
+        ("oncapture_", "capture"),
+        ("oncapture:", "capture"),
         ("on_", "event"),
         ("on:", "event"),
         ("prop_", "prop"),
@@ -541,7 +547,7 @@ def _classify_uncached(raw):
     ):
         if raw.startswith(prefix) and len(raw) > len(prefix):
             rest = raw[len(prefix) :]
-            if kind in ("class", "style", "event", "bind", "prop"):
+            if kind in ("class", "style", "event", "capture", "bind", "prop"):
                 return kind, rest.replace("_", "-") if kind in ("class", "style") else rest
             return "attr", _attr_name(rest)
     return "attr", _attr_name(raw)
@@ -569,9 +575,33 @@ def _apply_class_dict(node, classes, prev, renderer):
         renderer.set_property(node, "class", classes)
 
 
-def _listen(node, event, handler, renderer):
-    remove = renderer.add_listener(node, event, handler)
+def _listen(node, event, handler, renderer, capture=False):
+    owner = get_owner()
+
+    def call(ev):
+        result = handler(ev)
+        # An `async def` handler returns a coroutine: run it as a task owned here, so its
+        # errors reach the nearest Errored and it is cancelled if this view goes away.
+        if hasattr(result, "send") and hasattr(result, "throw"):
+            spawn(result, owner)
+
+    remove = renderer.add_listener(node, event, call, capture)
     on_cleanup(remove)
+
+
+def emit(node, name, detail=None):
+    """Dispatch a custom event named `name` from `node`, bubbling, with `detail`; a parent
+    listens with `on_<name>` (or `on:<name>` in a template)."""
+    renderer = _current_renderer or _renderer_of(node)
+    renderer.dispatch_event(node, name, detail)
+
+
+def _renderer_of(node):
+    if hasattr(node, "fire"):
+        return HtmlRenderer()
+    from .dom import DomRenderer
+
+    return DomRenderer()
 
 
 def _bind(node, what, signal, renderer):
@@ -614,11 +644,18 @@ class _Root:
         self.owner.dispose()
 
 
-def mount(view, parent, renderer=None):
+def mount(view, parent, renderer=None, debug=True, fallback=None):
     """Build `view` under `parent` with its own root `Owner`; returns a handle with `dispose()`.
 
+    Pass a *function* (a component, or `lambda: app(...)`) rather than a built view: it runs
+    inside the root owner, so everything it creates (components, resources, control flow)
+    is disposed with the mount. A view built beforehand still mounts, but owners created
+    while building it belong to nobody and outlive the mount.
+
     `parent` is a renderer node. With no renderer, the browser's `DomRenderer` is used and
-    `parent` may be a CSS selector.
+    `parent` may be a CSS selector. An error nothing caught renders, in debug mode, the
+    traceback in a `<pre class="frontage-error">`; otherwise `fallback` (a view, or a
+    function of the error), or a one-line notice.
     """
     if renderer is None or isinstance(parent, str):
         from .dom import DomRenderer, resolve
@@ -626,8 +663,23 @@ def mount(view, parent, renderer=None):
         renderer = renderer or DomRenderer()
         parent = resolve(parent)
     owner = Owner(parent=None)
-    nodes = owner.run(lambda: build(view, renderer, parent))
-    return _Root(owner, nodes)
+
+    def page(exc, reset):
+        if debug:
+            return h.pre(format_exception(exc), cls="frontage-error")
+        if callable(fallback) and not hasattr(fallback, "tag"):
+            return fallback(exc, reset)
+        return fallback if fallback is not None else h.p("Something went wrong.", cls="frontage-error")
+
+    def root():
+        from .flow import Errored
+
+        # The root is a hole holding an Errored boundary, so nothing wraps the user's view;
+        # a factory runs inside that boundary's owner and is disposed with the mount.
+        _mount_hole(parent, Errored(page, view), renderer)
+
+    owner.run(root)
+    return _Root(owner, [])
 
 
 def render_to_string(view):

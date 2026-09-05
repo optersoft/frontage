@@ -69,7 +69,31 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
       work (Element construction, effects, signals) dominates, not bridge crossings; the JS
       shim of DESIGN §8.6 would take ~7 of the 11 ops per row (hole finding) and is deferred to
       the M5 performance pass together with a MicroPython profiling session.
-- [ ] W13 leftovers: simulate `currentTarget`, `oncapture:`; W15 custom events.
+- [x] W13 leftovers (`currentTarget` via defineProperty in the delegated dispatcher,
+      `oncapture_`), W15 custom events (`emit`).
+
+## M2 (done 2026-09-05, except E2)
+
+- [x] `Resource` (raises `NotReady` while the first load is pending, serves the old value
+      while refreshing, raises its error into the nearest `Errored`), `Action`, `spawn` with
+      owner-cancelled tasks; `Loading` and `Errored` boundaries (build-time errors included);
+      `Switch`/`Match`, `Dynamic`, `Portal`; async handlers; `html(t"…")` on both interpreters
+      (MicroPython ships `string.templatelib`); `mount(factory)` with a debug error page.
+      SPEC C16–C17, W8–W16, A1–A5, E1. 118 unit tests, 14 browser tests.
+- [x] Two core corrections the boundaries forced: a computation is marked clean *before* it
+      runs (so a write during the run re-queues it), and a checked node pulls *all* its memo
+      sources before running (the diamond ran twice otherwise). A flush over 100,000 effect
+      runs raises "reactive update loop" instead of hanging.
+- [x] Ruff's formatter emits PEP 758 excepts under a 3.14 target, which MicroPython cannot
+      parse: the package targets 3.12 syntax; only the template-string files are 3.14.
+- [ ] E2 debug warnings (a signal read after `await`, a write inside a tracked compute).
+- [ ] Redeploy the site with the M2 examples.
+
+## M3 (next)
+
+- [ ] `frontage/router.py`: nested routes, params/query/location accessors, plain `<a>`
+      interception, `A`, `Navigate`, `navigate`, `Redirect`, `preload`, `query`, `action`,
+      three modes (history, hash, memory). SPEC U1–U10; the contacts example.
 - [x] Site redeployed 2026-09-05 with the M1 examples and the PyScript bundle (`mk site.build`
       had silently lacked the bundle copy; Pages answered the missing files with the landing
       page, which reads as a 200).

@@ -6,9 +6,8 @@ element (found by a `data-fr` id walking up from the target), so a page has one 
 proxy per event type instead of one per handler.
 """
 
-from .reactive import on_cleanup
 from .renderer import Renderer
-from .runtime import create_proxy, document, in_browser
+from .runtime import create_proxy, document, in_browser, to_js, window
 
 __all__ = ["DomRenderer", "is_node", "resolve"]
 
@@ -146,6 +145,12 @@ class DomRenderer(Renderer):
     def replace_node(self, parent, new, old):
         parent.replaceChild(new, old)
 
+    def dispatch_event(self, node, name, detail=None):
+        options = {"bubbles": True, "cancelable": True}
+        if detail is not None:
+            options["detail"] = detail
+        node.dispatchEvent(window.CustomEvent.new(name, to_js(options)))
+
     # -- templates ----------------------------------------------------------------------------
 
     _templates = {}
@@ -223,6 +228,7 @@ class DomRenderer(Renderer):
                 if fid:
                     handler = handlers.get(fid, {}).get(event)
                     if handler is not None and not getattr(node, "disabled", False):
+                        _set_current_target(ev, node)
                         handler(ev)
                         if getattr(ev, "cancelBubble", False):
                             return
@@ -231,5 +237,9 @@ class DomRenderer(Renderer):
         return dispatch
 
 
-def _unused():  # keeps on_cleanup imported for the M2 direct-listener owner wiring
-    return on_cleanup
+def _set_current_target(ev, node):
+    """Make `ev.currentTarget` the element whose handler runs, as a direct listener would."""
+    try:
+        window.Object.defineProperty(ev, "currentTarget", to_js({"configurable": True, "value": node}))
+    except Exception:
+        pass

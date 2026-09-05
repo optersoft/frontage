@@ -14,4 +14,4 @@ def counter(initial=0, step=1):
     )
 
 
-mount(counter(initial=0), "#app")
+mount(lambda: counter(initial=0), "#app")

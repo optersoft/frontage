@@ -217,4 +217,4 @@ def app():
     )
 
 
-mount(app(), "#app", renderer=renderer)
+mount(app, "#app", renderer=renderer)

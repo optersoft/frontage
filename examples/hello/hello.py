@@ -16,6 +16,8 @@ Effect(lambda: names.append(store.user.name))
 store.set_path("user", "name", "Bob")
 
 view = h.p("Hello from the string renderer")
-document.getElementById("app").textContent = (
+document.getElementById(
+    "app"
+).textContent = (
     f"Frontage {frontage.__version__} on {frontage.platform}\n{render_to_string(view)}\nreactive: {seen} store: {names}"
 )

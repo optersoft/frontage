@@ -83,7 +83,7 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 
 ## 7. Async
 
-- A1 `Resource(fetcher, source=None)` runs `fetcher` (async) once, and again whenever `source` changes; it is an accessor of the latest value (`None` until the first result). [M2]
+- A1 `Resource(fetcher, source=None)` runs `fetcher` (async) once, and again whenever `source` changes; it is an accessor of the latest value: while the first load is pending it raises `NotReady` (so a hole reads it without a `None` check and the nearest `Loading` shows its fallback); while a reload is pending it returns the previous value. [M2]
 - A2 `.loading`, `.error`, `.state` are accessors; `.refetch()` re-runs; `.mutate(v)` sets the value without fetching. [M2]
 - A3 Reactive inputs read after the first `await` are not tracked; in debug mode a read after `await` warns. [M2]
 - A4 `Action(fn)`: `.dispatch(x)` runs `fn(x)`; `.pending`, `.value`, `.input` are accessors. [M2]
