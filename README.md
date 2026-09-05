@@ -76,6 +76,17 @@ are his; see [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) and [NOTICE](NOTICE). Fr
 carries the work forward under the same Apache 2.0 license, maintained by
 [Optersoft](https://optersoft.com).
 
+## Contributing
+
+Contributions are welcome and are accepted under the Apache License 2.0, the same terms the
+project is published under. By opening a pull request you agree that your contribution may be
+distributed under that license, including its patent grant (section 3). There is no separate
+contributor agreement.
+
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+**Frontage** and the Frontage logo are trademarks of Optersoft, S.L. The license grants no
+rights to the name or the logo (Apache License section 6). You may say that your work uses or
+is built with Frontage; a fork or a derivative must ship under another name.
