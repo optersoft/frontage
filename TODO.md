@@ -70,7 +70,9 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
       shim of DESIGN §8.6 would take ~7 of the 11 ops per row (hole finding) and is deferred to
       the M5 performance pass together with a MicroPython profiling session.
 - [ ] W13 leftovers: simulate `currentTarget`, `oncapture:`; W15 custom events.
-- [ ] Redeploy the site with the new examples (index at `/examples/`).
+- [x] Site redeployed 2026-09-05 with the M1 examples and the PyScript bundle (`mk site.build`
+      had silently lacked the bundle copy; Pages answered the missing files with the landing
+      page, which reads as a 200).
 
 ## Outward-facing, for David
 
@@ -86,8 +88,7 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
 ## Site and docs
 
 - [ ] The landing page still shows the M2 template syntax as if it ran today; fine as a
-      target, but say "target syntax" until M2 lands. The deployed site still serves the
-      fork's examples; redeploy (`mk site.deploy`) once M1 has real examples to show.
+      target, but say "target syntax" until M2 lands.
 - [ ] Docs on academy at `/tool/frontage`, chapter per concept in `DESIGN.md` order, each with
       its live example; one interpreter per page for the embeds (§2b).
 - [ ] The measured size of a MicroPython Frontage app, on the landing page (§2b).

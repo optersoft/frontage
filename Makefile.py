@@ -29,7 +29,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from make import note, sh, task
+from make import MakeError, note, sh, task
 
 ROOT = Path(__file__).parent
 WWW = ROOT / "www"
@@ -110,19 +110,22 @@ def dist_build() -> None:
 def site_build() -> None:
     """Assemble frontage.optersoft.com into ./www.
 
-    web/ is the landing page; examples/ goes under /examples/ unchanged, and the package
-    goes to /frontage/ because every example's pyscript.json fetches it from that
-    absolute path (the same layout serve_examples.py serves locally).
+    web/ is the landing page; examples/ goes under /examples/, the package under /frontage/
+    and the local PyScript bundle (without source maps) under /pyscript/: the same three
+    absolute paths tools/serve.py serves, so an example runs unchanged in both places.
     """
     if WWW.exists():
         shutil.rmtree(WWW)
     shutil.copytree(ROOT / "web", WWW)
-    shutil.copytree(
-        ROOT / "examples", WWW / "examples", ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "__init__.py")
-    )
+    shutil.copytree(ROOT / "examples", WWW / "examples", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     shutil.copytree(ROOT / "frontage", WWW / "frontage", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    bundles = sorted((ROOT / "tools" / "pyscript").glob("*/pyscript"))
+    if not bundles:
+        raise MakeError("no local PyScript bundle: run `mk pyscript.fetch` first")
+    shutil.copytree(bundles[-1], WWW / "pyscript", ignore=shutil.ignore_patterns("*.map"))
     files = sum(1 for f in WWW.rglob("*") if f.is_file())
-    note(f"www/ assembled: {files} files")
+    size = sum(f.stat().st_size for f in WWW.rglob("*") if f.is_file()) // (1024 * 1024)
+    note(f"www/ assembled: {files} files, {size} MB")
 
 
 @task(name="site.deploy", needs=[site_build], requires=["wrangler"], dangerous=True)
