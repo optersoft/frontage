@@ -18,7 +18,21 @@ is worth keeping.
       fix what broke. This is the real first milestone.
 - [ ] Merge or decline the four upstream PRs left open (two from 2025-10: `trigger_redraw`
       and lifecycle docs; a jinja2 bump; Playwright on WebKit/Firefox).
-- [ ] Run `mk test --integration` locally once and record the browser it needs.
+- [x] `mk test --integration` runs locally (Chromium via `uv run playwright install
+      chromium`, ~6 min because every example pulls PyScript from the CDN). It caught the
+      import-stripping regression the unit tests cannot see; keep it in the release
+      checklist even though it is slow.
+
+## Known failing
+
+- [ ] `tests/integration/test_examples.py::test_refs_problem` fails on the pristine upstream
+      tree too (3/3 runs each, Chromium, 2026-09-05), on the second assertion: after
+      `fill("F")` the input is expected to have lost focus and has not. Either the redraw
+      is now fast enough to keep focus or Playwright's `fill` behaves differently than in
+      2025; the "problem" the example demonstrates may simply no longer reproduce. Decide
+      after the PyScript bump; until then CI's `examples` job is red on this one test.
+- [ ] Most integration tests do not request the `http_server` fixture, so they only pass
+      when an earlier test started the server. Make it `autouse` (session scope).
 
 ## Docs
 

@@ -7,6 +7,26 @@ two browser runtimes and stand-ins on the server, where nothing that touches the
 
 import sys
 
+# Most of these names exist only to be re-exported; without this list, an unused-import
+# autofix silently deletes them and the package stops importing in the browser.
+__all__ = [
+    "PLATFORM_CPYTHON",
+    "PLATFORM_MICROPYTHON",
+    "PLATFORM_PYODIDE",
+    "CustomEvent",
+    "Object",
+    "add_event_listener",
+    "create_proxy",
+    "document",
+    "history",
+    "is_server_side",
+    "next_tick",
+    "platform",
+    "remove_event_listener",
+    "setTimeout",
+    "window",
+]
+
 PLATFORM_PYODIDE = "pyodide"
 PLATFORM_MICROPYTHON = "micropython"
 PLATFORM_CPYTHON = "cpython"
@@ -84,7 +104,7 @@ if is_server_side:
         fn()
 
 else:
-    from js import setTimeout
+    from js import CustomEvent, Object, document, history, setTimeout, window
 
     def next_tick(fn):
         setTimeout(create_proxy(fn), 100)

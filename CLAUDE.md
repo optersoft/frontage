@@ -29,6 +29,12 @@ the forge, because PyPI publishing needs Actions).
   `project_version`, which the docs use for download commands.
 - **Docs tutorial embeds still point at the upstream author's hosted examples**
   (`kkinder.pyscriptapps.com`). They work but say `puepy`. Hosting our own is in TODO.md.
+- **ruff's unused-import autofix has bitten this repo once already.** `runtime.py` exists
+  to re-export the browser globals, and the tutorial's `main.py` imports `pages` and
+  `components` for their side effects. Both were silently deleted by `ruff check --fix`
+  on 2026-09-05, and only the browser suite noticed (the unit tests run server-side and
+  never import `js`). `__all__` in `runtime.py` and `# noqa: F401` in the example are the
+  guards; after any `--fix`, run `mk test --integration` before trusting the tree.
 - **Attribution is a license obligation.** `NOTICE` and `ACKNOWLEDGEMENTS.md` name PuePy and
   its author; keep them when reorganising, and keep `LICENSE` verbatim.
 

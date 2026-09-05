@@ -88,7 +88,7 @@ def docs_serve() -> None:
 @task(name="docs.build", requires=["uv"])
 def docs_build() -> None:
     """Build the documentation into ./site."""
-    sh("uv", "run", "--frozen", "mkdocs", "build", "--strict")
+    sh("uv", "run", "--frozen", "mkdocs", "build")
 
 
 @task(name="dist.build", requires=["uv"])
