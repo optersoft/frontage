@@ -110,9 +110,9 @@ class Owner:
             parent._owned.remove(self)
         self._parent = None
 
-    def run(self, fn, *args):
+    def run(self, fn, *args, **kwargs):
         """Run `fn` with this as the current owner and no tracking."""
-        return run_with_owner(self, fn, *args)
+        return run_with_owner(self, fn, *args, **kwargs)
 
     def __enter__(self):
         self._saved = (_owner, _listener)
@@ -134,11 +134,11 @@ def get_owner():
     return _owner
 
 
-def run_with_owner(owner, fn, *args):
+def run_with_owner(owner, fn, *args, **kwargs):
     saved = (_owner, _listener)
     _set_scope(owner, None)
     try:
-        return fn(*args)
+        return fn(*args, **kwargs)
     finally:
         _set_scope(*saved)
 

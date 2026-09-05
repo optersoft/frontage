@@ -1,0 +1,194 @@
+"""The browser renderer: the `Renderer` seam over the real DOM, through `pyscript`.
+
+Every method here is a bridge crossing from Python to JavaScript. Events are delegated: one
+document listener per bubbling event type, dispatching to the handler registered for the
+element (found by a `data-fr` id walking up from the target), so a page has one JavaScript
+proxy per event type instead of one per handler.
+"""
+
+from .reactive import on_cleanup
+from .renderer import Renderer
+from .runtime import create_proxy, document, in_browser
+
+__all__ = ["DomRenderer", "resolve"]
+
+# Events that bubble, so one listener on the document can serve every element.
+DELEGATED = {
+    "beforeinput",
+    "change",
+    "click",
+    "contextmenu",
+    "dblclick",
+    "focusin",
+    "focusout",
+    "input",
+    "keydown",
+    "keypress",
+    "keyup",
+    "mousedown",
+    "mousemove",
+    "mouseout",
+    "mouseover",
+    "mouseup",
+    "pointerdown",
+    "pointermove",
+    "pointerout",
+    "pointerover",
+    "pointerup",
+    "submit",
+    "touchend",
+    "touchmove",
+    "touchstart",
+}
+
+# DOM properties that must be set as properties, not attributes, to take effect after load.
+PROPERTIES = {"value", "checked", "selected", "textContent", "innerHTML", "muted", "volume", "currentTime"}
+BOOLEAN_ATTRS = {
+    "disabled",
+    "hidden",
+    "readonly",
+    "required",
+    "open",
+    "multiple",
+    "autofocus",
+    "autoplay",
+    "controls",
+    "loop",
+    "novalidate",
+    "reversed",
+    "selected",
+    "checked",
+}
+
+
+def resolve(target):
+    """A node from a CSS selector, or the node itself."""
+    if isinstance(target, str):
+        node = document.querySelector(target)
+        if node is None:
+            raise LookupError(f"mount: nothing matches {target!r}")
+        return node
+    return target
+
+
+class DomRenderer(Renderer):
+    def __init__(self):
+        if not in_browser:
+            raise RuntimeError("DomRenderer needs a browser; use HtmlRenderer on the server")
+        self._handlers = {}  # element id -> {event: handler}
+        self._next_id = 1
+        self._delegated = set()
+        self._proxies = {}
+
+    # -- nodes --------------------------------------------------------------------------------
+
+    def create_element(self, tag):
+        return document.createElement(tag)
+
+    def create_text(self, text):
+        return document.createTextNode(str(text))
+
+    def replace_text(self, node, text):
+        node.data = str(text)
+
+    def set_property(self, node, name, value):
+        if name in PROPERTIES:
+            setattr(node, name, "" if value is None else value)
+        elif name in BOOLEAN_ATTRS or value is True or value is False:
+            if value:
+                node.setAttribute(name, "")
+            else:
+                node.removeAttribute(name)
+        elif value is None:
+            node.removeAttribute(name)
+        else:
+            node.setAttribute(name, str(value))
+
+    def insert_node(self, parent, node, anchor=None):
+        if anchor is None:
+            parent.appendChild(node)
+        else:
+            parent.insertBefore(node, anchor)
+
+    def remove_node(self, parent, node):
+        parent.removeChild(node)
+
+    def is_text(self, node):
+        return node.nodeType == 3
+
+    def parent(self, node):
+        return node.parentNode
+
+    def first_child(self, node):
+        return node.firstChild
+
+    def next_sibling(self, node):
+        return node.nextSibling
+
+    def toggle_class(self, node, name, on):
+        node.classList.toggle(name, bool(on))
+
+    def set_style(self, node, prop, value):
+        if value is None or value is False:
+            node.style.removeProperty(prop)
+        else:
+            node.style.setProperty(prop, str(value))
+
+    # -- events -------------------------------------------------------------------------------
+
+    def add_listener(self, node, event, handler, capture=False):
+        if event in DELEGATED and not capture:
+            return self._delegate(node, event, handler)
+        proxy = create_proxy(handler)
+        node.addEventListener(event, proxy, bool(capture))
+
+        def remove():
+            node.removeEventListener(event, proxy, bool(capture))
+            destroy = getattr(proxy, "destroy", None)
+            if destroy is not None:
+                destroy()
+
+        return remove
+
+    def _delegate(self, node, event, handler):
+        fid = node.getAttribute("data-fr")
+        if not fid:
+            fid = str(self._next_id)
+            self._next_id += 1
+            node.setAttribute("data-fr", fid)
+        self._handlers.setdefault(fid, {})[event] = handler
+        if event not in self._delegated:
+            self._delegated.add(event)
+            proxy = create_proxy(self._make_dispatcher(event))
+            self._proxies[event] = proxy
+            document.addEventListener(event, proxy)
+
+        def remove():
+            table = self._handlers.get(fid)
+            if table is not None:
+                table.pop(event, None)
+                if not table:
+                    self._handlers.pop(fid, None)
+
+        return remove
+
+    def _make_dispatcher(self, event):
+        handlers = self._handlers
+
+        def dispatch(ev):
+            node = ev.target
+            while node is not None and getattr(node, "nodeType", 0) == 1:
+                fid = node.getAttribute("data-fr")
+                if fid:
+                    handler = handlers.get(fid, {}).get(event)
+                    if handler is not None and not getattr(node, "disabled", False):
+                        handler(ev)
+                        if getattr(ev, "cancelBubble", False):
+                            return
+                node = node.parentNode
+
+        return dispatch
+
+
+def _unused():  # keeps on_cleanup imported for the M2 direct-listener owner wiring
+    return on_cleanup

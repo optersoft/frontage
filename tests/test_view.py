@@ -28,8 +28,10 @@ def test_with_form_does_not_leak_after_the_block():
 
 
 def test_attribute_name_spellings():
-    view = h.input(type_="text", data_id=7, aria_label="Name", for_="x", class_="c")
-    assert view.attrs == {"type": "text", "data-id": 7, "aria-label": "Name", "for": "x", "class": "c"}
+    view = h.label(h.input(type_="text", data_id=7, aria_label="Name"), for_="x", class_="c")
+    assert (
+        render_to_string(view) == '<label for="x" class="c"><input type="text" data-id="7" aria-label="Name"></label>'
+    )
 
 
 def test_children_are_flattened_and_booleans_and_none_are_dropped():

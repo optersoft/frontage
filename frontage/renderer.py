@@ -67,6 +67,18 @@ class Renderer:
     def next_sibling(self, node):
         raise NotImplementedError
 
+    def toggle_class(self, node, name, on):
+        """Add or remove one class without touching the others."""
+        raise NotImplementedError
+
+    def set_style(self, node, prop, value):
+        """Set one style property; `None` removes it."""
+        raise NotImplementedError
+
+    def add_listener(self, node, event, handler, capture=False):
+        """Attach `handler(event)`; returns a function that detaches it."""
+        raise NotImplementedError
+
 
 class HtmlNode:
     """A node of `HtmlRenderer`: an element with a tag, or text with `tag=None`."""
@@ -75,8 +87,28 @@ class HtmlNode:
         self.tag = tag
         self.text = text
         self.attrs = {}
+        self.props = {}  # DOM properties (value, checked, …) live apart from attributes
+        self.styles = {}
+        self.listeners = {}  # event -> list of handlers, for tests to fire
         self.children = []
         self.parent = None
+
+    def __getattr__(self, name):
+        # DOM properties read like attributes on a real node (`ev.target.value`); mirror that.
+        props = self.__dict__.get("props")
+        if props is not None and name in props:
+            return props[name]
+        raise AttributeError(name)
+
+    def fire(self, event, **fields):
+        """Deliver a fake event to this node's listeners (tests only). Bubbles to parents."""
+        ev = FakeEvent(event, self, **fields)
+        node = self
+        while node is not None and not ev.stopped:
+            for handler in list(node.listeners.get(event, [])):
+                handler(ev)
+            node = node.parent
+        return ev
 
     def to_html(self):
         if self.tag is None:
@@ -89,6 +121,9 @@ class HtmlNode:
                 continue
             else:
                 out.append(f' {name}="{escape(value, quote=True)}"')
+        if self.styles:
+            css = ";".join(f"{k}:{v}" for k, v in self.styles.items())
+            out.append(f' style="{escape(css, quote=True)}"')
         out.append(">")
         if self.tag in _VOID:
             return "".join(out)
@@ -96,6 +131,24 @@ class HtmlNode:
             out.append(child.to_html())
         out.append(f"</{self.tag}>")
         return "".join(out)
+
+
+class FakeEvent:
+    """What `HtmlNode.fire` delivers: enough of a DOM event for handlers under test."""
+
+    def __init__(self, type, target, **fields):
+        self.type = type
+        self.target = target
+        self.stopped = False
+        self.default_prevented = False
+        for k, v in fields.items():
+            setattr(self, k, v)
+
+    def stopPropagation(self):
+        self.stopped = True
+
+    def preventDefault(self):
+        self.default_prevented = True
 
 
 class HtmlRenderer(Renderer):
@@ -110,7 +163,17 @@ class HtmlRenderer(Renderer):
     def replace_text(self, node, text):
         node.text = str(text)
 
+    PROPERTIES = ("value", "checked", "selected", "disabled", "textContent")
+
     def set_property(self, node, name, value):
+        if name in self.PROPERTIES:
+            node.props[name] = value
+            if name == "disabled":  # also an attribute, so it serialises
+                self._attr(node, name, bool(value))
+            return
+        self._attr(node, name, value)
+
+    def _attr(self, node, name, value):
         if value is None or value is False:
             node.attrs.pop(name, None)
         else:
@@ -142,6 +205,33 @@ class HtmlRenderer(Renderer):
         siblings = node.parent.children if node.parent else []
         i = siblings.index(node) + 1
         return siblings[i] if i < len(siblings) else None
+
+    def toggle_class(self, node, name, on):
+        classes = [c for c in str(node.attrs.get("class", "")).split() if c]
+        if on and name not in classes:
+            classes.append(name)
+        if not on and name in classes:
+            classes.remove(name)
+        if classes:
+            node.attrs["class"] = " ".join(classes)
+        else:
+            node.attrs.pop("class", None)
+
+    def set_style(self, node, prop, value):
+        if value is None or value is False:
+            node.styles.pop(prop, None)
+        else:
+            node.styles[prop] = value
+
+    def add_listener(self, node, event, handler, capture=False):
+        node.listeners.setdefault(event, []).append(handler)
+
+        def remove():
+            handlers = node.listeners.get(event, [])
+            if handler in handlers:
+                handlers.remove(handler)
+
+        return remove
 
 
 class RecordingRenderer(Renderer):
@@ -190,8 +280,20 @@ class RecordingRenderer(Renderer):
     def next_sibling(self, node):
         return self.inner.next_sibling(node)
 
+    def toggle_class(self, node, name, on):
+        self._record("toggle_class", name, on)
+        return self.inner.toggle_class(node, name, on)
+
+    def set_style(self, node, prop, value):
+        self._record("set_style", prop, value)
+        return self.inner.set_style(node, prop, value)
+
+    def add_listener(self, node, event, handler, capture=False):
+        self._record("add_listener", event)
+        return self.inner.add_listener(node, event, handler, capture)
+
     def count(self, op):
         return sum(1 for entry in self.log if entry[0] == op)
 
 
-__all__ = ["HtmlNode", "HtmlRenderer", "RecordingRenderer", "Renderer", "escape"]
+__all__ = ["FakeEvent", "HtmlNode", "HtmlRenderer", "RecordingRenderer", "Renderer", "escape"]

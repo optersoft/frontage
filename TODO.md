@@ -30,9 +30,17 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
       on, Owner, context, selector. SPEC §4 C1–C15; 30 unit tests; runs under MicroPython
       (the browser smoke exercises it).
 - [x] `frontage/store.py`: SPEC §5 T1–T5, T7; 17 unit tests; runs under MicroPython.
-- [ ] `DomRenderer` and `clone_template`; the insert rules; delegated events; `Show`, `For`,
-      `bind:`. SPEC §2 S5–S6, §6 W1–W7, W13, W17.
-- [ ] Counter, todo and rows examples with browser tests; the rows benchmark harness (§12).
+- [x] Reactive views: holes with the insert rules, bound attributes (`attr`/`prop_`/`class_`/
+      `style_`/`bind_`/`ref`), `component`, `Show`, `For` (identity, key function, index
+      mode), `mount`; `DomRenderer` with delegated events. SPEC S5, W1–W7, W13 (partly:
+      `currentTarget` is not simulated yet). 26 view tests through the recording renderer.
+- [x] Counter and todo examples with browser tests, green under MicroPython and Pyodide.
+      Three MicroPython differences met on the way, all now handled: functions have no
+      writable `__name__`, code objects have no `co_argcount`, and `Owner.run` needed kwargs.
+- [ ] `clone_template` and the Template path (S6, W17): one clone per instance, holes bound
+      after. Then the rows example and the benchmark harness (§12) to compare against the
+      node-by-node path this stage ships.
+- [ ] W13 leftovers: simulate `currentTarget`, `oncapture:`; W15 custom events.
 
 ## Outward-facing, for David
 
