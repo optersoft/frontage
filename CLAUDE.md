@@ -5,6 +5,9 @@ fork of PuePy 0.6.5 (Apache 2.0), maintained by Optersoft since 2026-09-05. The 
 remote points at `kkinder/puepy`; `origin` is `github.com/optersoft/frontage` (GitHub, not
 the forge, because PyPI publishing needs Actions).
 
+**`DESIGN.md` is the plan to replace this tree with a clean-room rewrite.** Until it lands,
+the code here is the PuePy fork and the rules below apply to it.
+
 ## Layout
 
 | Path | What |

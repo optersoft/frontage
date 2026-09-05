@@ -3,6 +3,11 @@
 Open work for `frontage`, most urgent first. `- [ ]` open, `- [x]` done where the reason
 is worth keeping.
 
+## Decide first
+
+- [ ] Settle the five open decisions at the end of `DESIGN.md`; the rewrite starts with
+      `SPEC.md` (M0) once they are.
+
 ## Before the first release (0.1.0)
 
 - [ ] Email PuePy's author: tell them about the fork, offer co-maintainership, ask whether
