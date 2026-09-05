@@ -1,10 +1,13 @@
 # Frontage design
 
-**Status: draft 3, 2026-09-05.** Draft 1 kept PuePy's shape. Draft 2 was written from Leptos.
-This draft adds a study of [Solid](https://github.com/solidjs/solid): 1.x (stable, the
-`dom-expressions` runtime, the store), `solid-router`, and the 2.0 release candidate's new
-core. Solid is the JavaScript origin of the model Leptos ported to Rust, and it is small
-enough to be the size reference for Frontage. Decisions marked *open* are for David.
+**Status: draft 4, 2026-09-05.** Draft 1 kept PuePy's shape. Draft 2 was written from Leptos.
+Draft 3 added [Solid](https://github.com/solidjs/solid) (1.x, `dom-expressions`, the store,
+`solid-router`, the 2.0 release candidate), the JavaScript origin of the model and the size
+reference. This draft adds the three Python-first frameworks, [Streamlit](https://github.com/streamlit/streamlit),
+[Shiny for Python](https://github.com/posit-dev/py-shiny) and [Reflex](https://github.com/reflex-dev/reflex),
+with one question asked of each: what happens when it has to run in WebAssembly. Two of them
+already do (stlite, Shinylive), and that evidence shapes section 2b. Decisions marked *open*
+are for David.
 
 ## 1. The decision
 
@@ -41,6 +44,77 @@ view tree and arena handles, JSX and the Babel compiler (Python 3.14 template st
 that job at runtime), Solid's proxy-based store internals (Python has no `Proxy`; it has
 dunder methods, which are enough), transitions and time slicing.
 
+## 2b. The Python-first frameworks, and the WebAssembly test
+
+| | Streamlit | Shiny for Python | Reflex |
+|---|---|---|---|
+| Model | the script re-runs top to bottom on every interaction; widgets return values | reactive `Value` / `calc` / `effect` graph on the server; UI functions return HTML; outputs bound by id | `State` classes with typed vars and handler methods on the server; the view compiles to React |
+| Where Python runs | server (Tornado) | server (Starlette, asyncio) | server (FastAPI + websocket); the browser runs generated JavaScript |
+| Size | runtime 23k + elements 46k lines | reactive 2.7k, render 6k, ui 17k, express 4k | 27k lines, plus Node and a React toolchain |
+| Nesting syntax | `with st.sidebar:` | Express: `with ui.card():` | function calls |
+| Partial updates | `@st.fragment` re-runs a subtree | per-output invalidation | state deltas over the websocket |
+| In the browser | **stlite**: the whole runtime in Pyodide in a Web Worker, packages on demand from a 200 MB+ distribution | **Shinylive**: Pyodide plus a service worker, ~13 MB before app code, static export, code-in-URL sharing | none, and none possible: the architecture is Python-on-the-server by construction |
+
+**What the WebAssembly test says.** Streamlit and Shiny run in the browser only by carrying
+their *server* into it: a session, a message protocol, an emulated transport, and the full
+Pyodide. They work, they are used, and they start in tens of seconds. Reflex cannot be
+ported at all, and everything un-Pythonic in Reflex (`rx.cond` and `rx.foreach` instead of
+`if` and `for`, `Var` objects that are expressions rather than values, `.to(dict)` casts) is
+the price of Python *not* being present in the browser at runtime. That is the clearest
+argument for Frontage's premise there is: a browser-first framework has no session, no
+transport and no DSL, because the Python is right there.
+
+**What transfers, and it is a lot:**
+
+1. **`with` blocks for nesting.** Streamlit, Shiny Express and PuePy converged on the same
+   syntax independently. The builder gets it (`with h.div(cls="card"): h.p(...)`), and it is
+   the natural way to generate UI in a Python loop. The template string stays the primary
+   syntax for static structure.
+2. **Decorators are the Pythonic spelling of reactivity.** Shiny's `@reactive.calc` /
+   `@reactive.effect` / `@render.text` on named functions read better than lambdas. Frontage's
+   `Memo`, `Effect` and `RenderEffect` accept a function, so `@Memo` and `@Effect` work as
+   decorators with no extra API, and a decorated `Memo` is an accessor a template hole can
+   name. The tutorial teaches this form.
+3. **"Not ready" as control flow.** Shiny's `req()` raises a silent exception that cancels
+   the computation quietly; Solid 2.0's `NotReadyError` is the same idea from the other side.
+   Frontage: `raise NotReady` (or `require(x)`) inside a compute ends it without error and
+   registers with the nearest `Loading` boundary. This is how a hole reads a `Resource`
+   without a `None` check.
+4. **Timers as signals.** Shiny's `invalidate_later` and `reactive.poll`, Streamlit's
+   `run_every`. Frontage: `interval(seconds)` returns an accessor that ticks; `poll(fn,
+   seconds)` a `Resource` on a timer. Small, and every dashboard wants them.
+5. **A widget catalogue.** Both data frameworks ship a fixed set of inputs (text, number,
+   slider, select, checkbox, radio, date, file, button) as the beginner's vocabulary. Frontage
+   0.2 ships `frontage.widgets`: plain HTML form controls bound to a signal (`text_input(sig,
+   label=…)`), unstyled beyond a class hook, the thing the first tutorial chapter can use
+   before templates are taught.
+6. **Class-based state as sugar.** Reflex's `State` with typed fields and handler methods is
+   a shape many Python developers reach for. Frontage 0.2 offers `State` as sugar over
+   signals: `count = field(0)` descriptors (explicit, because MicroPython does not populate
+   `__annotations__`), methods as handlers, `@computed` as memos. Optional; the primitives
+   stay the foundation.
+7. **Static export and a playground.** Shinylive's `export` command and code-in-URL sharing
+   are how its docs and courses work. Frontage: `mk export` (or `frontage export`) writes a
+   directory of app, wheel and `pyscript.json`; the site gets a playground page that runs the
+   code in the URL fragment. For a company that teaches, the playground is the classroom.
+8. **Fragments are a confession.** Streamlit added `@st.fragment` because re-running the
+   whole script does not scale; Solid's `For` and Frontage's holes are the fine-grained
+   answer to the same problem, taken from the start.
+
+**What does not transfer.** The script-rerun model itself (its simplicity is real, and
+`with` nesting plus module-level `mount()` give a first chapter that reads like a script
+without paying its cost); server sessions and message protocols; Reflex's React component
+wrapping (Frontage's component library is web components used as HTML, section 8.2, with
+Shoelace as the documented example); anything that needs a thread or `time.sleep`, which
+stlite lists as broken in the browser and Frontage's async model never wanted.
+
+**Two consequences for the site.** Shinylive and stlite both note that several apps on one
+page means several interpreters; the docs embed a dozen examples per chapter. The examples
+site should load one interpreter per page and mount examples into it, or lazy-load each on
+scroll. And the size story is Frontage's to tell: Shinylive is ~13 MB before the app; a
+MicroPython Frontage app is under a megabyte. That number belongs on the landing page once
+it is measured.
+
 ## 3. Goals
 
 1. **Python only, in the browser.** Reactive UI, no JavaScript toolchain, deploy by serving files.
@@ -52,6 +126,9 @@ dunder methods, which are enough), transitions and time slicing.
 5. **Small and teachable.** Core under ~4,000 lines; a reader can hold it in a day.
 6. **Renderer-agnostic views**: DOM in the browser, HTML string on CPython; server rendering
    stays possible without a rewrite (section 8).
+8. **Python is the control flow.** `if`, `for`, comprehensions and function calls work
+   inside a view because the Python is in the browser. `Show` and `For` exist for
+   fine-grained efficiency, never as a required DSL. No `cond`, no `foreach`, no `Var`.
 7. **Honest testing**: the reactive core and the view layer test on CPython with no browser;
    the examples run in real browsers under both runtimes.
 
@@ -131,7 +208,9 @@ proxy registered under it**, and releases delegated-event registrations. `Contex
 
 **Utilities carried from Solid:** `selector(source)` for O(1) "is this row selected"
 checks in a list; `on_mount(fn)`; `get_owner()` / `run_with_owner()`; `children(fn)` to
-resolve a child accessor once.
+resolve a child accessor once. **From Shiny:** `NotReady` (section 2b), `interval(seconds)`
+and `poll(fn, seconds)`. **Decorator form** for `Memo`, `Effect` and `RenderEffect`, which
+falls out of them taking a function and is the form the tutorial teaches.
 
 **Stores (`frontage.store`), in 0.1.** Python application state is dicts and lists, so
 nested reactivity is not an optimisation, it is the default case. Solid's design transfers
@@ -178,10 +257,15 @@ def counter(initial=0):
 ```
 
 **The builder** is the fallback and the escape hatch, and it produces the same `Template`
-when its structure is static:
+when its structure is static. It has a call form and a `with` form; the second is what
+Streamlit, Shiny Express and PuePy all arrived at, and the natural one inside a loop:
 
 ```python
 h.div(h.button("-", on_click=dec), h.span("Value: ", count, "!"), h.button("+", on_click=inc), cls="counter")
+
+with h.ul(cls="menu"):
+    for item in items:
+        h.li(item.label, on_click=lambda e, i=item: select(i))
 ```
 
 *Open:* if template strings prove immature on either interpreter, the builder ships alone
@@ -353,8 +437,8 @@ keeps its own notice; the rewrite carries Optersoft's from the first commit.
 | M1 | reactive core (signals, memos, two-phase effects, owner, context, batch, `on`, `selector`); `Store` with draft writes; builder → `Template`; `DomRenderer`; delegated events; insert rules; `Show`, `For` (all keying modes); `bind:`; counter, todo and rows examples | unit suite green; browser suite green for those examples on both runtimes; the rows benchmark runs |
 | M2 | `t"…"` templates; `Resource`, `Action`, `Loading`, `Errored`; `NodeRef`; `Dynamic`, `Portal`; fetch and forms examples; the shim decision of 8.6 | same; section 12 decided |
 | M3 | router (nested, params, `preload`, `query`, `action`, `A`, three modes); contacts example; debug error page | full example suite green on Chromium, both runtimes |
-| M4 | docs on academy; landing page; wheel on the site | **0.1.0** on PyPI |
-| M5 | `reconcile`; Firefox + WebKit in CI; `Errored` reset semantics; performance pass | **0.2.0** |
+| M4 | docs on academy; landing page with the measured size; wheel on the site; `mk export` | **0.1.0** on PyPI |
+| M5 | `frontage.widgets`; `State` sugar; `interval` / `poll`; `reconcile`; the playground page; Firefox + WebKit in CI; performance pass | **0.2.0** |
 | later | server rendering through `HtmlRenderer`; hydration; async memos, `is_pending`, transactions and optimistic writes (Solid 2.0's model) | 1.0 |
 
 ## 17. Open decisions
@@ -367,3 +451,6 @@ keeps its own notice; the rewrite carries Optersoft's from the first commit.
 6. Accessor spelling: `count()` (Solid) or `count.get()` (Leptos). Proposal: `count()`, so
    the rule "a callable is reactive" has no exceptions; `.value` as a read-only property
    alias for people who find bare calls odd.
+7. Whether `frontage.widgets` (the Streamlit/Shiny input catalogue) belongs in the core
+   package or in a second package. Proposal: a subpackage of the core, so `pip download
+   frontage` is still the whole install.
