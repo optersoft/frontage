@@ -167,3 +167,22 @@ def test_contacts_router(server, page: Page, interpreter, mode):
     page.click("#old")  # Navigate() redirects
     expect(page.locator("#pick")).to_be_visible()
     assert errors == []
+
+
+def test_playground_runs_and_shares(server, page: Page):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{server}/playground/index.html")
+    expect(page.locator("#status")).to_contain_text("ran on micropython", timeout=60_000)
+    page.click("#app button:nth-of-type(2)")  # the counter's +
+    expect(page.locator("#app span")).to_have_text(" 1 ")
+    page.select_option("#example", "state")
+    expect(page.locator("#app b")).to_contain_text("1 x M for someone")
+    page.fill("#code", "from frontage import html, mount\nmount(lambda: html(t'<b id=\"x\">shared</b>'), '#app')\n")
+    page.click("#run")
+    expect(page.locator("#x")).to_have_text("shared")
+    page.click("#share")
+    assert "#code=" in page.url
+    page.reload()
+    expect(page.locator("#x")).to_have_text("shared", timeout=60_000)
+    assert errors == []

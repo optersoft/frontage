@@ -1,11 +1,11 @@
 """Frontage: a fine-grained reactive UI framework for Python in the browser.
 
-M3 of the rewrite (see DESIGN.md): the reactive core, the store, reactive views with the
+M5 of the rewrite (see DESIGN.md): the reactive core, the store, reactive views with the
 insert rules, templates (`h` and `html(t"…")`), control flow and boundaries, Resource and
-Action, the router, delegated events, and the DOM renderer.
+Action, the router, widgets, State, delegated events, and the DOM renderer.
 """
 
-from .aio import Action, Resource
+from .aio import Action, Resource, interval, poll
 from .errors import FrontageError, NotReady, RenderError, format_exception
 from .flow import Dynamic, Errored, For, Loading, Match, Portal, Show, Switch
 from .reactive import (
@@ -30,7 +30,8 @@ from .reactive import (
 from .renderer import HtmlRenderer, RecordingRenderer, Renderer
 from .router import A, ActionForm, Navigate, Redirect, Route, Router, use_location, use_navigate, use_params, use_query
 from .runtime import in_browser, platform
-from .store import Store, snapshot
+from .state import State, computed, field
+from .store import Store, reconcile, snapshot
 from .template import html
 from .version import __version__
 from .view import Element, Mounted, NodeRef, Text, build, component, emit, h, mount, render_to_string, text
@@ -66,6 +67,7 @@ __all__ = [
     "Router",
     "Show",
     "Signal",
+    "State",
     "Store",
     "Switch",
     "Text",
@@ -73,18 +75,23 @@ __all__ = [
     "batch",
     "build",
     "component",
+    "computed",
     "emit",
+    "field",
     "format_exception",
     "get_owner",
     "h",
     "html",
     "in_browser",
+    "interval",
     "mount",
     "on",
     "on_cleanup",
     "on_mount",
     "platform",
+    "poll",
     "provide",
+    "reconcile",
     "render_to_string",
     "run_with_owner",
     "selector",

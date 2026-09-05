@@ -15,7 +15,7 @@ context is gone, so a signal read there is not a dependency.
 from .errors import NotReady
 from .reactive import LOADING, Effect, Signal, batch, get_owner, on_cleanup, spawn, untrack, use
 
-__all__ = ["Action", "Resource"]
+__all__ = ["Action", "Resource", "interval", "poll"]
 
 UNRESOLVED = "unresolved"
 PENDING = "pending"
@@ -173,3 +173,24 @@ class Action:
 
     def error(self):
         return self._error()
+
+
+def interval(seconds, start=0):
+    """An accessor that counts up every `seconds` seconds, as a task owned here; a hole that
+    reads it re-runs on each tick. Stops when the owner is disposed."""
+    import asyncio
+
+    tick = Signal(start)
+
+    async def run():
+        while True:
+            await asyncio.sleep(seconds)
+            tick.update(lambda n: n + 1)
+
+    spawn(run(), get_owner())
+    return tick
+
+
+def poll(fetcher, seconds, initial=None):
+    """A `Resource` re-run every `seconds` seconds (and on `refetch()`)."""
+    return Resource(lambda _tick: fetcher(), source=interval(seconds), initial=initial)

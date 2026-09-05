@@ -15,7 +15,7 @@ Python has no `Proxy`; dunder methods do the same job here.
 
 from .reactive import Signal, batch
 
-__all__ = ["Store", "snapshot"]
+__all__ = ["Store", "reconcile", "snapshot"]
 
 _MISSING = object()
 _writing = []  # a stack, so nested set() calls are fine
@@ -74,6 +74,14 @@ class Store:
         if isinstance(raw, dict):
             return iter(list(raw))
         return iter([self._wrap(i, raw[i]) for i in range(len(raw))])
+
+    def _wrap_row(self, row):
+        """The Store wrapper for a raw row already in this list (by identity)."""
+        raw = self._raw
+        for i in range(len(raw)):
+            if raw[i] is row:
+                return self._wrap(i, row)
+        raise KeyError("row is not in this store")
 
     def _wrap(self, key, value):
         """A nested container comes back as a Store (cached per key); anything else as is."""
@@ -242,3 +250,42 @@ def _keys(raw):
 def snapshot(store):
     """The plain data behind a store (the live object, not a copy)."""
     return store._raw if isinstance(store, Store) else store
+
+
+def reconcile(store, data, key="id"):
+    """Update a list `Store` from fresh `data` so rows whose key survives keep their identity.
+
+    The list ends up equal to `data` (same order), but a row already present is mutated in
+    place rather than replaced, so a `For` over the store moves its node instead of rebuilding
+    it, and holes reading the row's other keys update only if those keys changed. Rows whose
+    key is gone are removed; new keys are appended in place. `key` is a dict key or a function.
+    """
+    getter = key if callable(key) else (lambda row: row[key])
+
+    def apply(draft):
+        raw = draft._raw
+        existing = {}
+        for row in raw:
+            existing[getter(row)] = row
+        new_list = []
+        for incoming in data:
+            k = getter(incoming)
+            row = existing.get(k)
+            if row is not None and isinstance(row, dict) and isinstance(incoming, dict):
+                wrapped = draft._wrap_row(row)
+                for field, value in incoming.items():
+                    if field not in row or row[field] != value:
+                        wrapped[field] = value
+                for field in list(row):
+                    if field not in incoming:
+                        del wrapped[field]
+                new_list.append(row)
+            else:
+                new_list.append(incoming)
+        if [id(r) for r in raw] != [id(r) for r in new_list]:
+            raw[:] = new_list
+            draft._wrapped.clear()
+            draft._notify_from(0)
+            draft._notify_shape()
+
+    store.set(apply)

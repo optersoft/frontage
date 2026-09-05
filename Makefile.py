@@ -135,6 +135,8 @@ def site_build() -> None:
     if WWW.exists():
         shutil.rmtree(WWW)
     shutil.copytree(ROOT / "web", WWW)
+    # The playground fetches the package by absolute path like the examples do; the
+    # frontage/ copy below serves both.
     shutil.copytree(ROOT / "examples", WWW / "examples", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     shutil.copytree(ROOT / "frontage", WWW / "frontage", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     bundles = sorted((ROOT / "tools" / "pyscript").glob("*/pyscript"))

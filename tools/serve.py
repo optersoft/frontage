@@ -16,7 +16,11 @@ def pyscript_dir():
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
-    routes = {"/examples/": ROOT / "examples", "/frontage/": ROOT / "frontage"}
+    routes = {
+        "/examples/": ROOT / "examples",
+        "/frontage/": ROOT / "frontage",
+        "/playground/": ROOT / "web" / "playground",
+    }
     quiet = False
 
     def translate_path(self, path):

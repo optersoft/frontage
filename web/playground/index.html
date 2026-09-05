@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Frontage playground</title>
+  <meta name="description" content="Write a Frontage app in the browser and share it as a link.">
+  <link rel="stylesheet" href="/pyscript/core.css">
+  <script type="module" src="/pyscript/core.js" offline></script>
+  <style>
+    :root { color-scheme: light dark; --bg: #fbfaf7; --fg: #1b1b1b; --line: #e3e0d8; --accent: #b3541e; --code: #f1efe9; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #15140f; --fg: #ebe8e1; --line: #2b2a24; --accent: #e08a4a; --code: #1f1e18; } }
+    body { margin: 0; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--fg); }
+    header { display: flex; gap: 1rem; align-items: center; padding: .6rem 1rem; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    header a { color: var(--accent); text-decoration: none; } header .brand { font-weight: 700; }
+    header select, header button { font: inherit; padding: .3rem .6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--code); color: var(--fg); }
+    header button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+    main { display: grid; grid-template-columns: 1fr 1fr; gap: 0; height: calc(100vh - 3.2rem); }
+    textarea { width: 100%; height: 100%; box-sizing: border-box; margin: 0; padding: 1rem; border: 0; border-right: 1px solid var(--line); resize: none; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code); color: var(--fg); tab-size: 4; }
+    #out { padding: 1rem; overflow: auto; } #status { margin-left: auto; opacity: .7; font-size: .9rem; }
+    @media (max-width: 800px) { main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } textarea { border-right: 0; border-bottom: 1px solid var(--line); } }
+  </style>
+</head>
+<body>
+<header>
+  <a class="brand" href="/">Frontage</a>
+  <span>playground</span>
+  <button id="run" class="primary">Run</button>
+  <button id="share">Copy link</button>
+  <select id="example">
+    <option value="counter">counter</option>
+    <option value="todo">todo</option>
+    <option value="fetch">fetch</option>
+    <option value="state">state + widgets</option>
+  </select>
+  <a href="https://academy.optersoft.com/python/frontage">docs</a>
+  <span id="status">loading MicroPython…</span>
+</header>
+<main>
+  <textarea id="code" spellcheck="false"></textarea>
+  <div id="out"><div id="app"></div></div>
+</main>
+<script type="mpy" src="./playground.py" config="./pyscript.json"></script>
+</body>
+</html>

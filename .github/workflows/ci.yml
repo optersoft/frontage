@@ -20,6 +20,9 @@ on:
     branches: [main]
     tags: ["v*.*.*"]
   pull_request:
+  schedule:
+    - cron: "17 4 * * *"  # nightly: the browser suite on Firefox and WebKit too
+  workflow_dispatch:
 
 env:
   UV_VERSION: "0.10.7"
@@ -67,6 +70,31 @@ jobs:
         with:
           name: playwright-traces
           path: test-results/
+
+  # Firefox and WebKit, nightly and on demand: the same suite, the other two engines.
+  browsers-nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --all-groups --frozen
+      - uses: actions/cache@v4
+        with:
+          path: tools/pyscript
+          key: pyscript-${{ hashFiles('tools/fetch_pyscript.py') }}
+      - run: uv run --frozen python tools/fetch_pyscript.py
+      - run: uv run --frozen playwright install --with-deps ${{ matrix.browser }}
+      - run: uv run --frozen pytest -q tests/browser --browser ${{ matrix.browser }}
 
   publish:
     needs: [test, browser]
