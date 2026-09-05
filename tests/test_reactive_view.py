@@ -321,3 +321,39 @@ def test_for_over_a_store_list():
 def test_render_to_string_renders_current_hole_values():
     s = Signal(5)
     assert render_to_string(h.p("n=", s)) == "<p>n=5</p>"
+
+
+# reconciliation cost (SPEC W2, W7) -----------------------------------------------------------
+def rows_of(root):
+    return [c for c in root.children[0].children if c.tag == "li"]
+
+
+def test_swap_costs_two_moves_and_append_costs_only_new_nodes():
+    items = Signal(list(range(1000)))
+    root, r, _ = mounted(h.ul(For(items, lambda item, i: h.li(str(item)))))
+    before = rows_of(root)
+    r.log.clear()
+    swapped = list(range(1000))
+    swapped[1], swapped[998] = swapped[998], swapped[1]
+    items.set(swapped)
+    assert r.count("insert_node") == 2 and r.count("remove_node") == 0 and r.count("create_element") == 0
+    after = rows_of(root)
+    assert after[1] is before[998] and after[998] is before[1] and after[0] is before[0]
+    r.log.clear()
+    items.set(swapped + list(range(1000, 1010)))
+    assert r.count("create_element") == 10 and r.count("insert_node") == 10 + 10  # a text and an li per row
+
+
+def test_reverse_and_clear_and_remove_one():
+    items = Signal([1, 2, 3, 4, 5])
+    root, r, _ = mounted(h.ul(For(items, lambda item, i: h.li(str(item)))))
+    r.log.clear()
+    items.set([5, 4, 3, 2, 1])
+    assert html(root) == "<ul><li>5</li><li>4</li><li>3</li><li>2</li><li>1</li></ul>"
+    assert r.count("insert_node") == 4 and r.count("create_element") == 0
+    r.log.clear()
+    items.set([5, 4, 2, 1])
+    assert r.count("remove_node") == 1 and r.count("insert_node") == 0
+    r.log.clear()
+    items.set([])
+    assert r.count("remove_node") == 4 and html(root) == "<ul></ul>"

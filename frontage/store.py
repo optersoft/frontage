@@ -31,7 +31,10 @@ class Store:
             raise TypeError("Store wraps a dict or a list")
         object.__setattr__(self, "_raw", data)
         object.__setattr__(self, "_nodes", {})  # key -> Signal of the value
-        object.__setattr__(self, "_shape", Signal(0, equal=lambda a, b: False))  # bumps on structure change
+        # Bumps on any structural change and, for lists, on any write: iteration, len, and
+        # membership subscribe to this one node instead of to a node per key. A `For` over a
+        # list of 1,000 rows therefore tracks one node, and a swap notifies it once.
+        object.__setattr__(self, "_shape", Signal(0, equal=lambda a, b: False))
         object.__setattr__(self, "_wrapped", {})  # key -> Store for a nested container
 
     # -- reads ------------------------------------------------------------------------------
@@ -48,13 +51,7 @@ class Store:
                 self._nodes[key] = node
         if node is not None:
             node()  # subscribe
-        if _is_container(value):
-            wrapped = self._wrapped.get(key)
-            if wrapped is None or wrapped._raw is not value:
-                wrapped = Store(value)
-                self._wrapped[key] = wrapped
-            return wrapped
-        return value
+        return self._wrap(key, value)
 
     def __getitem__(self, key):
         return self._read(key)
@@ -76,7 +73,17 @@ class Store:
         raw = self._raw
         if isinstance(raw, dict):
             return iter(list(raw))
-        return iter([self._read(i) for i in range(len(raw))])
+        return iter([self._wrap(i, raw[i]) for i in range(len(raw))])
+
+    def _wrap(self, key, value):
+        """A nested container comes back as a Store (cached per key); anything else as is."""
+        if _is_container(value):
+            wrapped = self._wrapped.get(key)
+            if wrapped is None or wrapped._raw is not value:
+                wrapped = Store(value)
+                self._wrapped[key] = wrapped
+            return wrapped
+        return value
 
     def __contains__(self, key):
         self._shape()
@@ -156,7 +163,7 @@ class Store:
         raw[key] = value
         self._wrapped.pop(key, None)
         self._notify_key(key)
-        if not existed:
+        if not existed or isinstance(raw, list):
             self._notify_shape()
 
     def __setattr__(self, name, value):

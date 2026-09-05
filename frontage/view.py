@@ -250,25 +250,72 @@ def _mount_hole(parent, accessor, renderer):
 
 
 def _reconcile(parent, current, new, marker, renderer):
-    """Make the nodes before `marker` be exactly `new`, moving what already exists."""
-    if current == new:
+    """Make the nodes before `marker` be exactly `new`, moving what already exists.
+
+    Nodes only in `current` are removed. Of the rest, the longest run that is already in the
+    right relative order stays put; every other node is moved into place with one insert.
+    So a swap of two rows costs two inserts, and an append costs only the new nodes.
+    """
+    if _same_nodes(current, new):
         return
-    keep = []
+    new_ids = {id(node): i for i, node in enumerate(new)}
+    kept = []  # nodes of `current` that survive, in their current order
     for node in current:
-        if _index_of(new, node) < 0:
-            renderer.remove_node(parent, node)
+        if id(node) in new_ids:
+            kept.append(node)
         else:
-            keep.append(node)
-    cur = keep
-    for i, node in enumerate(new):
-        if i < len(cur) and cur[i] is node:
+            renderer.remove_node(parent, node)
+    # Indices into `new` of the surviving nodes, in current DOM order; the longest increasing
+    # subsequence of that is the set of nodes that need not move.
+    positions = [new_ids[id(node)] for node in kept]
+    stay = set(_lis(positions))
+    # Walk `new` from the end so the anchor (the following node) is already final.
+    anchor = marker
+    for i in range(len(new) - 1, -1, -1):
+        node = new[i]
+        if i in stay:
+            anchor = node
             continue
-        anchor = cur[i] if i < len(cur) else marker
         renderer.insert_node(parent, node, anchor)
-        j = _index_of(cur, node)
-        if j >= 0:
-            cur.pop(j)
-        cur.insert(i, node)
+        anchor = node
+
+
+def _same_nodes(a, b):
+    if len(a) != len(b):
+        return False
+    for i in range(len(a)):  # no zip(strict=...): MicroPython's zip has no strict
+        if a[i] is not b[i]:
+            return False
+    return True
+
+
+def _lis(seq):
+    """Values of a longest strictly increasing subsequence of `seq` (patience sorting)."""
+    if not seq:
+        return []
+    tails = []  # index into seq of the smallest tail of an increasing run of each length
+    prev = [-1] * len(seq)
+    for i, value in enumerate(seq):
+        lo, hi = 0, len(tails)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if seq[tails[mid]] < value:
+                lo = mid + 1
+            else:
+                hi = mid
+        if lo > 0:
+            prev[i] = tails[lo - 1]
+        if lo == len(tails):
+            tails.append(i)
+        else:
+            tails[lo] = i
+    out = []
+    i = tails[-1]
+    while i != -1:
+        out.append(seq[i])
+        i = prev[i]
+    out.reverse()
+    return out
 
 
 def _index_of(nodes, node):
@@ -407,10 +454,10 @@ def mount(view, parent, renderer=None):
     `parent` is a renderer node. With no renderer, the browser's `DomRenderer` is used and
     `parent` may be a CSS selector.
     """
-    if renderer is None:
+    if renderer is None or isinstance(parent, str):
         from .dom import DomRenderer, resolve
 
-        renderer = DomRenderer()
+        renderer = renderer or DomRenderer()
         parent = resolve(parent)
     owner = Owner(parent=None)
     nodes = owner.run(lambda: build(view, renderer, parent))

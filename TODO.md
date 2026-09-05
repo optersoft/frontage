@@ -37,9 +37,23 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
 - [x] Counter and todo examples with browser tests, green under MicroPython and Pyodide.
       Three MicroPython differences met on the way, all now handled: functions have no
       writable `__name__`, code objects have no `co_argcount`, and `Owner.run` needed kwargs.
-- [ ] `clone_template` and the Template path (S6, W17): one clone per instance, holes bound
-      after. Then the rows example and the benchmark harness (§12) to compare against the
-      node-by-node path this stage ships.
+- [x] The rows example and `tools/bench.py` (§12). Baseline, node-by-node path, medians of 3,
+      2026-09-05, this laptop's Chromium:
+
+      | operation | MicroPython | Pyodide | renderer ops |
+      |---|---|---|---|
+      | create 1,000 rows | 198 ms | 111 ms | 32,000 |
+      | update every 10th | 3.4 ms | 0.9 ms | 100 |
+      | swap two rows | 18 ms | 2.5 ms | 2 |
+      | append 1,000 | 207 ms | 166 ms | 32,000 |
+      | clear 1,000 | 44 ms | 9.5 ms | 1,000 |
+
+      Two fixes fell out of the first run: dependency tracking was a linear scan (quadratic
+      for a For over 1,000 rows: swap was 328 ms on MicroPython), and list iteration in a
+      Store subscribed to a node per index. Lesson for §12: on MicroPython, Python-level work
+      is the bottleneck as much as bridge crossings; the For and reconcile paths must stay lean.
+- [ ] `clone_template` and the Template path (S6, W17): 32 renderer ops per row today; a
+      clone plus the bound holes should be under 10. Measure against the table above.
 - [ ] W13 leftovers: simulate `currentTarget`, `oncapture:`; W15 custom events.
 
 ## Outward-facing, for David

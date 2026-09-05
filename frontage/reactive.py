@@ -301,19 +301,26 @@ class _Computation(Owner):
         Owner.__init__(self)
         self._fn = fn
         self._sources = []
+        self._source_ids = set()  # membership in O(1); a For over 1,000 rows tracks 1,000+ nodes
         self._state = DIRTY
         self._queued = False
 
     def _track(self, source):
-        if source not in self._sources:
+        key = id(source)
+        if key not in self._source_ids:
+            self._source_ids.add(key)
             self._sources.append(source)
             source._observers.append(self)
 
     def _clear_sources(self):
         for source in self._sources:
-            if self in source._observers:
-                source._observers.remove(self)
+            observers = source._observers
+            for i in range(len(observers)):
+                if observers[i] is self:
+                    del observers[i]
+                    break
         self._sources = []
+        self._source_ids = set()
 
     def _compute(self):
         """Run `fn` tracked, as owner and listener, after disposing the previous run's work."""
