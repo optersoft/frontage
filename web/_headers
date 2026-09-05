@@ -1,0 +1,5 @@
+# Cloudflare Pages headers. The examples fetch PyScript and morphdom from CDNs and the
+# package files from /frontage/, so nothing here may be stricter than that.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

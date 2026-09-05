@@ -1,5 +1,7 @@
 # Frontage
 
+[frontage.optersoft.com](https://frontage.optersoft.com) · [documentation](https://academy.optersoft.com/tool/frontage) · [PyPI](https://pypi.org/project/frontage/)
+
 **A Python frontend framework for the browser.** Reactive components, an SPA router and
 two-way data binding, running on [PyScript](https://pyscript.net) over WebAssembly. No
 JavaScript, no Node, no bundler: you write Python, and the browser runs it.
@@ -45,7 +47,7 @@ app.mount("#app")
 
 Frontage is a client-side library, so "installing" it means telling PyScript where the wheel is.
 The short version is a `pyscript.json` with the wheel in `packages`; the
-[installation guide](https://optersoft.github.io/frontage/) and the tutorial walk through a
+[installation guide](https://academy.optersoft.com/tool/frontage) and the tutorial walk through a
 complete first project.
 
 ```sh
@@ -61,7 +63,7 @@ mk sync                 # .venv with every dependency group
 mk check                # lint, types, unit tests: the gate
 mk serve                # the examples at http://localhost:8000
 mk test --integration   # the examples driven in a real browser (Playwright)
-mk docs.serve           # the documentation with live reload
+mk site.deploy          # publish frontage.optersoft.com (Cloudflare Pages)
 ```
 
 Without `mk`: `uv sync --all-groups`, then `uv run pytest`, `uv run ruff check`, `uv run ty check`.

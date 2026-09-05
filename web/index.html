@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Frontage · Python frontend framework for the browser</title>
+  <meta name="description" content="Frontage is a Python frontend framework running on PyScript: reactive components, an SPA router and two-way binding, with no JavaScript toolchain.">
+  <link rel="canonical" href="https://frontage.optersoft.com/">
+  <meta property="og:title" content="Frontage">
+  <meta property="og:description" content="A Python frontend framework for the browser. No JavaScript, no bundler.">
+  <meta property="og:url" content="https://frontage.optersoft.com/">
+  <meta property="og:type" content="website">
+  <style>
+    :root { color-scheme: light dark; --fg: #1b1b1b; --muted: #5a5a5a; --bg: #fbfaf7; --line: #e3e0d8; --accent: #b3541e; --code: #f1efe9; }
+    @media (prefers-color-scheme: dark) { :root { --fg: #ebe8e1; --muted: #a8a49b; --bg: #15140f; --line: #2b2a24; --accent: #e08a4a; --code: #1f1e18; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 17px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--fg); background: var(--bg); }
+    main { max-width: 46rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+    header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+    .brand { font-size: 1.25rem; font-weight: 700; letter-spacing: .01em; }
+    nav a { color: var(--muted); text-decoration: none; margin-left: 1rem; }
+    nav a:hover { color: var(--accent); }
+    h1 { font-size: 2.4rem; line-height: 1.15; margin: 2.5rem 0 1rem; letter-spacing: -.01em; }
+    .lede { font-size: 1.2rem; color: var(--muted); margin: 0 0 2rem; }
+    pre { background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.1rem; overflow-x: auto; font-size: .88rem; line-height: 1.5; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    h2 { font-size: 1.15rem; margin: 2.5rem 0 .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    ul { padding-left: 1.2rem; } li { margin: .35rem 0; }
+    a { color: var(--accent); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; padding: 0; list-style: none; }
+    .grid li { margin: 0; padding: 1rem; border: 1px solid var(--line); border-radius: 8px; }
+    .grid strong { display: block; margin-bottom: .25rem; }
+    footer { margin-top: 3.5rem; padding-top: 1.25rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">Frontage</div>
+    <nav>
+      <a href="/examples/">Examples</a>
+      <a href="https://academy.optersoft.com/tool/frontage">Docs</a>
+      <a href="https://pypi.org/project/frontage/">PyPI</a>
+      <a href="https://github.com/optersoft/frontage">GitHub</a>
+    </nav>
+  </header>
+
+  <h1>A Python frontend framework for the browser.</h1>
+  <p class="lede">Reactive components, an SPA router and two-way data binding, running on
+    <a href="https://pyscript.net">PyScript</a> over WebAssembly. No JavaScript, no Node,
+    no bundler. You write Python and the browser runs it.</p>
+
+<pre><code>from frontage import Application, Page, t
+
+app = Application()
+
+
+@app.page()
+class Hello(Page):
+    def initial(self):
+        return dict(name="")
+
+    def populate(self):
+        with t.div(classes="container"):
+            t.h1("Welcome to Frontage")
+            if self.state["name"]:
+                t.p(f"Hello there, {self.state['name']}")
+            else:
+                t.p("Why don't you tell me your name?")
+            t.input(placeholder="Enter your name", bind="name")
+
+
+app.mount("#app")</code></pre>
+
+  <h2>What you get</h2>
+  <ul class="grid">
+    <li><strong>Reactivity</strong>Change a component's state and the DOM updates. Redraws are diffed with morphdom.</li>
+    <li><strong>Components</strong>Props, slots and events in the style of Vue. Each component is one Python class.</li>
+    <li><strong>Routing</strong>A hash or history router for single-page apps, with navigation guards.</li>
+    <li><strong>Your runtime</strong>Full CPython via Pyodide, or MicroPython when a small download matters more.</li>
+    <li><strong>No build step</strong>Serve the files. That is the whole deployment.</li>
+    <li><strong>Open source</strong>Apache 2.0, a fork of <a href="https://github.com/kkinder/puepy">PuePy</a>, maintained by Optersoft.</li>
+  </ul>
+
+  <h2>See it run</h2>
+  <p>The <a href="/examples/">tutorial examples</a> run live on this site, straight from the
+    same files the documentation walks through. Start with
+    <a href="/examples/tutorial/01_hello_world/index.html">Hello, World</a> and end with
+    <a href="/examples/tutorial/10_full_app/index.html">a full app</a>.</p>
+
+  <h2>Install</h2>
+  <p>Frontage is a client-side library: installing it means telling PyScript where the wheel is.
+    The <a href="https://academy.optersoft.com/tool/frontage">documentation</a> walks through a first project.</p>
+<pre><code>pip download frontage --no-deps --dest .</code></pre>
+
+  <footer>
+    Frontage is built and maintained by <a href="https://optersoft.com">Optersoft</a>, a software studio
+    that sells development, training and consulting. It began as a fork of PuePy by Ken Kinder.
+  </footer>
+</main>
+</body>
+</html>

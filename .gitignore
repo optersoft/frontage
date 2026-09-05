@@ -13,3 +13,4 @@ test-results/
 .idea/
 .vscode/
 .DS_Store
+/www/

@@ -7,13 +7,17 @@
     mk types                ty
     mk check                the gate: lint, types, unit tests
     mk serve [--port N]     the examples at http://localhost:8000, live against ./frontage
-    mk docs.serve           mkdocs with live reload
-    mk docs.build           the static site into ./site
+    mk docs.serve           the inherited mkdocs tree, for reading while it is ported to academy
+    mk docs.build           the same, built into ./site
     mk dist.build           sdist + wheel into ./dist, then import the wheel once
+    mk site.build           frontage.optersoft.com into ./www: web/ + the live examples
+    mk site.deploy          build, then publish ./www to Cloudflare Pages (project `frontage`)
 
-Nothing here publishes. PyPI gets the package from CI on a `vX.Y.Z` tag
-(.github/workflows/ci.yml) and the docs go to GitHub Pages on a push to main
-(.github/workflows/docs.yml). `mk` with no arguments lists everything.
+PyPI gets the package from CI on a `vX.Y.Z` tag (.github/workflows/ci.yml);
+nothing here publishes a package. The site is the exception: `mk site.deploy`
+pushes ./www to the Cloudflare Pages project `frontage` from this machine with
+wrangler, because the project is not git-connected (2026-09-05). Documentation
+lives on academy.optersoft.com, not here. `mk` with no arguments lists everything.
 """
 
 # /// script
@@ -23,7 +27,13 @@ Nothing here publishes. PyPI gets the package from CI on a `vX.Y.Z` tag
 
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+
 from make import note, sh, task
+
+ROOT = Path(__file__).parent
+WWW = ROOT / "www"
 
 
 @task(requires=["uv"])
@@ -100,3 +110,28 @@ def dist_build() -> None:
         "-c",
         'uv run --isolated --no-project --with dist/*.whl -- python -c "import frontage; print(frontage.__version__)"',
     )
+
+
+@task(name="site.build")
+def site_build() -> None:
+    """Assemble frontage.optersoft.com into ./www.
+
+    web/ is the landing page; examples/ goes under /examples/ unchanged, and the package
+    goes to /frontage/ because every example's pyscript.json fetches it from that
+    absolute path (the same layout serve_examples.py serves locally).
+    """
+    if WWW.exists():
+        shutil.rmtree(WWW)
+    shutil.copytree(ROOT / "web", WWW)
+    shutil.copytree(
+        ROOT / "examples", WWW / "examples", ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "__init__.py")
+    )
+    shutil.copytree(ROOT / "frontage", WWW / "frontage", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    files = sum(1 for f in WWW.rglob("*") if f.is_file())
+    note(f"www/ assembled: {files} files")
+
+
+@task(name="site.deploy", needs=[site_build], requires=["wrangler"], dangerous=True)
+def site_deploy() -> None:
+    """Publish ./www to Cloudflare Pages as the production deployment of `frontage`."""
+    sh("wrangler", "pages", "deploy", str(WWW), "--project-name", "frontage", "--branch", "main", "--commit-dirty=true")

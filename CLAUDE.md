@@ -38,6 +38,20 @@ the forge, because PyPI publishing needs Actions).
 - **Attribution is a license obligation.** `NOTICE` and `ACKNOWLEDGEMENTS.md` name PuePy and
   its author; keep them when reorganising, and keep `LICENSE` verbatim.
 
+## The site and the docs
+
+**frontage.optersoft.com is a Cloudflare Pages project (`frontage`, account optersoft),
+created 2026-09-05.** `mk site.build` assembles `www/` from `web/` (the landing page), the
+examples under `/examples/` and the package under `/frontage/`; `mk site.deploy` publishes it
+with wrangler from this machine. The project is not git-connected yet; connect it to
+`github.com/optersoft/frontage` once that exists and retire the hand deploy, as `get` did.
+The Pages default host is `frontage-a8x.pages.dev`.
+
+**Documentation lives on academy.optersoft.com**, at `/tool/frontage` by the fleet's
+convention (`/tool/box` and `/tool/isard` redirect to their pages). The mkdocs tree under
+`docs/` is the inherited PuePy manual, kept for reading until it is ported into
+`academy-pages`; nothing publishes it.
+
 ## Toolchain
 
 uv, ruff, ty, pytest. `uv run --frozen …` in anything a gate runs. Release: bump

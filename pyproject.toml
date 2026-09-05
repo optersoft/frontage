@@ -26,8 +26,8 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/optersoft/frontage"
-Documentation = "https://optersoft.github.io/frontage/"
+Homepage = "https://frontage.optersoft.com"
+Documentation = "https://academy.optersoft.com/tool/frontage"
 Repository = "https://github.com/optersoft/frontage"
 Issues = "https://github.com/optersoft/frontage/issues"
 

@@ -10,9 +10,14 @@ is worth keeping.
 - [ ] Register the `frontage` name on PyPI and create `github.com/optersoft/frontage`,
       then the trusted publisher (owner `optersoft`, repo `frontage`, workflow `ci.yml`,
       environment `pypi`) and the `pypi` environment on the repo.
-- [ ] Enable GitHub Pages on the `gh-pages` branch so `docs.yml` has somewhere to publish.
-- [ ] Check `frontage.dev` is free (the RDAP lookup hung on 2026-09-05); otherwise the
-      docs stay at `optersoft.github.io/frontage`.
+- [ ] **DNS for frontage.optersoft.com.** The Pages project `frontage` has the custom
+      domain attached (status pending, "CNAME record not set") and needs a proxied CNAME
+      `frontage -> frontage-a8x.pages.dev` in the optersoft.com zone. The wrangler login
+      on this machine has zone read only, so add it in the dashboard or re-login with DNS
+      write. The site already answers at https://frontage-a8x.pages.dev.
+- [ ] Connect the Pages project to `github.com/optersoft/frontage` once the repo exists
+      (build command `mk site.build` or a shell equivalent, output `www`), then drop the
+      hand deploy from `Makefile.py`.
 - [ ] **Absorb PyScript drift.** Examples pin 2025.2.2; PyScript is at 2026.7.3
       (2026-07-29). Bump the 36 pins, run the browser suite under both `mpy` and `py`,
       fix what broke. This is the real first milestone.
@@ -34,7 +39,12 @@ is worth keeping.
 - [ ] Most integration tests do not request the `http_server` fixture, so they only pass
       when an earlier test started the server. Make it `autouse` (session scope).
 
-## Docs
+## Docs (moving to academy.optersoft.com)
+
+- [ ] Port the mkdocs tree under `docs/` into `academy-pages` and add the `/tool/frontage`
+      redirect there; every URL in this repo already points at that path, which is a 404
+      until then. The `<frontage src=…>` embeds become links to
+      `https://frontage.optersoft.com/examples/…` in the port.
 
 - [ ] Host our own tutorial examples (the `<frontage src=…>` embeds still load
       `kkinder.pyscriptapps.com/puepy-tutorial`, whose code says `puepy`). Serving
