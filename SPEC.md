@@ -106,3 +106,12 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 
 - E1 In debug mode an uncaught error renders a page naming the component and the traceback; in production the configured fallback renders and the error is logged. [M2]
 - E2 Debug warnings: a read after `await` (A3), a write inside a tracked compute, a `For` whose keys are not unique. [M2]
+
+## 10. The layer above (M5)
+
+- L1 `State` subclasses declare fields with `field(default)`; each instance gets a signal per field; reading the attribute tracks, assigning writes; `@computed` is a memo per instance; methods are handlers; `signal(name)` returns the Signal. Works on MicroPython (no `__getattribute__`, no `__mro__`). [M5]
+- L2 `frontage.widgets`: `text_input`, `textarea`, `number_input`, `slider`, `checkbox`, `select`, `radio_group`, `button`, each bound to a Signal, with an optional label and a class hook. [M5]
+- L3 `interval(seconds)` is an accessor that increments on a schedule and stops with its owner; `poll(fetcher, seconds)` is a Resource re-run on it. [M5]
+- L4 `reconcile(store_list, data, key)` updates a list Store to equal `data` while keeping the identity of rows whose key survives, so a `For` moves nodes and only changed fields notify. [M5]
+- L5 `mk export APP` produces a static directory that runs the app with no repo, PyPI or CDN. [M4]
+- L6 The playground runs code from the URL fragment against the site's package under MicroPython. [M5]

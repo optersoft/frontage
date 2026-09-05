@@ -7,36 +7,57 @@ effects; templates that clone once and bind only their holes; a keyed `For`; a n
 router; running on [PyScript](https://pyscript.net) over WebAssembly, on Pyodide or
 MicroPython. No JavaScript, no Node, no bundler: you write Python and the browser runs it.
 
-> **Status: pre-alpha, being rewritten.** `main` holds milestone M0 of the plan in
-> [DESIGN.md](DESIGN.md): the runtime bridge, the renderer seam and a static view builder.
-> Reactivity, the DOM renderer and templates follow. The previous code, a fork of PuePy,
-> lives on the `puepy-reference` branch and still works if you need something today.
+> **Status: 0.2.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete through
+> its M5 milestone: reactive core, store, templates (`h` and `html(t"…")`), control flow and
+> boundaries, `Resource`/`Action`, a nested router, widgets, `State`, timers, the playground.
+> The API is young and will move; the [browser suite](tests/browser/) runs every example under
+> MicroPython and Pyodide on Chromium each push and on Firefox and WebKit nightly.
 
 ```python
-from frontage import Signal, html
+from frontage import Signal, component, html, mount
 
+
+@component
 def counter(initial=0):
     count = Signal(initial)
+
+    def inc(ev):
+        count.update(lambda n: n + 1)
+
+    def dec(ev):
+        count.update(lambda n: n - 1)
+
     return html(t"""
         <div class="counter">
-            <button on:click={lambda e: count.update(lambda n: n - 1)}>-</button>
-            <span>Value: {count}!</span>
-            <button on:click={lambda e: count.update(lambda n: n + 1)}>+</button>
+            <button on:click={dec}>-</button>
+            <span>Value: {count}</span>
+            <button on:click={inc}>+</button>
         </div>
     """)
+
+
+mount(lambda: counter(initial=0), "#app")
 ```
 
-That is the target syntax (M2). What runs today:
+Signals hold state; anything callable in a template is a hole that updates in place when what
+it read changes; a component body runs once. Name the functions you put in holes: MicroPython
+does not accept a `lambda` inside a template's braces.
 
-```python
-from frontage import h, render_to_string
+**Try it** at [frontage.optersoft.com/playground](https://frontage.optersoft.com/playground/),
+which runs your code on MicroPython and keeps it in the link. **Learn it** at
+[academy.optersoft.com/python/frontage](https://academy.optersoft.com/python/frontage), six
+chapters with exercises. **Install it** with a `pyscript.json`:
 
-with h.ul(cls="menu") as menu:
-    for label in ("Home", "About"):
-        h.li(label)
-
-print(render_to_string(menu))  # <ul class="menu"><li>Home</li><li>About</li></ul>
+```json
+{ "packages": ["https://frontage.optersoft.com/dist/frontage-0.2.0-py3-none-any.whl"] }
 ```
+
+| The counter above, as downloaded | MicroPython | Pyodide |
+|---|---|---|
+| transferred | 0.84 MB | 13.8 MB |
+| compressed | 0.32 MB | 6.4 MB |
+
+Frontage itself is 131 KB (39 KB compressed); the rest is the interpreter.
 
 ## Why
 
@@ -55,8 +76,9 @@ The repo uses [uv](https://docs.astral.sh/uv/) and [mkrun](https://github.com/op
 mk sync                 # .venv with every dependency group
 mk check                # lint, types, unit tests: the gate
 mk pyscript.fetch       # PyScript's offline bundle (core + both interpreters) into tools/pyscript/
-mk serve                # the examples at http://127.0.0.1:8000/examples/, package read live
-mk test --browser       # the examples in Chromium, under MicroPython and Pyodide
+mk serve                # examples and playground at http://127.0.0.1:8000/, package read live
+mk test --browser       # every example in Chromium, under MicroPython and Pyodide
+mk export examples/todo # a self-contained static directory that runs anywhere
 mk site.deploy          # publish frontage.optersoft.com (Cloudflare Pages)
 ```
 

@@ -1,9 +1,10 @@
 # CLAUDE.md
 
 Frontage: a fine-grained reactive UI framework for Python in the browser (PyScript; Pyodide
-and MicroPython), published to PyPI as `frontage`, Apache 2.0, copyright Optersoft. Being
-rewritten clean-room from `SPEC.md` per `DESIGN.md`; `main` is at milestone **M0**. `origin`
-will be `github.com/optersoft/frontage` (GitHub, because PyPI publishing needs Actions).
+and MicroPython), published to PyPI as `frontage`, Apache 2.0, copyright Optersoft. Rewritten
+clean-room from `SPEC.md` per `DESIGN.md`; `main` is past milestone **M5** (0.2.0). `origin` is
+`github.com/optersoft/frontage` (GitHub, because PyPI publishing needs Actions); the PuePy fork is
+on branch `puepy-reference`.
 
 ## Read first
 
@@ -18,13 +19,22 @@ will be `github.com/optersoft/frontage` (GitHub, because PyPI publishing needs A
 | Path | What |
 |---|---|
 | `frontage/runtime.py` | which interpreter; the only module that imports `pyscript`; server stand-ins that raise a sentence |
-| `frontage/renderer.py` | the `Renderer` seam (ten operations), `HtmlRenderer` (plain nodes → HTML), `RecordingRenderer` |
-| `frontage/view.py` | `Element`/`Text`, the `h` builder (call form and `with` form), `build`, `render_to_string` |
-| `frontage/errors.py` | `FrontageError`, `RenderError`, `NotReady` |
+| `frontage/reactive.py` | Signal, Memo, Effect/RenderEffect, Owner, context, batch, `spawn`, error routing, the two boundary contexts |
+| `frontage/store.py` | `Store` over dicts and lists, `reconcile` |
+| `frontage/renderer.py` | the `Renderer` seam, `HtmlRenderer` (nodes → HTML, parses templates on CPython), `RecordingRenderer` |
+| `frontage/view.py` | `Element`/`Text`, the `h` builder, Template compile/clone, holes and the insert rules, floating holes, `mount` |
+| `frontage/template.py` | `html(t"…")`: the template-string parser, cached per call site |
+| `frontage/flow.py` | `Show`, `For`, `Switch`/`Match`, `Loading`, `Errored`, `Dynamic`, `Portal` |
+| `frontage/aio.py` | `Resource`, `Action`, `interval`, `poll` |
+| `frontage/router.py` | routes, matching, three modes, `A`, `Navigate`, `Redirect`, `query`, `ActionForm` |
+| `frontage/state.py` (+ `.pyi`) | `State` with `field`/`computed`; the stub types fields as their values |
+| `frontage/widgets.py` | form controls bound to signals |
+| `frontage/dom.py` | the `Renderer` over the real DOM, delegated events, template cloning |
+| `frontage/errors.py` | `FrontageError`, `RenderError`, `NotReady`, `format_exception` |
 | `tests/` | unit tests, CPython, no browser; `tests/browser/` is Playwright over `examples/` and starts its own server |
 | `examples/` | one page per example; `pyscript.json` lists the package files by path so edits show live |
-| `tools/serve.py`, `tools/fetch_pyscript.py` | the dev server and the offline PyScript fetch; `tools/pyscript/` is gitignored |
-| `web/` | the landing page of frontage.optersoft.com; `mk site.build` assembles `www/` |
+| `tools/serve.py`, `tools/fetch_pyscript.py`, `tools/export.py`, `tools/bench.py` | dev server, offline PyScript fetch, static export, the rows benchmark; `tools/pyscript/` is gitignored |
+| `web/` | the landing page and `web/playground/` of frontage.optersoft.com; `mk site.build` assembles `www/` (with the bundle and the wheel) |
 | `typings/` | ty stubs for the browser-only modules |
 | branch `puepy-reference` | the PuePy fork, the acceptance test until 0.1.0; never merged |
 
@@ -43,6 +53,15 @@ will be `github.com/optersoft/frontage` (GitHub, because PyPI publishing needs A
 - **PyScript is pinned** in `tools/fetch_pyscript.py` and served locally; examples load
   `/pyscript/core.js`. Bumping the version is one line there and a browser run.
 - **The version** is `frontage/version.py`; hatchling reads it; the browser reads it as code.
+- **MicroPython differences met so far**, each now handled or documented: no writable
+  `__name__`, no `co_argcount`, no `html.parser`, no `__getattribute__` hook, no `__mro__`, no
+  writable instance `__dict__` (use `object.__setattr__`), `zip` has no `strict`, and **a
+  `lambda` inside a template string's braces is a SyntaxError** (name the function). Pyodide
+  returns a `JsNull` proxy, not `None`, for JavaScript null (`dom.is_node`).
+- **Ruff's formatter follows the target version.** Under py314 it emits `except A, B:` (PEP
+  758), which MicroPython cannot parse, so the package targets py312 and only the files with
+  template strings are py314 (`per-file-target-version`). Its B009 autofix also rewrites a
+  `getattr(x, "const")` guard back to attribute access; use a default argument.
 
 ## Toolchain
 

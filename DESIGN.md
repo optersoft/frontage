@@ -1,6 +1,6 @@
 # Frontage design
 
-**Status: draft 4, 2026-09-05.** Draft 1 kept PuePy's shape. Draft 2 was written from Leptos.
+**Status: implemented through M5 (0.2.0, 2026-09-06); draft 4 of 2026-09-05 is the plan it followed.** Draft 1 kept PuePy's shape. Draft 2 was written from Leptos.
 Draft 3 added [Solid](https://github.com/solidjs/solid) (1.x, `dom-expressions`, the store,
 `solid-router`, the 2.0 release candidate), the JavaScript origin of the model and the size
 reference. This draft adds the three Python-first frameworks, [Streamlit](https://github.com/streamlit/streamlit),
@@ -445,12 +445,12 @@ keeps its own notice; the rewrite carries Optersoft's from the first commit.
 
 | | Deliverable | Done when |
 |---|---|---|
-| M0 | `SPEC.md`; `puepy-reference` branch; skeleton; `Renderer` protocol with `HtmlRenderer` and a recording fake; local PyScript fixture | `mk check` green; hello-world renders to a string |
-| M1 | reactive core (signals, memos, two-phase effects, owner, context, batch, `on`, `selector`); `Store` with draft writes; builder → `Template`; `DomRenderer`; delegated events; insert rules; `Show`, `For` (all keying modes); `bind:`; counter, todo and rows examples | unit suite green; browser suite green for those examples on both runtimes; the rows benchmark runs |
-| M2 | `t"…"` templates; `Resource`, `Action`, `Loading`, `Errored`; `NodeRef`; `Dynamic`, `Portal`; fetch and forms examples; the shim decision of 8.6 | same; section 12 decided |
-| M3 | router (nested, params, `preload`, `query`, `action`, `A`, three modes); contacts example; debug error page | full example suite green on Chromium, both runtimes |
-| M4 | docs on academy; landing page with the measured size; wheel on the site; `mk export` | **0.1.0** on PyPI |
-| M5 | `frontage.widgets`; `State` sugar; `interval` / `poll`; `reconcile`; the playground page; Firefox + WebKit in CI; performance pass | **0.2.0** |
+| M0 ✅ | `SPEC.md`; `puepy-reference` branch; skeleton; `Renderer` protocol with `HtmlRenderer` and a recording fake; local PyScript fixture | `mk check` green; hello-world renders to a string |
+| M1 ✅ | reactive core (signals, memos, two-phase effects, owner, context, batch, `on`, `selector`); `Store` with draft writes; builder → `Template`; `DomRenderer`; delegated events; insert rules; `Show`, `For` (all keying modes); `bind:`; counter, todo and rows examples | unit suite green; browser suite green for those examples on both runtimes; the rows benchmark runs |
+| M2 ✅ | `t"…"` templates; `Resource`, `Action`, `Loading`, `Errored`; `NodeRef`; `Dynamic`, `Portal`; fetch and forms examples; the shim decision of 8.6 | same; section 12 decided |
+| M3 ✅ | router (nested, params, `preload`, `query`, `action`, `A`, three modes); contacts example; debug error page | full example suite green on Chromium, both runtimes |
+| M4 ✅ | docs on academy (`python/frontage`, six chapters); landing page with the measured size; wheel on the site; `mk export` | **0.1.0** on PyPI, 2026-09-05 |
+| M5 ✅ | `frontage.widgets`; `State` sugar; `interval` / `poll`; `reconcile`; the playground page; Firefox + WebKit nightly in CI; performance pass (numbers in TODO.md; no JS shim: MicroPython is bound by Python execution, not the bridge) | **0.2.0**, 2026-09-06 |
 | later | server rendering through `HtmlRenderer`; hydration; async memos, `is_pending`, transactions and optimistic writes (Solid 2.0's model) | 1.0 |
 
 ## 17. Open decisions

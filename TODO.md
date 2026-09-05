@@ -74,56 +74,50 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
 
 ## M2 (done 2026-09-05, except E2)
 
-- [x] `Resource` (raises `NotReady` while the first load is pending, serves the old value
-      while refreshing, raises its error into the nearest `Errored`), `Action`, `spawn` with
-      owner-cancelled tasks; `Loading` and `Errored` boundaries (build-time errors included);
-      `Switch`/`Match`, `Dynamic`, `Portal`; async handlers; `html(t"…")` on both interpreters
-      (MicroPython ships `string.templatelib`); `mount(factory)` with a debug error page.
-      SPEC C16–C17, W8–W16, A1–A5, E1. 118 unit tests, 14 browser tests.
-- [x] Two core corrections the boundaries forced: a computation is marked clean *before* it
-      runs (so a write during the run re-queues it), and a checked node pulls *all* its memo
-      sources before running (the diamond ran twice otherwise). A flush over 100,000 effect
-      runs raises "reactive update loop" instead of hanging.
-- [x] Ruff's formatter emits PEP 758 excepts under a 3.14 target, which MicroPython cannot
-      parse: the package targets 3.12 syntax; only the template-string files are 3.14.
+- [x] `Resource`, `Action`, `spawn`, `Loading`, `Errored`, `Switch`/`Match`, `Dynamic`, `Portal`,
+      async handlers, `html(t"…")` on both interpreters, `mount(factory)` with a debug error page.
 - [ ] E2 debug warnings (a signal read after `await`, a write inside a tracked compute).
-- [ ] Redeploy the site with the M2 examples.
 
 ## M3 (done 2026-09-05)
 
-- [x] `frontage/router.py`: nested routes with per-level rebuild (a level whose route object is
-      unchanged keeps its nodes), `:param` / `*rest`, `use_params` / `use_query` /
-      `use_location` / `use_match` accessors, plain `<a>` interception, `A` (relative paths
-      with `..`, active class, hover preload), `Navigate`, `Redirect`, `navigate` / `back` /
-      `forward`, `use_before_leave`, per-route `preload`, `query()` cache with dedupe and
-      `revalidate`, `router.action()` + `ActionForm`, history / hash / memory modes, `base`
-      with the document file as root. SPEC U1–U10 (scroll restoration is best-effort and
-      untested in the browser). 20 router tests in memory mode; the contacts example runs in
-      both modes on both interpreters.
-- [x] Floating holes: a component may now return control flow directly (`return Loading(…)`),
-      and the router renders no wrapper element. A hole built without a parent keeps a marker
-      and fills in when `_insert` places the marker; on dispose it removes its own content.
-- [ ] Scroll restoration in a browser test; `use_is_routing` is set and cleared inside one
-      batch, so nothing can observe it yet (make it span the async work of a transition later).
-- [x] Site redeployed 2026-09-05 with the M1 examples and the PyScript bundle (`mk site.build`
-      had silently lacked the bundle copy; Pages answered the missing files with the landing
-      page, which reads as a 200).
+- [x] The router (SPEC U1–U10; scroll restoration best-effort) and floating holes, so a component
+      may return control flow directly and the router renders no wrapper.
+- [ ] Scroll restoration in a browser test; `use_is_routing` observable across async work.
+
+## M4 (done 2026-09-05): 0.1.0 on PyPI
+
+- [x] Docs on academy at `python/frontage` (Basic, Template, Flow, Async, Router, State), listed
+      under Python > Web, `/tool/frontage` redirecting there. English only until a programme
+      places the pages (then `.ca`/`.es` variants are owed).
+- [x] Landing page with the measured download: 0.84 MB / 0.32 MB compressed on MicroPython,
+      13.8 MB / 6.4 MB on Pyodide; Frontage itself 131 KB / 39 KB.
+- [x] `mk export APP` (tools/export.py), verified on both interpreters from a plain static server.
+      The wheel is served at `/dist/` so a `pyscript.json` can name it by URL.
+
+## M5 (done 2026-09-06): 0.2.0 on PyPI
+
+- [x] `frontage.widgets`, `State` (`field`/`computed`, MicroPython-compatible), `interval`/`poll`,
+      `reconcile`, the playground (code in the URL fragment, four examples), a nightly CI job on
+      Firefox and WebKit (both pass the full suite locally: 19 tests each).
+- [x] Performance pass: the rows benchmark on the finished code is within noise of the M1
+      numbers (create 1,000: 170 ms MicroPython, 87 ms Pyodide; 11 ops per row), so the added
+      machinery (boundaries, floating holes, root Errored) costs nothing measurable. Decision:
+      no JavaScript shim in 0.x; MicroPython is bound by Python execution, not the bridge.
+
+## After 0.2.0 (the plan's "later", not scheduled)
+
+- [ ] Server rendering through `HtmlRenderer` and hydration; async memos, `is_pending`,
+      transactions and optimistic writes (Solid 2.0's model) — DESIGN §16 "later", for a 1.0.
+- [ ] E2 debug warnings; the scroll-restoration browser test; `use_is_routing`.
+- [ ] Docs: `.ca`/`.es` variants once a programme places the pages; a chapter on deploying
+      (`mk export`, history mode needs the host to serve the page for every path).
+- [ ] `mount` appends to its target: the examples clear `#app` themselves; decide whether mount
+      should.
 
 ## Outward-facing, for David
 
+- [ ] DNS: proxied CNAME `frontage -> frontage-a8x.pages.dev` in the optersoft.com zone; the Pages
+      project has the domain attached and waits on it. Then connect the project to the GitHub
+      repo and retire the hand deploy.
 - [ ] Email PuePy's author about the fork and the rewrite (courtesy; nothing is owed).
-- [x] `github.com/optersoft/frontage` is live (main, `puepy-reference`, tag `v0.0.1`); the PyPI
-      trusted publisher is registered and **`frontage 0.0.1` is on PyPI** (2026-09-05). A tag
-      pushed seconds after the repo's first push did not trigger a run; re-pushing it did.
-- [ ] DNS: proxied CNAME `frontage -> frontage-a8x.pages.dev` in the optersoft.com zone; the
-      Pages project has the domain attached and waits on it. Then connect the project to the
-      GitHub repo and retire the hand deploy.
 - [ ] Check `frontage.dev`.
-
-## Site and docs
-
-- [ ] The landing page still shows the M2 template syntax as if it ran today; fine as a
-      target, but say "target syntax" until M2 lands.
-- [ ] Docs on academy at `/tool/frontage`, chapter per concept in `DESIGN.md` order, each with
-      its live example; one interpreter per page for the embeds (§2b).
-- [ ] The measured size of a MicroPython Frontage app, on the landing page (§2b).
