@@ -1,6 +1,6 @@
 import itertools
 import pytest
-from puepy.application import DefaultIdGenerator
+from frontage.application import DefaultIdGenerator
 
 
 class TestDefaultIdGenerator:

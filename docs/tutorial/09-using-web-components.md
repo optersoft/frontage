@@ -1,12 +1,12 @@
 # Using Web Components
 
-[Web Components](https://developer.mozilla.org/en-US/docs/Web/API/Web_components) are a collection of technologies, supported by all modern browsers, that let developers reuse custom components in a framework-agnostic way. Although PuePy is an esoteric framework, and no major component libraries exist for it (as they do with React or Vue), you can use Web Component widgets easily in PuePy and make use of common components available on the Internet.
+[Web Components](https://developer.mozilla.org/en-US/docs/Web/API/Web_components) are a collection of technologies, supported by all modern browsers, that let developers reuse custom components in a framework-agnostic way. Although Frontage is an esoteric framework, and no major component libraries exist for it (as they do with React or Vue), you can use Web Component widgets easily in Frontage and make use of common components available on the Internet.
 
 ## Using Shoelace
 
 [Shoelace](http://shoelace.style) is a popular and professionally developed suite of web components for building high quality user experiences. In this example, we'll see how to use Shoelace Web Components inside a project of ours. Here is a working example:
 
-<puepy src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/09_webcomponents/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest" height="20em"/>
+<frontage src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/09_webcomponents/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest" height="20em"/>
 
 ### Adding remote assets
 
@@ -52,7 +52,7 @@ Web Components are meant to be access directly, like this in JavaScript:
 </script>
 ```
 
-The actual DOM elements are accessible in PuePy, but require using the `.element` attribute of the higher level Python
+The actual DOM elements are accessible in Frontage, but require using the `.element` attribute of the higher level Python
 instance of your tag:
 
 ```Python

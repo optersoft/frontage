@@ -1,4 +1,4 @@
-from puepy import Page, t, Prop
+from frontage import Page, t, Prop
 from common import app
 
 

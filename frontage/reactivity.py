@@ -1,5 +1,5 @@
 """
-Provides the base classes for PuePy's reactivity system independent of web concerns. These classes are not intended to be used directly, but could be useful for implementing a similar system in a different context.
+Provides the base classes for Frontage's reactivity system independent of web concerns. These classes are not intended to be used directly, but could be useful for implementing a similar system in a different context.
 
 Classes:
     Listener: A simple class that notifies a collection of callback functions when its `notify` method is called

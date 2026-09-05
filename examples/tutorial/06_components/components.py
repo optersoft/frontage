@@ -1,4 +1,4 @@
-from puepy import Application, Page, Component, t, CssClass
+from frontage import Application, Page, Component, t, CssClass
 
 app = Application()
 

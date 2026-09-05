@@ -1,23 +1,11 @@
-# PuePy - PyScript Frontend Framework
+# Frontage
 
-➡️ [Project Website](https://puepy.dev)
-📝 [Project Documentation](https://docs.puepy.dev/)
-
-PuePy is a lightweight web framework that uses WebAssembly via [PyScript](https://pyscript.net) to put Python right in your browser with all the modern conveniences of a web framework, but none of the headaches of Webpack, NPM or even JavaScript.
-
-- Reactive data binding with component-based architecture
-- Single Page App (SPA) router included
-- No build layer: direct execution like other Python projects
-- Choice of full [Pyodide](https://pyodide.org/en/stable/) or [Micropython](https://micropython.org/)
-
-## 🐒 Try a demo app
-
-See [ExpenseLemur.com](https://expenselemur.com) and the [Expense Lemur Github Repo](https://github.com/kkinder/expenselemur) for a demonstration of what PuePy is capable of.
-
-## 🧑‍💻 See some code
+**A Python frontend framework for the browser.** Reactive components, an SPA router and
+two-way data binding, running on [PyScript](https://pyscript.net) over WebAssembly. No
+JavaScript, no Node, no bundler: you write Python, and the browser runs it.
 
 ```python
-from puepy import Page, Application, t
+from frontage import Application, Page, t
 
 app = Application()
 
@@ -29,7 +17,7 @@ class Hello(Page):
 
     def populate(self):
         with t.div(classes=["container", "mx-auto", "p-4"]):
-            t.h1("Welcome to PyScript", classes=["text-xl", "pb-4"])
+            t.h1("Welcome to Frontage", classes=["text-xl", "pb-4"])
             if self.state["name"]:
                 t.p(f"Hello there, {self.state['name']}")
             else:
@@ -38,17 +26,54 @@ class Hello(Page):
             t.button("Continue", classes="btn btn-lg", on_click=self.on_button_click)
 
     def on_button_click(self, event):
-        print("Button clicked")  # This logs to console
+        print("Button clicked")  # logs to the browser console
 
 
 app.mount("#app")
 ```
 
-## Learn
+## What you get
 
-- **Project Website**: [puepy.dev](https://puepy.dev/)
-- **Documentation**: [docs.puepy.dev](https://docs.puepy.dev/)
+- **Reactivity.** Change a component's state and the DOM updates; redraws are diffed with morphdom.
+- **Components.** Props, slots and events in the style of Vue, each component a single Python class.
+- **Routing.** A hash or history router for single-page apps, with navigation guards.
+- **Your choice of runtime.** Full CPython via [Pyodide](https://pyodide.org), or
+  [MicroPython](https://micropython.org/) when a small download matters more than the standard library.
+- **No build step.** Serve the files. That is the whole deployment.
+
+## Install
+
+Frontage is a client-side library, so "installing" it means telling PyScript where the wheel is.
+The short version is a `pyscript.json` with the wheel in `packages`; the
+[installation guide](https://optersoft.github.io/frontage/) and the tutorial walk through a
+complete first project.
+
+```sh
+pip download frontage --no-deps --dest .
+```
+
+## Develop
+
+The repo uses [uv](https://docs.astral.sh/uv/) and [mkrun](https://github.com/optersoft/make) (`mk`).
+
+```sh
+mk sync                 # .venv with every dependency group
+mk check                # lint, types, unit tests: the gate
+mk serve                # the examples at http://localhost:8000
+mk test --integration   # the examples driven in a real browser (Playwright)
+mk docs.serve           # the documentation with live reload
+```
+
+Without `mk`: `uv sync --all-groups`, then `uv run pytest`, `uv run ruff check`, `uv run ty check`.
+
+## Provenance
+
+Frontage is a fork of [PuePy](https://github.com/kkinder/puepy) by Ken Kinder, taken from
+version 0.6.5 (February 2025) after the project went quiet. The design and most of the code
+are his; see [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) and [NOTICE](NOTICE). Frontage
+carries the work forward under the same Apache 2.0 license, maintained by
+[Optersoft](https://optersoft.com).
 
 ## License
 
-PuePy is licensed under the Apache 2 license, for your coding convenience.
+Apache License 2.0. See [LICENSE](LICENSE).

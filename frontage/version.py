@@ -1,0 +1,4 @@
+# The single source of truth for the version. hatchling reads it at build time
+# ([tool.hatch.version] in pyproject.toml); the browser reads it as plain Python,
+# where there is no installed distribution to ask.
+__version__ = "0.1.0"

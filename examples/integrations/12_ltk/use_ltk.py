@@ -1,7 +1,7 @@
 from ltk.jquery import jQuery
 
 import ltk
-from puepy import Application, Page, t, Component
+from frontage import Application, Page, t, Component
 
 app = Application()
 
@@ -9,7 +9,7 @@ app = Application()
 @t.component()
 class LtkFragment(Component):
     """
-    This is an only slightly tested attempt at showing you you *might* be able to integrate LTK with PuePy.
+    This is an only slightly tested attempt at showing you you *might* be able to integrate LTK with Frontage.
 
     Use at your own risk.
     """
@@ -54,7 +54,7 @@ class LtkPage(Page):
 
         with t.div(style="display: flex; "):
             with t.fieldset(style="flex: 1; margin: 10px; background-color: #efefef;"):
-                t.legend("PuePy Component State")
+                t.legend("Frontage Component State")
                 with t.ul():
                     for k, v in self.state.items():
                         t.li(t.strong(k + ": "), str(v))

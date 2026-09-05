@@ -1,8 +1,8 @@
 import unittest
 
-from puepy import Application
-from puepy.core import Page
-from puepy.router import Router, Route, _micropython_parse_query_string
+from frontage import Application
+from frontage.core import Page
+from frontage.router import Router, Route, _micropython_parse_query_string
 
 
 class TestRoute(unittest.TestCase):

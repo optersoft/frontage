@@ -1,4 +1,4 @@
-# puepy.Component
+# frontage.Component
 
 !!! Warning "Components should not be created directly"
 
@@ -9,4 +9,4 @@
     - [Tutorial on Components](../tutorial/06-components.md)
     - [In-Depth Components Guide](../guide/in-depth-components.md)
 
-::: puepy.Component
+::: frontage.Component

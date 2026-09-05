@@ -1,6 +1,6 @@
 # In-Depth Components
 
-Defining components in PuePy is a powerful way to encapsulate data, display, and logic in a reusable way. Components become usable like tags in the `populate()` method of other components or pages, define slots, props, and events.
+Defining components in Frontage is a powerful way to encapsulate data, display, and logic in a reusable way. Components become usable like tags in the `populate()` method of other components or pages, define slots, props, and events.
 
 ## Data flow features
 
@@ -38,7 +38,7 @@ Regardless of how you define props in your component, a full "expanded" list of 
 Keyword arguments passed to a component that do not match any known prop are considered *attributes* and stored in `self.attrs`. They are then inserted into the rendered DOM as HTML elements on the rendered attribute. This means that, for instance, you can pass arbitrary HTML attributes to newly created components without defining any custom props or other logic. Eg,
 
 ```Python
-from puepy import Component, Page, t
+from frontage import Component, Page, t
 
 
 class NameInput(Component):
@@ -103,10 +103,10 @@ class MyInputComponent(Component):
 
 ## Parent/Child relationships
 
-Each tag (and thus each component) in PuePy has a parent unless it is the root page. Consider the following example:
+Each tag (and thus each component) in Frontage has a parent unless it is the root page. Consider the following example:
 
 ```Python
-from puepy import Application, Page, Component, t
+from frontage import Application, Page, Component, t
 
 app = Application()
 
@@ -126,7 +126,7 @@ class MyPage(Page):
 ```
 
 In this example, the *parent* of the `CustomInput` instance *is not* the `MyPage` instance, it is the `div`,
-a `puepy.Tag` instance. In many cases, you will want to interact another relevant object, not necessarily the one
+a `frontage.Tag` instance. In many cases, you will want to interact another relevant object, not necessarily the one
 immediately parental of your current instance. In those instances, from your components, you may reference:
 
 - `self.page` (Page instance): The page ultimately responsible for rendering this component
@@ -144,7 +144,7 @@ Additionally, parent instances have the following available:
 ## Refs
 
 In addition to parent/child relationships, most components and pages define an entire hierarchy of tags and components
-in the `populate()` method. If you want to reference components later, or tell PuePy which component is which (in case
+in the `populate()` method. If you want to reference components later, or tell Frontage which component is which (in case
 the ordering changes in sebsequent redraws), using a `ref=` argument when building tags:
 
 ```Python

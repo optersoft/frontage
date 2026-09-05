@@ -1,30 +1,30 @@
 # Router
 
-Client-side routing in PuePy is optional. If enabled, the router allows you to define multiple "pages" with their own URLs.
+Client-side routing in Frontage is optional. If enabled, the router allows you to define multiple "pages" with their own URLs.
 
 !!! note "See Also"
     - [Tutorial: Routing](../tutorial/07-routing.md)
-    - [Reference: puepy.router](../reference/router.md)
+    - [Reference: frontage.router](../reference/router.md)
 
 If you do not install the router, you can only define one page, and that page will be mounted on the target element.
 If you install the router, the browser's URL will determine which page is mounted, based on the link mode used.
 
 ## Installing the router
 
-Routing is an entirely optional feature of PuePy. Many projects may prefer to rely on backend-side routing, like a
+Routing is an entirely optional feature of Frontage. Many projects may prefer to rely on backend-side routing, like a
 traditional web project. However if you are developing a single-page app, or simply want to use multiple "subpages" on
-the page you made using PuePy, you must install the router by calling `app.install_router`.
+the page you made using Frontage, you must install the router by calling `app.install_router`.
 
 ```Python
-from puepy import Application
-from puepy.router import Router
+from frontage import Application
+from frontage.router import Router
 
 
 app = Application()
 app.install_router(Router, link_mode=Router.LINK_MODE_HASH)
 ```
 
-`link_mode` defines how PuePy both creates and parses URLs. There are three options:
+`link_mode` defines how Frontage both creates and parses URLs. There are three options:
 
 | link_mode                  | description                                                                          | pro/con                                                     |
 |----------------------------|--------------------------------------------------------------------------------------|-------------------------------------------------------------|
@@ -46,7 +46,7 @@ The preferred way of adding pages to the router is by calling the `@app.page` de
 (see [Hello World](../tutorial/01-hello-world.md) in the tutorial.
 
 ```Python
-from puepy import Page
+from frontage import Page
 
 
 @app.page("/my-page")

@@ -1,15 +1,15 @@
 # Using PyPi Libraries
 
-Let's make use of a PyPi library in our project. In this example, we'll use BeautifulSoup to parse an HTML document and actually generate a PuePy component that would render the same content.
+Let's make use of a PyPi library in our project. In this example, we'll use BeautifulSoup to parse an HTML document and actually generate a Frontage component that would render the same content.
 
-<puepy src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/08_libraries/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest" height="40em"/>
+<frontage src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/08_libraries/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest" height="40em"/>
 
 !!! note "Small embedded example"
     This example may be more useful in a full browser window. [Open in new window](https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/08_libraries/index.html)
 
 ## Using Full CPython/Pyodide
 
-To make use of a library like BeautifulSoup, we will configure PuePy to use the full CPython/Pyoide runtime, rather than the more minimal MicroPython runtime. This is done by specifying the runtime in the `<script>` tag in index.html:
+To make use of a library like BeautifulSoup, we will configure Frontage to use the full CPython/Pyoide runtime, rather than the more minimal MicroPython runtime. This is done by specifying the runtime in the `<script>` tag in index.html:
 
 ```html
 <script type="py" src="./libraries.py" config="./pyscript-bs.json"></script>
@@ -21,10 +21,10 @@ In `pyscript-bs.json`, we also must specify that we need BeautifulSoup4. This is
 
 ```json title="pyscript-bs.json" hl_lines="6"
 {
-  "name": "PuePy Tutorial",
+  "name": "Frontage Tutorial",
   "debug": true,
   "packages": [
-    "./puepy-0.5.0-py3-none-any.whl",
+    "./frontage-0.5.0-py3-none-any.whl",
     "beautifulsoup4"
   ],
   "js_modules": {

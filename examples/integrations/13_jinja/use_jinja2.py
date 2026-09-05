@@ -1,5 +1,5 @@
-from puepy import Application, Page, t, Component, Prop
-from puepy.runtime import add_event_listener
+from frontage import Application, Page, t, Component, Prop
+from frontage.runtime import add_event_listener
 
 import jinja2
 

@@ -1,8 +1,8 @@
 # Watchers
 
-We've introduced reactivity, but what happens when you want to monitor specific variables for changes? In PuePy, you can use `on_<variable>_change` methods in your components to watch for changes in specific variables. In the example below, try guessing the number 4:
+We've introduced reactivity, but what happens when you want to monitor specific variables for changes? In Frontage, you can use `on_<variable>_change` methods in your components to watch for changes in specific variables. In the example below, try guessing the number 4:
 
-<puepy src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/05_watchers/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest"/>
+<frontage src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/05_watchers/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest"/>
 
 
 ``` py title="watchers.py" hl_lines="17"

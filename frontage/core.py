@@ -62,7 +62,7 @@ def _element_input_type(element):
 
 class Tag:
     """
-    The most basic building block of a PuePy app. A Tag is a single HTML element. This is also the base class of
+    The most basic building block of a Frontage app. A Tag is a single HTML element. This is also the base class of
     `Component`, which is then the base class of `Page`.
 
     Attributes:
@@ -643,7 +643,7 @@ class Slot(Tag):
 
 class Component(Tag, Stateful):
     """
-    Components are a way of defining reusable and composable elements in PuePy. They are a subclass of Tag, but provide
+    Components are a way of defining reusable and composable elements in Frontage. They are a subclass of Tag, but provide
     additional features such as state management and props. By defining your own components and registering them, you
     can create a library of reusable elements for your application.
 
@@ -851,7 +851,7 @@ class Page(Component):
             css_rules.append(css_class.render_css())
 
         if css_rules:
-            el = self.document.getElementById("puepy-runtime-css")
+            el = self.document.getElementById("frontage-runtime-css")
             if el:
                 created = False
             else:

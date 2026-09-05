@@ -1,9 +1,9 @@
 """
-PuePy's router functionality can be optionally installed by calling the install_router method of the Application class.
+Frontage's router functionality can be optionally installed by calling the install_router method of the Application class.
 
 Example:
     ``` py
-    from puepy import Application, Router
+    from frontage import Application, Router
 
     app = Application()
     app.install_router(Router, link_mode=Router.LINK_MODE_HASH)
@@ -14,8 +14,8 @@ client-side routing. Routes are defined by either using the `@app.page` decorato
 the `Router` instance.
 
 Classes:
-    puepy.router.Route: Represents a route in the router.
-    puepy.router.Router: Represents a router for managing client-side routing in a web application.
+    frontage.router.Route: Represents a route in the router.
+    frontage.router.Router: Represents a router for managing client-side routing in a web application.
 """
 
 from .core import Page

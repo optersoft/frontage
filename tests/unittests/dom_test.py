@@ -1,7 +1,7 @@
 import unittest
 from xml.dom import getDOMImplementation, Node
 
-from puepy import core
+from frontage import core
 
 
 class DomTest(unittest.TestCase):

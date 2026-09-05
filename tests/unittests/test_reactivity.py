@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from puepy.reactivity import Listener, ReactiveDict
+from frontage.reactivity import Listener, ReactiveDict
 
 
 class TestListener(unittest.TestCase):

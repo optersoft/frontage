@@ -2,7 +2,7 @@
 
 Reactivity is a paradigm that causes the user interface to update automatically in response to changes in the
 application state. Rather than triggering updates manually as a programmer, you can be assured that the application
-state will trigger redraws, with new information, as needed. Reactivity in PuePy is inspired by Vue.js.
+state will trigger redraws, with new information, as needed. Reactivity in Frontage is inspired by Vue.js.
 
 ## State
 ### Initial state
@@ -32,7 +32,7 @@ class MyComponent(Component):
 #### Modifying mutable objects in-place
 
 !!! warnign
-    PuePy's reactivity works by using dictionary `__setitem__` and `__delitem__` methods. As such, it cannot detect "nested" updates or changes to mutable objects in the state. If your code will result in a state change such as a data structure being changed in-place, you must a `mutate()` context manager.
+    Frontage's reactivity works by using dictionary `__setitem__` and `__delitem__` methods. As such, it cannot detect "nested" updates or changes to mutable objects in the state. If your code will result in a state change such as a data structure being changed in-place, you must a `mutate()` context manager.
 
 Modifying complex (mutable) data structures in place without **setting them** will not work:
 

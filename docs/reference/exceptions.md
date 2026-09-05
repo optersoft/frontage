@@ -1,3 +1,3 @@
 # peupy.exceptions
 
-::: puepy.exceptions
+::: frontage.exceptions

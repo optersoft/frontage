@@ -1,4 +1,4 @@
-from puepy import Application, Page, t
+from frontage import Application, Page, t
 import datetime
 
 app = Application()

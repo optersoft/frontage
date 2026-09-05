@@ -1,5 +1,5 @@
-from puepy import Application
-from puepy.router import Router, Route
+from frontage import Application
+from frontage.router import Router, Route
 
 
 class AwesomeApp(Application):

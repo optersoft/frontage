@@ -1,6 +1,6 @@
 # CSS Classes
 
-Although you are in charge of your own CSS, PuePy provides some convenience mechanisms for defining CSS classes. Because `class` is a reserved word in Python, when passing classes to tags, you should use either `class_name` or `classes`. Each can be defined as a string, list, or dictionary:
+Although you are in charge of your own CSS, Frontage provides some convenience mechanisms for defining CSS classes. Because `class` is a reserved word in Python, when passing classes to tags, you should use either `class_name` or `classes`. Each can be defined as a string, list, or dictionary:
 
 ```Python
 @app.page()
@@ -31,7 +31,7 @@ class Card(Component):
     ...
 ```
 
-The `default_classes` attribute tells PuePy to render the component with card as a default class. Code using the Card component can add to or even remove the default classes defined by the component.
+The `default_classes` attribute tells Frontage to render the component with card as a default class. Code using the Card component can add to or even remove the default classes defined by the component.
 
 To remove a class, pass it with a "/" prefix:
 

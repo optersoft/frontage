@@ -2,7 +2,7 @@
 
 Let's start with the simplest possible: Hello, World!
 
-<puepy src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/01_hello_world/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest"/>
+<frontage src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/01_hello_world/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest"/>
 
 === "hello_world.py"
 
@@ -20,7 +20,7 @@ Let's start with the simplest possible: Hello, World!
 
     ``` json linenums="1"
     {
-      "name": "PuePy Tutorial",
+      "name": "Frontage Tutorial",
       "debug": true,
       "files": {},
       "js_modules": {
@@ -29,14 +29,14 @@ Let's start with the simplest possible: Hello, World!
         }
       },
       "packages": [
-        "./puepy-{{project_version}}-py3-none-any.whl"
+        "./frontage-{{project_version}}-py3-none-any.whl"
       ]
     }
     ```
 
 ## Including PyScript
 
-Let's start with the HTML. To use PuePy, we include PyScript from its CDN:
+Let's start with the HTML. To use Frontage, we include PyScript from its CDN:
 
 ``` html title="index.html"
 --8<-- "examples/tutorial/01_hello_world/index.html:7:8"
@@ -54,31 +54,31 @@ Then, we include our PyScript config file and also execute our `hello_world.py` 
 
     The official PyScript documentation has more information on [PyScript configuration](https://docs.pyscript.net/2025.2.2/user-guide/configuration/).
 
-The PyScript configuration must, at minimum, tell PyScript to use PuePy (usually as a package) and include Morphdom, which is a dependency of PuePy.
+The PyScript configuration must, at minimum, tell PyScript to use Frontage (usually as a package) and include Morphdom, which is a dependency of Frontage.
 
 ## The Python Code
 
 Let's take a look at our Python code which actually renders Hello, World.
 
-First, we import `Application`, `Page`, and `t` from `puepy`:
+First, we import `Application`, `Page`, and `t` from `frontage`:
 
 ``` py
 --8<-- "examples/tutorial/01_hello_world/hello_world.py:1:1"
 ```
 
-To use PuePy, you must always create an `Application` instance, even if the application only has one page:
+To use Frontage, you must always create an `Application` instance, even if the application only has one page:
 
 ``` py
 --8<-- "examples/tutorial/01_hello_world/hello_world.py:3:3"
 ```
 
-Next, we define a Page and use the `t` singleton to compose our DOM in the `populate()` method. Don't worry too much about the details for now; just know that this is how we define pages and components in PuePy:
+Next, we define a Page and use the `t` singleton to compose our DOM in the `populate()` method. Don't worry too much about the details for now; just know that this is how we define pages and components in Frontage:
 
 ``` py
 --8<-- "examples/tutorial/01_hello_world/hello_world.py:6:9"
 ```
 
-Finally, we tell PuePy where to *mount* the application. This is where the application will be rendered in the DOM. The `#app` element was already defined in our HTML file.
+Finally, we tell Frontage where to *mount* the application. This is where the application will be rendered in the DOM. The `#app` element was already defined in our HTML file.
 
 ``` py
 --8<-- "examples/tutorial/01_hello_world/hello_world.py:12:12"

@@ -5,7 +5,7 @@ import pytest
 
 from .dom_test import DomTest
 from .dom_tools import node_to_dict
-from puepy import core
+from frontage import core
 
 
 class TestTag(DomTest):
@@ -167,7 +167,7 @@ class TestPage:
 
         page.add_python_css_classes()
 
-        page.document.getElementById.assert_called_once_with("puepy-runtime-css")
+        page.document.getElementById.assert_called_once_with("frontage-runtime-css")
         page.document.createElement.assert_called_once_with("style")
         page.document.createTextNode.assert_called_once()
 
@@ -177,7 +177,7 @@ class TestPage:
 
         page.add_python_css_classes()
 
-        page.document.getElementById.assert_called_once_with("puepy-runtime-css")
+        page.document.getElementById.assert_called_once_with("frontage-runtime-css")
         page.document.createElement.assert_not_called()
 
 

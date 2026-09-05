@@ -1,8 +1,8 @@
 import unittest
 from xml.dom import getDOMImplementation
 
-from puepy import CssClass
-from puepy.util import merge_classes, _extract_event_handlers, patch_dom_element
+from frontage import CssClass
+from frontage.util import merge_classes, _extract_event_handlers, patch_dom_element
 from .dom_tools import node_to_dict
 
 

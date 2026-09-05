@@ -3,10 +3,10 @@ from bs4 import BeautifulSoup
 
 def on_page_content(html, page, config, files):
     soup = BeautifulSoup(html, "html.parser")
-    for puepy_tag in soup.find_all("puepy"):
-        src = puepy_tag.get("src", "")
-        edit = puepy_tag.get("edit", "")
-        height = puepy_tag.get("height", "")
+    for frontage_tag in soup.find_all("frontage"):
+        src = frontage_tag.get("src", "")
+        edit = frontage_tag.get("edit", "")
+        height = frontage_tag.get("height", "")
 
         new_div = soup.new_tag(
             "div",
@@ -39,6 +39,6 @@ def on_page_content(html, page, config, files):
         iframe_container.append(iframe)
         new_div.append(iframe_container)
 
-        puepy_tag.replace_with(new_div)
+        frontage_tag.replace_with(new_div)
 
     return str(soup)

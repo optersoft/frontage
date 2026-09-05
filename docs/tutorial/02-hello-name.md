@@ -2,13 +2,13 @@
 
 In this chapter, we introduce state and variables by creating a simple form that asks for a name and greets the user.
 
-<puepy src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/02_hello_name/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest"/>
+<frontage src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/02_hello_name/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest"/>
 
 The html and pyscript configuration are the same as in the previous [Hello, World](01-hello-world.md) chapter, so we
 will only study the Python code. Expand the annotations in the code below for a more detail explanation of the changes:
 
 ``` py title="hello_name.py" hl_lines="8 9 12 18"
-from puepy import Application, Page, t
+from frontage import Application, Page, t
 
 app = Application()
 
@@ -53,7 +53,7 @@ updating the DOM as needed.
     self.state["my_dict"]["spam"] = "eggs"
     ```
 
-    This is because PuePy's ReactiveDict cannot detect "deep" changes to state automatically. If you are modifying objects
+    This is because Frontage's ReactiveDict cannot detect "deep" changes to state automatically. If you are modifying objects
     in-place, use `with self.state.mutate()` as a context manager:
 
     ``` py
@@ -65,4 +65,4 @@ updating the DOM as needed.
 
 ??? note "More information on reactivity"
 
-    For more information on reactivity in PuePy, see the [Reactivity Developer Guide](../guide/reactivity.md).
+    For more information on reactivity in Frontage, see the [Reactivity Developer Guide](../guide/reactivity.md).

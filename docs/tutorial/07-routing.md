@@ -1,18 +1,18 @@
 # Routing
 
-For single page apps (SPAs) or even complex pages with internal navigation, PuePy's client-side routing feature renders different pages based on the URL and provides a way of linking between various routes. Use of the router is optional and if no router is installed, the application will always render the default page.
+For single page apps (SPAs) or even complex pages with internal navigation, Frontage's client-side routing feature renders different pages based on the URL and provides a way of linking between various routes. Use of the router is optional and if no router is installed, the application will always render the default page.
 
-<puepy src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/07_routing/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest" height="20em"/>
+<frontage src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/07_routing/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest" height="20em"/>
 
 !!! note "URL Changes"
     In the embedded example above, the "URL" does not change because the embedded example is not a full web page. In a full web page, the URL would change to reflect the current page. Try opening the example [in a new window](https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/07_routing/index.html) to see the URL change.
 
-Inspired by Flask's simple and elegant routing system, PuePy uses decorators on page classes to define routes and parameters. The router can be configured to use either hash-based or history-based routing. Consider this example's source code:
+Inspired by Flask's simple and elegant routing system, Frontage uses decorators on page classes to define routes and parameters. The router can be configured to use either hash-based or history-based routing. Consider this example's source code:
 
 ``` py title="routing.py" linenums="1" hl_lines="5 15 43 54 64 65 66"
 
-from puepy import Application, Page, Component, t
-from puepy.router import Router
+from frontage import Application, Page, Component, t
+from frontage.router import Router
 
 app = Application()
 app.install_router(Router, link_mode=Router.LINK_MODE_HASH)  # (1)
@@ -70,7 +70,7 @@ class PetPage(Page):
 @app.page()
 class DefaultPage(Page):
     def populate(self):
-        t.h1("PuePy Routing Demo: Pet Listing")
+        t.h1("Frontage Routing Demo: Pet Listing")
         with t.ul():
             for pet_id, pet_details in pets.items():
                 with t.li():

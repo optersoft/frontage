@@ -1,5 +1,5 @@
-from puepy import Component, Page, Application, t
-from puepy.runtime import next_tick
+from frontage import Component, Page, Application, t
+from frontage.runtime import next_tick
 
 app = Application()
 

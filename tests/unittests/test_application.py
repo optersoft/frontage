@@ -2,10 +2,10 @@ import unittest
 from unittest.mock import Mock, patch
 
 from .dom_test import DomTest
-from puepy.application import Application
-from puepy.exceptions import Redirect, Unauthorized, Forbidden
-from puepy.router import Router
-from puepy.core import Page, t
+from frontage.application import Application
+from frontage.exceptions import Redirect, Unauthorized, Forbidden
+from frontage.router import Router
+from frontage.core import Page, t
 
 
 class TestApplication(DomTest):

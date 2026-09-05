@@ -47,7 +47,7 @@ def http_server():
 
 def test_has_title(http_server, page: Page):
     page.goto(f"http://localhost:{PORT}/")
-    expect(page).to_have_title(re.compile("PuePy Tutorial Examples"))
+    expect(page).to_have_title(re.compile("Frontage Tutorial Examples"))
 
 
 def test_hello_world(http_server, page: Page):
@@ -138,7 +138,7 @@ def test_routing(page: Page):
     page.goto(f"http://localhost:{PORT}/")
     page.get_by_role("link", name="Example 7: Routing").click()
 
-    page.get_by_role("heading", name="PuePy Routing Demo: Pet").click()
+    page.get_by_role("heading", name="Frontage Routing Demo: Pet").click()
     page.get_by_role("link", name="Scooby-Doo").click()
     page.get_by_text("Scooby-Doo").click()
     page.get_by_role("link", name="Back to Homepage").click()
@@ -148,7 +148,7 @@ def test_routing(page: Page):
     page.get_by_role("link", name="Snoopy").click()
     page.get_by_text("Snoopy").click()
     page.get_by_role("link", name="Back to Homepage").click()
-    page.get_by_role("heading", name="PuePy Routing Demo: Pet").click()
+    page.get_by_role("heading", name="Frontage Routing Demo: Pet").click()
 
 
 def test_pypi_libraries(http_server, page: Page):
@@ -158,7 +158,7 @@ def test_pypi_libraries(http_server, page: Page):
     page.get_by_role("textbox").first.fill("<html>\n<body>\n<h1>Hello, World!</h1>\n</body>\n</html>\n")
     page.get_by_role("button", name="Convert").click()
     expect(page.locator("textarea").nth(1)).to_have_value(
-        "from puepy import Application, Page, t\n\napp = Application()\n\n@app.page()\nclass DefaultPage(Page):\n    "
+        "from frontage import Application, Page, t\n\napp = Application()\n\n@app.page()\nclass DefaultPage(Page):\n    "
         "def populate(self):\n        with t.html():\n            with t.body():\n                with t.h1():\n     "
         "               t('Hello, World!')"
     )

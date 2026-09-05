@@ -5,7 +5,7 @@ When a page loads, you can guard navigation to that page by running a *precheck*
 Here's an example of a precheck that raises an exception if the user is not authenticated:
 
 ```py title="Showing error"
-from puepy import exceptions, Page
+from frontage import exceptions, Page
 
 class MyPage(Page):
     ...
@@ -14,12 +14,12 @@ class MyPage(Page):
             raise exceptions.Unauthorized()
 ```
 
-In this example, if the `authenticated_user` key in the application state is `False`, the page will not render, and an `Unauthorized` exception will be raised. PuePy will then display your `application.unauthorized_page`.
+In this example, if the `authenticated_user` key in the application state is `False`, the page will not render, and an `Unauthorized` exception will be raised. Frontage will then display your `application.unauthorized_page`.
 
 Alternatively, you could redirect the user by raising puepu.exceptions.Redirect:
 
 ```py title="Redirecting to a login page"
-from puepy import exceptions, Page
+from frontage import exceptions, Page
 
 
 class LoginPage(Page):

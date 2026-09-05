@@ -1,7 +1,7 @@
 # Showing Loading Indicators
 
-PyScript, on which PuePy is built, provides two runtime options. When combined with PuePy, the total transfer size to
-render a PuePy page as reported by Chromium's dev tools for each runtime are:
+PyScript, on which Frontage is built, provides two runtime options. When combined with Frontage, the total transfer size to
+render a Frontage page as reported by Chromium's dev tools for each runtime are:
 
 | Runtime     | Transfer Size |
 |-------------|---------------|
@@ -13,11 +13,11 @@ however, will be perceived as initially quite slow to load on slower connections
 line-of-business software where users have fast connections or in cases where it's accepted that an application may
 take some time to initially load, but will be cached during further use.
 
-## Showing an indicator before PuePy loads
+## Showing an indicator before Frontage loads
 
-Before you mount your PuePy page into its target element, the target element's HTML is rendered in the browser. A
-very simple way to show that PuePy hasn't loaded is to include an indicator in the target element, which will be
-replaced upon execution by PuePy:
+Before you mount your Frontage page into its target element, the target element's HTML is rendered in the browser. A
+very simple way to show that Frontage hasn't loaded is to include an indicator in the target element, which will be
+replaced upon execution by Frontage:
 
 ```html
 <div id="app">Loading...</div>
@@ -52,7 +52,7 @@ The [Full App Template](../tutorial/10-full-app.md) example from the tutorial ma
 </html>
 ```
 
-This will render as a loading indicator, animated, visible only until PuePy mounts the real application code:
+This will render as a loading indicator, animated, visible only until Frontage mounts the real application code:
 
 ![Loading indicator screenshot](../images/loading-indicator.png)
 

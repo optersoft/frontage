@@ -1,6 +1,6 @@
-from puepy import t, Component
-from puepy.util import jsobj
-from puepy import exceptions
+from frontage import t, Component
+from frontage.util import jsobj
+from frontage import exceptions
 
 import js
 

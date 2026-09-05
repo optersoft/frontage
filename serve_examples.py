@@ -5,12 +5,12 @@ import sys
 from http import server
 
 project_path = pathlib.Path(__file__).parent
-puepy_path = project_path / "puepy"
+frontage_path = project_path / "frontage"
 examples_path = project_path / "examples"
 
 assert project_path.is_dir()
-assert puepy_path.is_dir()
-assert (puepy_path / "core.py").exists()
+assert frontage_path.is_dir()
+assert (frontage_path / "core.py").exists()
 
 sys.path.append(str(project_path))
 
@@ -19,9 +19,9 @@ class Handler(server.SimpleHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
 
-        # We want to serve the examples from the /examples directory, but also allow pulls from /puepy/ for live
-        # changes to code. This basically just treats /examples as the content root, unless the path starts with /puepy/
-        if not path.startswith("/puepy/"):
+        # We want to serve the examples from the /examples directory, but also allow pulls from /frontage/ for live
+        # changes to code. This basically just treats /examples as the content root, unless the path starts with /frontage/
+        if not path.startswith("/frontage/"):
             self.path = f"/examples{path}"
 
         return super().do_GET()
@@ -37,7 +37,7 @@ class Handler(server.SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="A simple HTTP server to serve examples of PuePy")
+    parser = argparse.ArgumentParser(description="A simple HTTP server to serve examples of Frontage")
     parser.add_argument("--host", default="", help="The host on which the server runs")
     parser.add_argument("--port", type=int, default=8000, help="The port on which the server listens")
     args = parser.parse_args()

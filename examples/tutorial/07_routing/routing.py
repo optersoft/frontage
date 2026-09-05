@@ -1,5 +1,5 @@
-from puepy import Application, Page, Component, t
-from puepy.router import Router
+from frontage import Application, Page, Component, t
+from frontage.router import Router
 
 app = Application()
 app.install_router(Router, link_mode=Router.LINK_MODE_HASH)
@@ -63,7 +63,7 @@ class PetPage(Page):
 @app.page()
 class DefaultPage(Page):
     def populate(self):
-        t.h1("PuePy Routing Demo: Pet Listing")
+        t.h1("Frontage Routing Demo: Pet Listing")
         with t.ul():
             for pet_id, pet_details in pets.items():
                 with t.li():

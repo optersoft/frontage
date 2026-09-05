@@ -14,14 +14,14 @@ examples_path = module_path / "examples"
 pyscript_examples_path = module_path / "pyscript_examples"
 
 
-def replace_puepy_files_with_dist(content, wheel_location):
+def replace_frontage_files_with_dist(content, wheel_location):
     """
     Replaces the example with a PyScript one
     """
 
     if "files" in content:
         for file_source, file_dest in content["files"].copy().items():
-            if fnmatch.fnmatch(file_source, "/puepy/*.py"):
+            if fnmatch.fnmatch(file_source, "/frontage/*.py"):
                 del content["files"][file_source]
 
     if "packages" not in content:
@@ -48,7 +48,7 @@ def build_pyscript_examples(source_dir: Path, destination_dir: Path):
             if fnmatch.fnmatch(file, "pyscript*.json"):
                 open(dest_path / file, "w").write(
                     json.dumps(
-                        replace_puepy_files_with_dist(json.loads(open(origin_path / file).read()), wheel_location),
+                        replace_frontage_files_with_dist(json.loads(open(origin_path / file).read()), wheel_location),
                         indent=2,
                     )
                 )
@@ -57,9 +57,9 @@ def build_pyscript_examples(source_dir: Path, destination_dir: Path):
 
 
 if __name__ == "__main__":
-    # Get puepy version
+    # Get frontage version
     version = subprocess.check_output("poetry version -s", shell=True).decode().strip()
-    wheel_file = Path(module_path / "dist" / f"puepy-{version}-py3-none-any.whl")
+    wheel_file = Path(module_path / "dist" / f"frontage-{version}-py3-none-any.whl")
 
     assert wheel_file.exists(), f"Wheel file not found: {wheel_file}"
     existing_install_config = examples_path / "installation" / "pyscript.json"

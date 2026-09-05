@@ -3,7 +3,7 @@ import random
 import sys
 import time
 
-from puepy.storage import BrowserStorage
+from frontage.storage import BrowserStorage
 
 from . import exceptions
 from .core import Page, t, Prop
@@ -89,7 +89,7 @@ class DefaultIdGenerator:
 
 class Application(Stateful):
     """
-    The main application class for PuePy. It manages the state, storage, router, and pages for the application.
+    The main application class for Frontage. It manages the state, storage, router, and pages for the application.
 
     Attributes:
         state (ReactiveDict): The state object for the application.
@@ -134,7 +134,7 @@ class Application(Stateful):
 
         Args:
             router_class (class): A class that implements the router logic for the application. At this time, only
-                `puepy.router.Router` is available.
+                `frontage.router.Router` is available.
             **kwargs: Additional keyword arguments that can be passed to the router_class constructor.
         """
         self.router = router_class(application=self, **kwargs)

@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock
 
-import puepy.storage as storage
+import frontage.storage as storage
 
 
 class TestBrowserStorage(unittest.TestCase):

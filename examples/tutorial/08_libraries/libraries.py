@@ -1,6 +1,6 @@
 import re
 from bs4 import BeautifulSoup, Comment
-from puepy import Application, Page, t
+from frontage import Application, Page, t
 
 app = Application()
 
@@ -101,7 +101,7 @@ class TagGenerator:
     def generate_app_root(self, node, generate_full_file=True):
         header = (
             [
-                "from puepy import Application, Page, t",
+                "from frontage import Application, Page, t",
                 "",
                 "app = Application()",
                 "",
@@ -130,7 +130,7 @@ class DefaultPage(Page):
 
     def populate(self):
         with t.div(classes="section"):
-            t.h1("Convert HTML to PuePy syntax with BeautifulSoup", classes="title is-1")
+            t.h1("Convert HTML to Frontage syntax with BeautifulSoup", classes="title is-1")
             with t.div(classes="columns is-variable is-8 is-multiline"):
                 with t.div(classes="column is-half-desktop is-full-mobile"):
                     with t.div(classes="field"):

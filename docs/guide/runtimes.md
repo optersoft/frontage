@@ -1,6 +1,6 @@
 # Runtimes
 
-From its upstream project, PyScript, PuePy supports two runtime environments:
+From its upstream project, PyScript, Frontage supports two runtime environments:
 
 - MicroPython
 - Pyodide
@@ -25,11 +25,11 @@ You may consider using Pyodide when:
 You may consider using MicroPython when:
 
 - Initial load time is important
-- Your PuePy code will use only simple Python features to add reactivity and interactivity to websites
+- Your Frontage code will use only simple Python features to add reactivity and interactivity to websites
 
 ## How to switch runtimes
 
-To choose a runtime, specify either `type="mpy"` or `type="py"` in your `<script>` tag when loading PuePy. For example:
+To choose a runtime, specify either `type="mpy"` or `type="py"` in your `<script>` tag when loading Frontage. For example:
 
 ### Loading Pyodide
 

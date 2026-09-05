@@ -2,7 +2,7 @@
 
 Components are a way to encapsulate a piece of UI that can be reused throughout your application. In this example, we'll create a `Card` component and use it multiple times on a page, each time using slots to fill in content.
 
-<puepy src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/06_components/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest" height="50em"/>
+<frontage src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/06_components/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest" height="50em"/>
 
 === "Component Definition"
 
@@ -39,7 +39,7 @@ Components are a way to encapsulate a piece of UI that can be reused throughout 
     ```
 
     1. The `@t.component()` decorator registers the class as a component for use elsewhere.
-    2. All components should subclass the `puepy.Component` class.
+    2. All components should subclass the `frontage.Component` class.
     3. The `props` attribute is a list of properties that can be passed to the component.
     4. Classes can be defined programmatically in Python. Class names are automatically generated for each instance, so they're scoped like Python instances.
     4. `default_classes` is a list of CSS classes that will be applied to the component by default.
@@ -129,4 +129,4 @@ Slots are a way to pass content into a component. A component can define one or 
 
 ??? note "More information on components"
 
-    For more information on components in PuePy, see the [Component Developer Guide](../guide/in-depth-components.md).
+    For more information on components in Frontage, see the [Component Developer Guide](../guide/in-depth-components.md).

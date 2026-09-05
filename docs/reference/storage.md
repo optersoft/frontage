@@ -1,3 +1,3 @@
-### puepy.storage
+### frontage.storage
 
-::: puepy.storage
+::: frontage.storage

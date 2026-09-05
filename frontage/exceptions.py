@@ -1,5 +1,5 @@
 """
-Common exceptions in the PuePy framework.
+Common exceptions in the Frontage framework.
 
 Classes:
     ElementNotInDom: Raised when an element is not found in the DOM, but it is expected to be, such as when getting Tag.element

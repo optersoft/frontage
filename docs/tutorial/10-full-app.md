@@ -2,7 +2,7 @@
 
 Let's put together what we've learned so far. This example is an app with routing, a sidebar, and a handful of pages.
 
-<puepy src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/10_full_app/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest" height="20em" height="35em"/>
+<frontage src="https://kkinder.pyscriptapps.com/puepy-tutorial/latest/tutorial/10_full_app/index.html" edit="https://pyscript.com/@kkinder/puepy-tutorial/latest" height="20em" height="35em"/>
 
 
 !!! note "URL Changes"
@@ -23,7 +23,7 @@ To make additional source files available in the Python runtime environment, add
 
 ```json title="pyscript-app.json"
 {
-  "name": "PuePy Tutorial",
+  "name": "Frontage Tutorial",
   "debug": true,
   "files": {
     "./common.py": "common.py",
@@ -38,7 +38,7 @@ To make additional source files available in the Python runtime environment, add
     }
   },
   "packages": [
-    "../../puepy-{{project_version}}-py3-none-any.whl"
+    "../../frontage-{{project_version}}-py3-none-any.whl"
   ]
 }
 ```

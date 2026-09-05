@@ -8,7 +8,7 @@ If you prefer JavaScript to Python, using it would be the obvious answer. JavaSc
 there are many excellent frameworks to choose from, and the JavaScript runtimes available in most browsers are
 blazingly fast.
 
-Some developers prefer Python, however. For them, PuePy might be a good choice.
+Some developers prefer Python, however. For them, Frontage might be a good choice.
 
 ### Is WebAssembly ready?
 
@@ -17,11 +17,11 @@ existing JavaScript libraries or components, PyScript provides a robust bridge. 
 to be and is certainly less prone to backwards incompatible changes than many JavaScript projects that production
 sites rely on.
 
-## PuePy Design Choices
+## Frontage Design Choices
 
-### Can you use PuePy with a templating language instead of building components inline?
+### Can you use Frontage with a templating language instead of building components inline?
 
-The idea behind PuePy is, at least in part, to have the convenience of building all your software, including its UI,
+The idea behind Frontage is, at least in part, to have the convenience of building all your software, including its UI,
 out in Python's syntax. You may actually find that Python is more succinct, not less, than a similar template might be.
 Consider:
 
@@ -64,7 +64,7 @@ with t.svg(xmlns="http://www.w3.org/2000/svg"):
 If you want to directly insert HTML into a component's rendering, you can use the `html()` string:
 
 ```Python
-from puepy.core import html
+from frontage.core import html
 
 
 class MyPage(Page):

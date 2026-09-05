@@ -1,3 +1,3 @@
-# puepy.reactivity
+# frontage.reactivity
 
-::: puepy.reactivity
+::: frontage.reactivity

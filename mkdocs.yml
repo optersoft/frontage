@@ -1,9 +1,9 @@
-site_name: PuePy Documentation
-site_url: https://docs.puepy.dev/
-site_author: Ken Kinder
+site_name: Frontage Documentation
+site_url: https://optersoft.github.io/frontage/
+site_author: Optersoft
 
-repo_name: kkinder/puepy
-repo_url: https://github.com/kkinder/puepy
+repo_name: optersoft/frontage
+repo_url: https://github.com/optersoft/frontage
 edit_uri: edit/main/docs/
 
 theme:
@@ -72,7 +72,7 @@ plugins:
     default_handler: python
     handlers:
       python:
-        paths: [/code/puepy, /opt/buildhome/clone]
+        paths: [.]
         options:
           show_source: true
 nav:
@@ -97,28 +97,27 @@ nav:
     - 'Runtimes': guide/runtimes.md
     - 'CSS Classes': guide/css-classes.md
     - 'PyScript Config': guide/pyscript-config.md
-  - 'Cookcook':
+  - 'Cookbook':
       - 'Loading Indicators': cookbook/loading-indicators.md
       - 'Navigation Guards': cookbook/navigation-guards.md
   - Reference:
-    - 'puepy.Application': reference/application.md
-    - 'puepy.core.Tag': reference/tag.md
-    - 'puepy.Component': reference/component.md
-    - 'puepy.router': reference/router.md
-    - 'puepy.Prop': reference/prop.md
-    - 'puepy.reactivity': reference/reactivity.md
-    - 'puepy.storage': reference/storage.md
-    - 'puepy.exceptions': reference/exceptions.md
+    - 'frontage.Application': reference/application.md
+    - 'frontage.core.Tag': reference/tag.md
+    - 'frontage.Component': reference/component.md
+    - 'frontage.router': reference/router.md
+    - 'frontage.Prop': reference/prop.md
+    - 'frontage.reactivity': reference/reactivity.md
+    - 'frontage.storage': reference/storage.md
+    - 'frontage.exceptions': reference/exceptions.md
   - FAQ: faq.md
   - Links:
-    - GitHub: https://github.com/kkinder/puepy
-    - PuePy.dev: https://puepy.dev
+    - GitHub: https://github.com/optersoft/frontage
 extra_css:
   - extra/extra.css
 hooks:
-  - docs/puepy_hooks.py
+  - docs/frontage_hooks.py
 extra:
-  project_version: "0.6.5"
+  project_version: "0.1.0"
   version:
     provider: mike
     default:
