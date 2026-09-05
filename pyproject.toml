@@ -1,15 +1,16 @@
 [project]
 name = "frontage"
 dynamic = ["version"]
-description = "Python frontend framework for PyScript: reactive components and an SPA router, with no JavaScript toolchain"
+description = "Fine-grained reactive UI framework for Python in the browser (PyScript, Pyodide, MicroPython)"
 readme = "README.md"
-# Apache-2.0 is inherited from PuePy, the project this is forked from; see NOTICE.
+# Section 3 grants patents both ways, section 5 makes contributions arrive under the same
+# terms with no CLA, section 6 reserves the trademark. Not the MIT OR Apache pair on purpose.
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "Optersoft, S.L.", email = "david@optersoft.com" }]
-# 3.9 is the floor upstream chose. The package also has to run under MicroPython
-# in the browser, which is the real constraint on what syntax the code may use.
-requires-python = ">=3.9"
+# CPython is only the test and tooling host. The real constraint on the package's syntax
+# is MicroPython in the browser (no typing at runtime, no dataclasses); see CLAUDE.md.
+requires-python = ">=3.12"
 keywords = ["pyscript", "pyodide", "micropython", "webassembly", "frontend", "framework", "reactive", "spa"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -19,6 +20,8 @@ classifiers = [
     "Intended Audience :: Education",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: MicroPython",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
@@ -42,7 +45,7 @@ path = "frontage/version.py"
 packages = ["frontage"]
 
 [tool.hatch.build.targets.sdist]
-include = ["frontage", "tests", "examples", "docs", "mkdocs.yml", "serve_examples.py", "README.md", "LICENSE", "NOTICE", "ACKNOWLEDGEMENTS.md"]
+include = ["frontage", "tests", "examples", "tools/serve.py", "tools/fetch_pyscript.py", "README.md", "DESIGN.md", "SPEC.md", "LICENSE", "NOTICE"]
 
 [dependency-groups]
 dev = [
@@ -52,21 +55,12 @@ dev = [
     # Pre-1.0 and fast-moving: pin, and expect new diagnostics on an upgrade.
     "ty>=0.0.78,<0.1",
 ]
-docs = [
-    "mkdocs>=1.6.1",
-    "mkdocs-material>=9.6",
-    "mkdocs-material-extensions>=1.3",
-    "mkdocstrings[python]>=0.28",
-    "mkdocs-macros-plugin>=1.3",
-    "mike>=2.1",
-    "beautifulsoup4>=4.13",
-]
 
 [tool.ruff]
 line-length = 120
 # Match the oldest interpreter the package claims, so ruff never suggests syntax it lacks.
-target-version = "py39"
-extend-exclude = ["docs-legacy-files"]
+target-version = "py312"
+extend-exclude = ["tools/pyscript", "www", "typings"]
 
 [tool.ruff.lint]
 # No "UP": the package runs under MicroPython too, and pyupgrade rewrites are
@@ -76,8 +70,8 @@ select = ["E", "F", "I", "B"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-# Examples are teaching material read in the browser; star-style brevity is the point.
-"examples/**" = ["B"]
+# Examples are teaching material read in the browser; brevity over lint.
+"examples/**" = ["B", "E402"]
 
 [tool.ty.src]
 include = ["frontage", "tests"]
@@ -89,7 +83,7 @@ python-version = "3.12"
 extra-paths = ["typings"]
 
 [tool.pytest.ini_options]
-# The unit tests run anywhere. The integration suite under tests/integration
-# drives the examples in a real browser (Playwright) and is run explicitly:
-# `mk test --integration`.
-testpaths = ["tests/unittests"]
+# The unit tests run anywhere and need no browser. tests/browser drives the examples in
+# Chromium under both interpreters and is run explicitly: `mk test --browser`.
+testpaths = ["tests"]
+addopts = "--ignore=tests/browser"

@@ -1,3 +1,0 @@
-# frontage.reactivity
-
-::: frontage.reactivity

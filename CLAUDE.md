@@ -1,62 +1,52 @@
 # CLAUDE.md
 
-Frontage: a Python frontend framework for PyScript, published to PyPI as `frontage`. A
-fork of PuePy 0.6.5 (Apache 2.0), maintained by Optersoft since 2026-09-05. The `upstream`
-remote points at `kkinder/puepy`; `origin` is `github.com/optersoft/frontage` (GitHub, not
-the forge, because PyPI publishing needs Actions).
+Frontage: a fine-grained reactive UI framework for Python in the browser (PyScript; Pyodide
+and MicroPython), published to PyPI as `frontage`, Apache 2.0, copyright Optersoft. Being
+rewritten clean-room from `SPEC.md` per `DESIGN.md`; `main` is at milestone **M0**. `origin`
+will be `github.com/optersoft/frontage` (GitHub, because PyPI publishing needs Actions).
 
-**`DESIGN.md` is the plan to replace this tree with a clean-room rewrite.** Until it lands,
-the code here is the PuePy fork and the rules below apply to it.
+## Read first
+
+| | |
+|---|---|
+| `DESIGN.md` | the plan and its reasoning: what Leptos, Solid, Streamlit, Shiny and Reflex taught, the architecture, the milestones, the open decisions |
+| `SPEC.md` | one line per behaviour, tagged with its milestone; every line is a test to write; code is written from this, never from a reference framework's source |
+| `TODO.md` | what is next and what is blocked |
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `frontage/` | the package: `core` (Tag/Component/Page), `reactivity`, `router`, `application`, `storage`, `runtime` (the Pyodide/MicroPython/CPython shim), `version` |
-| `tests/unittests/` | run anywhere; `dom_test.py` fakes a DOM |
-| `tests/integration/` | Playwright over the examples; needs `serve_examples.py` and a browser |
-| `examples/` | the tutorial apps; every `pyscript*.json` lists the package files by path so edits show live |
-| `docs/` | mkdocs-material, versioned with mike; `frontage_hooks.py` renders `<frontage src=…>` embeds |
-| `Makefile.py` | the `mk` tasks; `mk check` is the gate |
+| `frontage/runtime.py` | which interpreter; the only module that imports `pyscript`; server stand-ins that raise a sentence |
+| `frontage/renderer.py` | the `Renderer` seam (ten operations), `HtmlRenderer` (plain nodes → HTML), `RecordingRenderer` |
+| `frontage/view.py` | `Element`/`Text`, the `h` builder (call form and `with` form), `build`, `render_to_string` |
+| `frontage/errors.py` | `FrontageError`, `RenderError`, `NotReady` |
+| `tests/` | unit tests, CPython, no browser; `tests/browser/` is Playwright over `examples/` and starts its own server |
+| `examples/` | one page per example; `pyscript.json` lists the package files by path so edits show live |
+| `tools/serve.py`, `tools/fetch_pyscript.py` | the dev server and the offline PyScript fetch; `tools/pyscript/` is gitignored |
+| `web/` | the landing page of frontage.optersoft.com; `mk site.build` assembles `www/` |
+| `typings/` | ty stubs for the browser-only modules |
+| branch `puepy-reference` | the PuePy fork, the acceptance test until 0.1.0; never merged |
 
 ## Rules that are not obvious from the code
 
-- **The code runs under MicroPython too.** Anything in `frontage/` must stay within what
-  MicroPython supports. That is why ruff's `UP` rules are off and why `runtime.py` branches
-  on `sys.platform`. Test a change to the package in both runtimes (`mk serve`, switch the
-  `<script type>` between `mpy` and `py`) before calling it done.
-- **The PyScript pin lives in every example's `index.html`** (currently 2025.2.2, 36 places).
-  Bump them together and re-run `mk test --integration`.
-- **`frontage/version.py` is the version.** hatchling reads it at build time; the browser
-  reads it as plain Python. Nothing else carries the number except `mkdocs.yml`'s
-  `project_version`, which the docs use for download commands.
-- **Docs tutorial embeds still point at the upstream author's hosted examples**
-  (`kkinder.pyscriptapps.com`). They work but say `puepy`. Hosting our own is in TODO.md.
-- **ruff's unused-import autofix has bitten this repo once already.** `runtime.py` exists
-  to re-export the browser globals, and the tutorial's `main.py` imports `pages` and
-  `components` for their side effects. Both were silently deleted by `ruff check --fix`
-  on 2026-09-05, and only the browser suite noticed (the unit tests run server-side and
-  never import `js`). `__all__` in `runtime.py` and `# noqa: F401` in the example are the
-  guards; after any `--fix`, run `mk test --integration` before trusting the tree.
-- **Attribution is a license obligation.** `NOTICE` and `ACKNOWLEDGEMENTS.md` name PuePy and
-  its author; keep them when reorganising, and keep `LICENSE` verbatim.
-
-## The site and the docs
-
-**frontage.optersoft.com is a Cloudflare Pages project (`frontage`, account optersoft),
-created 2026-09-05.** `mk site.build` assembles `www/` from `web/` (the landing page), the
-examples under `/examples/` and the package under `/frontage/`; `mk site.deploy` publishes it
-with wrangler from this machine. The project is not git-connected yet; connect it to
-`github.com/optersoft/frontage` once that exists and retire the hand deploy, as `get` did.
-The Pages default host is `frontage-a8x.pages.dev`.
-
-**Documentation lives on academy.optersoft.com**, at `/tool/frontage` by the fleet's
-convention (`/tool/box` and `/tool/isard` redirect to their pages). The mkdocs tree under
-`docs/` is the inherited PuePy manual, kept for reading until it is ported into
-`academy-pages`; nothing publishes it.
+- **Clean room.** Do not open PuePy, Solid or Leptos source while writing code here. Their docs
+  and examples are fine. `SPEC.md` is the source. A PR states it was written that way.
+- **MicroPython is a target.** No `typing` at runtime, no dataclasses, string annotations
+  only, no stdlib module MicroPython lacks. Ruff's `UP` rules are off on purpose. The `mpy`
+  browser smoke test is the guard: `mk test --browser`.
+- **`runtime.py` re-exports the browser globals.** Its `__all__` is what stops ruff's
+  unused-import autofix from deleting them; it happened once on the fork.
+- **Count bridge crossings.** Every DOM call from Python crosses to JavaScript. The
+  `RecordingRenderer` exists so tests assert how few operations an update costs. A change that
+  adds operations to a hot path needs a number, not an argument.
+- **PyScript is pinned** in `tools/fetch_pyscript.py` and served locally; examples load
+  `/pyscript/core.js`. Bumping the version is one line there and a browser run.
+- **The version** is `frontage/version.py`; hatchling reads it; the browser reads it as code.
 
 ## Toolchain
 
-uv, ruff, ty, pytest. `uv run --frozen …` in anything a gate runs. Release: bump
-`version.py`, commit, tag `vX.Y.Z`, push the tag; CI publishes over OIDC (see the header of
-`.github/workflows/ci.yml` for the publisher record PyPI needs).
+uv, ruff, ty, pytest; `uv run --frozen …` in anything a gate runs. `mk check` is the gate;
+`mk test --browser` needs `mk pyscript.fetch` and `uv run playwright install chromium` once.
+Release: bump `version.py`, commit, tag `vX.Y.Z`, push the tag; CI publishes over OIDC (the
+publisher record PyPI needs is in the header of `.github/workflows/ci.yml`).

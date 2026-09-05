@@ -1,56 +1,50 @@
-"""Which Python is running us, and the browser globals that depend on it.
+"""Which Python is running us, and the bridge to the browser when there is one.
 
-Frontage runs in three places: Pyodide and MicroPython in the browser, and plain CPython
-on a server or in the tests. The names exported here are the JavaScript globals on the
-two browser runtimes and stand-ins on the server, where nothing that touches them runs.
+Frontage runs in three places: Pyodide and MicroPython in the browser, and plain CPython on
+a server or in the tests. The names exported here are the browser globals and the FFI
+helpers on the two browser runtimes, and stand-ins on the server that say so if touched.
+Nothing else in the package imports `pyscript` or `js` directly.
 """
 
 import sys
 
-# Most of these names exist only to be re-exported; without this list, an unused-import
-# autofix silently deletes them and the package stops importing in the browser.
+# Most of these names exist to be re-exported. Without this list an unused-import
+# autofix deletes them and the package stops importing in the browser.
 __all__ = [
-    "PLATFORM_CPYTHON",
-    "PLATFORM_MICROPYTHON",
-    "PLATFORM_PYODIDE",
-    "CustomEvent",
-    "Object",
-    "add_event_listener",
+    "CPYTHON",
+    "MICROPYTHON",
+    "PYODIDE",
+    "Unavailable",
     "create_proxy",
     "document",
-    "history",
-    "is_server_side",
-    "next_tick",
+    "in_browser",
     "platform",
-    "remove_event_listener",
-    "setTimeout",
+    "to_js",
     "window",
 ]
 
-PLATFORM_PYODIDE = "pyodide"
-PLATFORM_MICROPYTHON = "micropython"
-PLATFORM_CPYTHON = "cpython"
+PYODIDE = "pyodide"
+MICROPYTHON = "micropython"
+CPYTHON = "cpython"
 
 
-def _detect_platform():
+def _detect():
     if sys.platform == "emscripten":
-        return PLATFORM_PYODIDE
-    elif sys.platform == "webassembly" and sys.implementation.name == "micropython":
-        return PLATFORM_MICROPYTHON
-    elif sys.implementation.name == "cpython":
-        return PLATFORM_CPYTHON
+        return PYODIDE
+    if sys.platform == "webassembly" and sys.implementation.name == "micropython":
+        return MICROPYTHON
+    return CPYTHON
 
 
-platform = _detect_platform()
-is_server_side = platform not in (PLATFORM_PYODIDE, PLATFORM_MICROPYTHON)
+platform = _detect()
+in_browser = platform in (PYODIDE, MICROPYTHON)
 
 
-class _Unavailable:
+class Unavailable:
     """A browser global on the server: falsy, and loud if anything actually uses it.
 
-    Standing in with an object instead of `None` gives a clear error at the point of
-    use rather than an `AttributeError` on `None`, and lets the type checker see that
-    attribute access on these names is intended.
+    Standing in with an object rather than `None` gives a sentence naming the global at
+    the point of use, instead of an `AttributeError` on `None` somewhere downstream.
     """
 
     def __init__(self, name):
@@ -72,39 +66,15 @@ class _Unavailable:
         return f"<{self._name}: unavailable outside the browser>"
 
 
-if platform == PLATFORM_PYODIDE:
-    from pyodide.ffi import create_proxy
-    from pyodide.ffi.wrappers import add_event_listener, remove_event_listener
-elif platform == PLATFORM_MICROPYTHON:
-    from pyscript.ffi import create_proxy
-
-    def add_event_listener(elt, event, listener):
-        return elt.addEventListener(event, listener)
-
-    def remove_event_listener(elt, event, listener):
-        return elt.removeEventListener(event, create_proxy(listener))
-
+if in_browser:
+    from pyscript import document, window
+    from pyscript.ffi import create_proxy, to_js
 else:
-    add_event_listener = _Unavailable("add_event_listener")
-    remove_event_listener = _Unavailable("remove_event_listener")
+    document = Unavailable("document")
+    window = Unavailable("window")
 
     def create_proxy(obj):
         return obj
 
-
-if is_server_side:
-    document = _Unavailable("document")
-    window = _Unavailable("window")
-    history = _Unavailable("history")
-    setTimeout = _Unavailable("setTimeout")
-    Object = _Unavailable("Object")
-    CustomEvent = _Unavailable("CustomEvent")
-
-    def next_tick(fn):
-        fn()
-
-else:
-    from js import CustomEvent, Object, document, history, setTimeout, window
-
-    def next_tick(fn):
-        setTimeout(create_proxy(fn), 100)
+    def to_js(obj):
+        return obj

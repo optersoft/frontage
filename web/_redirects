@@ -1,0 +1,4 @@
+# PyScript's offline mode resolves its interpreters as ./pyscript/<name>/… relative to the
+# page, so every example directory must answer that path with the one bundle at /pyscript/.
+# tools/serve.py does the same locally. A 200 is a rewrite, not a redirect.
+/examples/:name/pyscript/* /pyscript/:splat 200

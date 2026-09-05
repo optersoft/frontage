@@ -1,21 +1,10 @@
 {
-  "name": "Frontage Tutorial",
-  "debug": true,
   "files": {
-    "/frontage/util.py": "frontage/util.py",
     "/frontage/__init__.py": "frontage/__init__.py",
-    "/frontage/core.py": "frontage/core.py",
+    "/frontage/errors.py": "frontage/errors.py",
+    "/frontage/renderer.py": "frontage/renderer.py",
     "/frontage/runtime.py": "frontage/runtime.py",
-    "/frontage/application.py": "frontage/application.py",
-    "/frontage/storage.py": "frontage/storage.py",
-    "/frontage/exceptions.py": "frontage/exceptions.py",
-    "/frontage/router.py": "frontage/router.py",
-    "/frontage/reactivity.py": "frontage/reactivity.py",
-    "/frontage/version.py": "frontage/version.py"
-  },
-  "js_modules": {
-    "main": {
-      "https://cdn.jsdelivr.net/npm/morphdom@2.7.4/+esm": "morphdom"
-    }
+    "/frontage/version.py": "frontage/version.py",
+    "/frontage/view.py": "frontage/view.py"
   }
 }

@@ -1,66 +1,53 @@
 # TODO
 
-Open work for `frontage`, most urgent first. `- [ ]` open, `- [x]` done where the reason
-is worth keeping.
+Open work for `frontage`, most urgent first. `- [ ]` open, `- [x]` done where the reason is
+worth keeping. The milestones themselves are in `DESIGN.md` §16; this file tracks the edges.
 
-## Decide first
+## Decisions taken by proposal on 2026-09-05 (say so if any should change)
 
-- [ ] Settle the five open decisions at the end of `DESIGN.md`; the rewrite starts with
-      `SPEC.md` (M0) once they are.
+All seven open decisions in `DESIGN.md` §17 were taken as proposed: MicroPython first-class;
+template strings in M2 with the builder as fallback; pure Python first and a JS shim only
+where the rows benchmark says so; Solid 1.x synchronous propagation; `Store` in 0.1;
+accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
 
-## Before the first release (0.1.0)
+## M0 (in progress)
 
-- [ ] Email PuePy's author: tell them about the fork, offer co-maintainership, ask whether
-      they would rather hand PuePy itself over. Two weeks for a reply before announcing.
-- [ ] Register the `frontage` name on PyPI and create `github.com/optersoft/frontage`,
-      then the trusted publisher (owner `optersoft`, repo `frontage`, workflow `ci.yml`,
-      environment `pypi`) and the `pypi` environment on the repo.
-- [ ] **DNS for frontage.optersoft.com.** The Pages project `frontage` has the custom
-      domain attached (status pending, "CNAME record not set") and needs a proxied CNAME
-      `frontage -> frontage-a8x.pages.dev` in the optersoft.com zone. The wrangler login
-      on this machine has zone read only, so add it in the dashboard or re-login with DNS
-      write. The site already answers at https://frontage-a8x.pages.dev.
-- [ ] Connect the Pages project to `github.com/optersoft/frontage` once the repo exists
-      (build command `mk site.build` or a shell equivalent, output `www`), then drop the
-      hand deploy from `Makefile.py`.
-- [ ] **Absorb PyScript drift.** Examples pin 2025.2.2; PyScript is at 2026.7.3
-      (2026-07-29). Bump the 36 pins, run the browser suite under both `mpy` and `py`,
-      fix what broke. This is the real first milestone.
-- [ ] Merge or decline the four upstream PRs left open (two from 2025-10: `trigger_redraw`
-      and lifecycle docs; a jinja2 bump; Playwright on WebKit/Firefox).
-- [x] `mk test --integration` runs locally (Chromium via `uv run playwright install
-      chromium`, ~6 min because every example pulls PyScript from the CDN). It caught the
-      import-stripping regression the unit tests cannot see; keep it in the release
-      checklist even though it is slow.
+- [x] `puepy-reference` branch; fork tree removed from `main`.
+- [x] Skeleton: `runtime`, `errors`, `renderer` (seam + `HtmlRenderer` + `RecordingRenderer`),
+      `view` (`h` builder, call and `with` forms, `render_to_string`).
+- [x] `SPEC.md` with milestone tags.
+- [x] Local PyScript fixture: `tools/fetch_pyscript.py` unpacks the offline bundle (core +
+      Pyodide + MicroPython, 18 MB, no CDN); `tools/serve.py` serves it at `/pyscript/`.
+- [x] Browser smoke test green under `mpy` and `py` (`tests/browser/test_smoke.py`). PyScript's
+      offline mode resolves interpreters as `./pyscript/<name>/…` relative to the *page*, so
+      `tools/serve.py` answers `/pyscript/` under any path and the site has a `_redirects` rule.
+- [x] CI: the browser job fetches the bundle and caches it by the fetcher's hash.
+- [ ] Run the CI workflow once on GitHub (needs the repo); the browser job is untested there.
 
-## Known failing
+## M1 (next)
 
-- [ ] `tests/integration/test_examples.py::test_refs_problem` fails on the pristine upstream
-      tree too (3/3 runs each, Chromium, 2026-09-05), on the second assertion: after
-      `fill("F")` the input is expected to have lost focus and has not. Either the redraw
-      is now fast enough to keep focus or Playwright's `fill` behaves differently than in
-      2025; the "problem" the example demonstrates may simply no longer reproduce. Decide
-      after the PyScript bump; until then CI's `examples` job is red on this one test.
-- [ ] Most integration tests do not request the `http_server` fixture, so they only pass
-      when an earlier test started the server. Make it `autouse` (session scope).
+- [ ] `frontage/reactive.py`: Signal, Memo, Effect (two-phase), RenderEffect, batch, untrack,
+      on, Owner, context, selector. SPEC §4 C1–C15, exhaustive unit tests on CPython.
+- [ ] `frontage/store.py`: SPEC §5 T1–T5, T7.
+- [ ] `DomRenderer` and `clone_template`; the insert rules; delegated events; `Show`, `For`,
+      `bind:`. SPEC §2 S5–S6, §6 W1–W7, W13, W17.
+- [ ] Counter, todo and rows examples with browser tests; the rows benchmark harness (§12).
 
-## Docs (moving to academy.optersoft.com)
+## Outward-facing, for David
 
-- [ ] Port the mkdocs tree under `docs/` into `academy-pages` and add the `/tool/frontage`
-      redirect there; every URL in this repo already points at that path, which is a 404
-      until then. The `<frontage src=…>` embeds become links to
-      `https://frontage.optersoft.com/examples/…` in the port.
+- [ ] Email PuePy's author about the fork and the rewrite (courtesy; nothing is owed).
+- [ ] Create `github.com/optersoft/frontage`, push, register the PyPI name and the trusted
+      publisher (owner `optersoft`, repo `frontage`, workflow `ci.yml`, environment `pypi`).
+- [ ] DNS: proxied CNAME `frontage -> frontage-a8x.pages.dev` in the optersoft.com zone; the
+      Pages project has the domain attached and waits on it. Then connect the project to the
+      GitHub repo and retire the hand deploy.
+- [ ] Check `frontage.dev`.
 
-- [ ] Host our own tutorial examples (the `<frontage src=…>` embeds still load
-      `kkinder.pyscriptapps.com/puepy-tutorial`, whose code says `puepy`). Serving
-      `examples/` from the docs site is the obvious route.
-- [ ] `docs/installation.md` now points at PyPI's files tab; check the wording once a
-      release exists.
-- [ ] `docs/faq.md` and the tutorial still read as PuePy's voice in places; a pass for
-      "we/our" and for the project name in prose.
+## Site and docs
 
-## Later
-
-- [ ] A changelog (`CHANGELOG.md`) starting at 0.1.0 = PuePy 0.6.5 renamed.
-- [ ] Decide whether MicroPython support stays first-class; it constrains the whole package
-      (see CLAUDE.md) and the tests only cover CPython.
+- [ ] The landing page still shows the M2 template syntax as if it ran today; fine as a
+      target, but say "target syntax" until M2 lands. The deployed site still serves the
+      fork's examples; redeploy (`mk site.deploy`) once M1 has real examples to show.
+- [ ] Docs on academy at `/tool/frontage`, chapter per concept in `DESIGN.md` order, each with
+      its live example; one interpreter per page for the embeds (§2b).
+- [ ] The measured size of a MicroPython Frontage app, on the landing page (§2b).

@@ -1,3 +1,0 @@
-# peupy.exceptions
-
-::: frontage.exceptions

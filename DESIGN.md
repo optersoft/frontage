@@ -174,7 +174,7 @@ dependency tracking under an owner tree.
 from frontage import Signal, Memo, Effect, batch, untrack
 
 count = Signal(0)
-double = Memo(lambda: count() * 2)          # accessors are callables
+double = Memo(lambda: count() * 2)  # accessors are callables
 Effect(lambda: double(), lambda v, prev: print("double is", v))
 count.set(2)
 count.update(lambda n: n + 1)
@@ -362,12 +362,16 @@ Solid-router's shape, which is Leptos's with data loading co-located:
 ```python
 router = Router(
     Route("/", Home),
-    Route("/users", Users, children=[
-        Route("/", UserList),
-        Route("/:id", User, preload=preload_user),
-    ]),
+    Route(
+        "/users",
+        Users,
+        children=[
+            Route("/", UserList),
+            Route("/:id", User, preload=preload_user),
+        ],
+    ),
     Route("/*any", NotFound),
-    mode="history",            # or "hash" for the no-server tutorial case, or "memory" for tests
+    mode="history",  # or "hash" for the no-server tutorial case, or "memory" for tests
 )
 mount("#app", router)
 ```

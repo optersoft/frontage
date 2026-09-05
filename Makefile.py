@@ -2,13 +2,12 @@
 
     mk sync                 .venv with every dependency group
     mk test                 unit tests (no browser)
-    mk test --integration   the examples, driven in a real browser via Playwright
+    mk test --browser       the examples in Chromium under MicroPython and Pyodide
+    mk pyscript.fetch       PyScript's offline bundle (core + both interpreters) into tools/pyscript/
     mk lint [--fix]         ruff check + ruff format, as CI runs them
     mk types                ty
     mk check                the gate: lint, types, unit tests
-    mk serve [--port N]     the examples at http://localhost:8000, live against ./frontage
-    mk docs.serve           the inherited mkdocs tree, for reading while it is ported to academy
-    mk docs.build           the same, built into ./site
+    mk serve [--port N]     the examples at http://127.0.0.1:8000/examples/, package read live
     mk dist.build           sdist + wheel into ./dist, then import the wheel once
     mk site.build           frontage.optersoft.com into ./www: web/ + the live examples
     mk site.deploy          build, then publish ./www to Cloudflare Pages (project `frontage`)
@@ -43,17 +42,24 @@ def sync() -> None:
 
 
 @task(requires=["uv"])
-def test(*paths: str, integration: bool = False, verbose: bool = False) -> None:
-    """Run the tests. Unit tests by default; the browser suite with --integration.
+def test(*paths: str, browser: bool = False, verbose: bool = False) -> None:
+    """Run the tests. Unit tests by default; the browser suite with --browser.
 
-    The integration suite needs a browser once: `uv run playwright install chromium`.
+    The browser suite needs `mk pyscript.fetch` once, and a Chromium once:
+    `uv run playwright install chromium`.
 
     Args:
-        integration: run tests/integration (Playwright) instead of the unit tests
+        browser: run tests/browser (Playwright, both interpreters) instead of the unit tests
         verbose: show each test name
     """
-    target = list(paths) or (["tests/integration", "--browser", "chromium"] if integration else [])
+    target = list(paths) or (["tests/browser", "--browser", "chromium"] if browser else [])
     sh("uv", "run", "--frozen", "pytest", "-q", *target, *(["-v"] if verbose else []))
+
+
+@task(name="pyscript.fetch", requires=["uv"])
+def pyscript_fetch() -> None:
+    """Unpack PyScript's offline bundle into tools/pyscript/<version>/ (a no-op once present)."""
+    sh("uv", "run", "--frozen", "python", "tools/fetch_pyscript.py")
 
 
 @task(requires=["uv"])
@@ -79,26 +85,14 @@ def check() -> None:
     note("lint, types and unit tests passed")
 
 
-@task(requires=["uv"])
+@task(requires=["uv"], needs=[pyscript_fetch])
 def serve(*, port: int = 8000) -> None:
-    """Serve the examples, reading ./frontage live so an edit shows on reload.
+    """Serve the examples and the local PyScript, reading ./frontage live so an edit shows on reload.
 
     Args:
         port: TCP port to listen on
     """
-    sh("uv", "run", "--frozen", "python", "serve_examples.py", "--port", str(port))
-
-
-@task(name="docs.serve", requires=["uv"])
-def docs_serve() -> None:
-    """Serve the documentation with live reload."""
-    sh("uv", "run", "--frozen", "mkdocs", "serve")
-
-
-@task(name="docs.build", requires=["uv"])
-def docs_build() -> None:
-    """Build the documentation into ./site."""
-    sh("uv", "run", "--frozen", "mkdocs", "build")
+    sh("uv", "run", "--frozen", "python", "tools/serve.py", "--port", str(port))
 
 
 @task(name="dist.build", requires=["uv"])
