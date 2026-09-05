@@ -20,7 +20,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("app", help="a directory with an index.html and the app's .py files")
     parser.add_argument("--out", default=None, help="destination (default: build/<app name>)")
-    parser.add_argument("--no-pyscript", action="store_true", help="link PyScript from pyscript.net instead of bundling it")
+    parser.add_argument(
+        "--no-pyscript", action="store_true", help="link PyScript from pyscript.net instead of bundling it"
+    )
     args = parser.parse_args()
     app = Path(args.app).resolve()
     if not (app / "index.html").exists():
@@ -39,7 +41,11 @@ def main():
     html = (out / "index.html").read_text()
     if args.no_pyscript:
         version = _bundle_version()
-        html = html.replace("/pyscript/core.js", f"https://pyscript.net/releases/{version}/core.js").replace("/pyscript/core.css", f"https://pyscript.net/releases/{version}/core.css").replace(" offline>", ">")
+        html = (
+            html.replace("/pyscript/core.js", f"https://pyscript.net/releases/{version}/core.js")
+            .replace("/pyscript/core.css", f"https://pyscript.net/releases/{version}/core.css")
+            .replace(" offline>", ">")
+        )
     else:
         bundle = _bundle()
         if bundle is None:
