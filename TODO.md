@@ -22,7 +22,7 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
       offline mode resolves interpreters as `./pyscript/<name>/…` relative to the *page*, so
       `tools/serve.py` answers `/pyscript/` under any path and the site has a `_redirects` rule.
 - [x] CI: the browser job fetches the bundle and caches it by the fetcher's hash.
-- [ ] Run the CI workflow once on GitHub (needs the repo); the browser job is untested there.
+- [x] CI ran on GitHub 2026-09-05: test 10 s, browser 41 s (bundle fetch included), both green.
 
 ## M1 (next)
 
@@ -36,8 +36,9 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
 ## Outward-facing, for David
 
 - [ ] Email PuePy's author about the fork and the rewrite (courtesy; nothing is owed).
-- [ ] Create `github.com/optersoft/frontage`, push, register the PyPI name and the trusted
-      publisher (owner `optersoft`, repo `frontage`, workflow `ci.yml`, environment `pypi`).
+- [x] `github.com/optersoft/frontage` is live (main, `puepy-reference`, tag `v0.0.1`); the PyPI
+      trusted publisher is registered and **`frontage 0.0.1` is on PyPI** (2026-09-05). A tag
+      pushed seconds after the repo's first push did not trigger a run; re-pushing it did.
 - [ ] DNS: proxied CNAME `frontage -> frontage-a8x.pages.dev` in the optersoft.com zone; the
       Pages project has the domain attached and waits on it. Then connect the project to the
       GitHub repo and retire the hand deploy.
