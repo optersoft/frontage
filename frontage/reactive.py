@@ -37,20 +37,30 @@ __all__ = [
     "use",
 ]
 
-_UNSET = object()
+
+class _Unset:
+    """The type of `_UNSET`, so a checker can tell "not passed" from `None`."""
+
+
+_UNSET = _Unset()
 
 CLEAN = 0  # nothing this node read has changed
 CHECK = 1  # something upstream changed; whether it reaches this node is not known yet
 DIRTY = 2  # a direct dependency changed; this node must recompute
 
 # Module state. One reactive system per interpreter, which is what a browser page is.
-# (String annotations: never evaluated, so MicroPython does not mind them.)
-_owner: "Owner | None" = None  # the Owner new computations are created under
-_listener: "_Computation | None" = None  # the computation whose reads are being tracked
+_owner = None  # the Owner new computations are created under
+_listener = None  # the computation whose reads are being tracked
 _batch_depth = 0
 _render_queue = []  # effects to run at the end of the outermost batch, render first
 _effect_queue = []
 _flushing = False
+
+
+def _current_owner() -> "Owner | None":
+    # The typed way to read the module global; string annotations are never evaluated,
+    # so MicroPython does not mind them.
+    return _owner
 
 
 def _same(equal, a, b):
@@ -65,9 +75,9 @@ def _same(equal, a, b):
 class Owner:
     """A node of the ownership tree. Owns computations and cleanups; carries context."""
 
-    def __init__(self, parent=_UNSET):
-        if parent is _UNSET:
-            parent = _owner
+    def __init__(self, parent: "Owner | None | _Unset" = _UNSET):
+        if isinstance(parent, _Unset):
+            parent = _current_owner()
         self._parent = parent
         self._owned = []
         self._cleanups = []
@@ -157,7 +167,7 @@ def provide(ctx, value):
 
 
 def use(ctx):
-    owner = _owner
+    owner = _current_owner()
     while owner is not None:
         if owner._context is not None and ctx in owner._context:
             return owner._context[ctx]
