@@ -1,5 +1,7 @@
 import re
+
 from bs4 import BeautifulSoup, Comment
+
 from frontage import Application, Page, t
 
 app = Application()

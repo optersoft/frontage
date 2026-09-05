@@ -3,9 +3,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from frontage import core
+
 from .dom_test import DomTest
 from .dom_tools import node_to_dict
-from frontage import core
 
 
 class TestTag(DomTest):
@@ -44,7 +45,7 @@ class TestIntegration(DomTest):
                     self.insert_slot("card-header")
                 with t.div(classes="card-body"):
                     self.insert_slot()
-                    if self.show_buttons:
+                    if self.show_buttons:  # ty: ignore[unresolved-attribute] -- props become attributes at runtime
                         with t.div(classes="card-footer"):
                             t.button("Button 1")
                             t.button("Button 2")
@@ -96,7 +97,7 @@ class TestIntegration(DomTest):
         self.page.mount(self.html)
 
         # Make sure it's mounted
-        mounted_element = self.page.element
+        assert self.page.element is not None
 
         # Change values
         self.page.state["field2"] = "New Value"

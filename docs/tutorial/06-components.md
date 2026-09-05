@@ -17,25 +17,24 @@ Components are a way to encapsulate a piece of UI that can be reused throughout 
             background_color="#efefef",
             border="solid 2px #333",
         )
-    
+
         default_classes = [card]
-    
+
         type_styles = {
             "success": success,
             "warning": warning,
             "error": error,
         }
-    
+
         def populate(self):
             with t.h2(classes=[self.type_styles[self.type]]):
-                self.insert_slot("card-header")    # (5)!
+                self.insert_slot("card-header")  # (5)!
             with t.p():
-                self.insert_slot()    # (6)!
+                self.insert_slot()  # (6)!
             t.button(self.button_text, on_click=self.on_button_click)
-    
+
         def on_button_click(self, event):
-            self.trigger_event("my-custom-event",
-                detail={"type": self.type})  # (7)!
+            self.trigger_event("my-custom-event", detail={"type": self.type})  # (7)!
     ```
 
     1. The `@t.component()` decorator registers the class as a component for use elsewhere.
@@ -54,32 +53,34 @@ Components are a way to encapsulate a piece of UI that can be reused throughout 
     class ComponentPage(Page):
         def initial(self):
             return {"message": ""}
-    
+
         def populate(self):
             t.h1("Components are useful")
-    
-            with t.card(type="success",  # (1)
-                        on_my_custom_event=self.handle_custom_event) as card:  # (2)
+
+            with t.card(
+                type="success",  # (1)
+                on_my_custom_event=self.handle_custom_event,
+            ) as card:  # (2)
                 with card.slot("card-header"):
                     t("Success!")  # (3)
                 with card.slot():
                     t("Your operation worked")  # (4)
-    
+
             with t.card(type="warning", on_my_custom_event=self.handle_custom_event) as card:
                 with card.slot("card-header"):
                     t("Warning!")
                 with card.slot():
                     t("Your operation may not work")
-    
+
             with t.card(type="error", on_my_custom_event=self.handle_custom_event) as card:
                 with card.slot("card-header"):
                     t("Failure!")
                 with card.slot():
                     t("Your operation failed")
-    
+
             if self.state["message"]:
                 t.p(self.state["message"])
-    
+
         def handle_custom_event(self, event):  # (5)
             self.state["message"] = f"Custom event from card with type {event.detail.get('type')}"
     ```

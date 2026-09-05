@@ -1,5 +1,6 @@
-from frontage import Application, Page, t
 import datetime
+
+from frontage import Application, Page, t
 
 app = Application()
 

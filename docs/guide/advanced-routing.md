@@ -50,16 +50,14 @@ from frontage import Page
 
 
 @app.page("/my-page")
-class MyPage(Page):
-    ...
+class MyPage(Page): ...
 ```
 
 Or, define a default route by not passing a path.
 
 ```Python
 @app.page()
-class MyPage(Page):
-    ...
+class MyPage(Page): ...
 ```
 
 You can also add routes directly, though this isn't the preferred method.
@@ -76,14 +74,12 @@ by passing a `name` parameter to either `add_route` or `@app.page`:
 
 ```Python
 @app.page("/my-page", name="another_name")
-class MyPage(Page):
-    ...
+class MyPage(Page): ...
 
 
-class AnotherPage(Page):
-    ...
-    
-    
+class AnotherPage(Page): ...
+
+
 app.add_route("/foobar", AnotherPage, name="foobar")
 ```
 

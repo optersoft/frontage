@@ -2,7 +2,8 @@ import unittest
 from xml.dom import getDOMImplementation
 
 from frontage import CssClass
-from frontage.util import merge_classes, _extract_event_handlers, patch_dom_element
+from frontage.util import _extract_event_handlers, merge_classes, patch_dom_element
+
 from .dom_tools import node_to_dict
 
 
@@ -75,8 +76,8 @@ class TestExtractEventHandlers(unittest.TestCase):
 class TestPatchDomElement(unittest.TestCase):
     def setUp(self):
         self.impl = getDOMImplementation()
-        self.doctype = self.impl.createDocumentType("html", None, None)
-        self.document = self.impl.createDocument(None, "html", self.doctype)
+        self.doctype = self.impl.createDocumentType("html", None, None)  # ty: ignore[invalid-argument-type] -- typeshed says str; minidom accepts None
+        self.document = self.impl.createDocument(None, "html", self.doctype)  # ty: ignore[invalid-argument-type] -- typeshed says str; minidom accepts None
         self.html = self.document.documentElement
 
     def test_patch_dom_element(self):
@@ -211,8 +212,6 @@ class TestPatchDomElement(unittest.TestCase):
         new_div.appendChild(new_p)
 
         patch_dom_element(new_div, div)
-
-        x = node_to_dict(self.html)
 
         self.assertDictEqual(
             node_to_dict(self.html),

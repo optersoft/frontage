@@ -1,4 +1,4 @@
-from .runtime import is_server_side, create_proxy, Object, platform, PLATFORM_PYODIDE
+from .runtime import is_server_side
 
 try:
     from pyscript.ffi import to_js

@@ -7,8 +7,10 @@ Here's an example of a precheck that raises an exception if the user is not auth
 ```py title="Showing error"
 from frontage import exceptions, Page
 
+
 class MyPage(Page):
     ...
+
     def precheck(self):
         if not self.application.state["authenticated_user"]:
             raise exceptions.Unauthorized()
@@ -22,12 +24,12 @@ Alternatively, you could redirect the user by raising puepu.exceptions.Redirect:
 from frontage import exceptions, Page
 
 
-class LoginPage(Page):
-    ...
+class LoginPage(Page): ...
 
 
 class MyPage(Page):
     ...
+
     def precheck(self):
         if not self.application.state["authenticated_user"]:
             raise exceptions.Redirect(LoginPage)

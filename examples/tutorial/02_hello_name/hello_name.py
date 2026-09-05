@@ -12,7 +12,7 @@ class HelloNamePage(Page):
         if self.state["name"]:
             t.h1(f"Hello, {self.state['name']}!")
         else:
-            t.h1(f"Why don't you tell me your name?")
+            t.h1("Why don't you tell me your name?")
 
         with t.div(style="margin: 1em"):
             t.input(bind="name", placeholder="name", autocomplete="off")

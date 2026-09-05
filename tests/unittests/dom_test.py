@@ -1,5 +1,5 @@
 import unittest
-from xml.dom import getDOMImplementation, Node
+from xml.dom import Node, getDOMImplementation
 
 from frontage import core
 
@@ -13,7 +13,7 @@ class DomTest(unittest.TestCase):
         self.doctype = self.impl.createDocumentType(
             "html", "-//W3C//DTD HTML 4.01 Transitional//EN", "http://www.w3.org/TR/html4/loose.dtd"
         )
-        self.document = self.impl.createDocument(None, "html", self.doctype)
+        self.document = self.impl.createDocument(None, "html", self.doctype)  # ty: ignore[invalid-argument-type] -- typeshed says str; minidom accepts None
         self.html = self.document.documentElement
 
         core.Tag.document = self.document

@@ -19,8 +19,8 @@ Classes:
 """
 
 from .core import Page
-from .runtime import window, history, platform, PLATFORM_MICROPYTHON, is_server_side
-from .util import mixed_to_underscores, jsobj
+from .runtime import PLATFORM_MICROPYTHON, history, is_server_side, platform, window
+from .util import jsobj, mixed_to_underscores
 
 
 def _micropython_parse_query_string(query_string):
@@ -70,7 +70,7 @@ def _micropython_parse_query_string(query_string):
             if key in params:
                 params[key].append("")
             else:
-                params[key] = ""
+                params[key] = [""]
     return params
 
 
@@ -84,7 +84,7 @@ else:
     from urllib.parse import quote as url_quote
 
 if is_server_side:
-    from urllib.parse import urlparse, parse_qs
+    from urllib.parse import parse_qs, urlparse
 
     def parse_query_string(qs):
         return parse_qs(urlparse(qs).query)
@@ -109,7 +109,7 @@ class Route:
         use the @app.page decorator to define a route at the time you define your Pages.
     """
 
-    def __init__(self, path_match: str, page: Page, name: str, base_path: str, router=None):
+    def __init__(self, path_match: str, page: Page, name: str, base_path: "str | None", router=None):
         """
         Args:
             path_match (str): The path match pattern used for routing.
@@ -241,6 +241,11 @@ class Router:
         self.base_path = base_path
         self.link_mode = link_mode
 
+    def _app(self):
+        if self.application is None:
+            raise RuntimeError("this router is not installed in an application; use Application.install_router")
+        return self.application
+
     def add_route_instance(self, route: Route):
         """
         Add a route instance to the current router.
@@ -270,8 +275,8 @@ class Router:
             name (str, optional): The name of the route. If not provided, the name will be derived from the page class name.
         """
         # Convert path to a simple pattern without regex
-        if not name:
-            name = mixed_to_underscores(page_class.__name__)
+        name = name if name else mixed_to_underscores(page_class.__name__)
+        assert isinstance(name, str)
         self.add_route_instance(Route(path_match=path_match, page=page_class, name=name, base_path=self.base_path))
 
     def reverse(self, destination, **kwargs):
@@ -352,11 +357,11 @@ class Router:
             window.location = path
         elif self.link_mode == self.LINK_MODE_HTML5:
             history.pushState(jsobj(), "", path)
-            self.application.mount(self.application._selector_or_element, path)
+            self._app().mount(self._app()._selector_or_element, path)
         elif self.link_mode == self.LINK_MODE_HASH:
             path = path[1:] if path.startswith("#") else path
             if not is_server_side:
                 history.pushState(jsobj(), "", "#" + path)
-            self.application.mount(self.application._selector_or_element, path)
+            self._app().mount(self._app()._selector_or_element, path)
         else:
             raise Exception(f"Invalid link mode: {self.link_mode}")

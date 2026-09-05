@@ -1,10 +1,11 @@
 import itertools
+
 import pytest
+
 from frontage.application import DefaultIdGenerator
 
 
 class TestDefaultIdGenerator:
-
     @pytest.fixture
     def id_generator(self):
         return DefaultIdGenerator("test")

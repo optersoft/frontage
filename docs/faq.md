@@ -42,7 +42,7 @@ with t.h1():
     t(f"{name}'s grocery shopping list")
 with t.ul():
     for item in items:
-       t.li(item)
+        t.li(item)
 t.button("Buy Items", on_click=self.buy)
 ```
 

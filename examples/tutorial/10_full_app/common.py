@@ -1,5 +1,5 @@
 from frontage import Application
-from frontage.router import Router, Route
+from frontage.router import Router
 
 
 class AwesomeApp(Application):

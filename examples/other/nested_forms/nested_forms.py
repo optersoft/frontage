@@ -21,7 +21,6 @@ class RadioButtonsPage(Page):
 
     def populate(self):
         with t.form():
-
             with t.div(
                 style="max-width: 500px; margin: 0 auto; padding: 1rem; font-family: Arial, sans-serif; border: 1px solid #ddd; border-radius: 8px;"
             ):
@@ -49,7 +48,6 @@ class RadioButtonsPage(Page):
                     )
                     # Favorite Color Radio Buttons
                     with t.div(style="margin-bottom: 1rem;"):
-
                         t.div(
                             t.label(t.input(type="radio", value="red", bind=["user", "favorite_color"]), "Red"),
                             classes="form-row",

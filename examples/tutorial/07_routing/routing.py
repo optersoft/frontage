@@ -1,4 +1,4 @@
-from frontage import Application, Page, Component, t
+from frontage import Application, Component, Page, t
 from frontage.router import Router
 
 app = Application()

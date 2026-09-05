@@ -35,7 +35,7 @@ def http_server():
     if not already_running:
         os.chdir(main_directory)
         process = subprocess.Popen(
-            ["python", "serve_examples.py", f"--port", str(PORT)], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            ["python", "serve_examples.py", "--port", str(PORT)], stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
 
     yield PORT

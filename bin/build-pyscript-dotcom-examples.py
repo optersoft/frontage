@@ -3,9 +3,9 @@ The script examples on pyscript.com are a little different. This builds what we 
 """
 
 import fnmatch
+import json
 import os
 import shutil
-import json
 import subprocess
 from pathlib import Path
 
@@ -20,7 +20,7 @@ def replace_frontage_files_with_dist(content, wheel_location):
     """
 
     if "files" in content:
-        for file_source, file_dest in content["files"].copy().items():
+        for file_source, _file_dest in content["files"].copy().items():
             if fnmatch.fnmatch(file_source, "/frontage/*.py"):
                 del content["files"][file_source]
 
@@ -35,7 +35,7 @@ def build_pyscript_examples(source_dir: Path, destination_dir: Path):
     if not destination_dir.exists():
         os.makedirs(destination_dir, exist_ok=True)
 
-    for origin_path, dirs, files in os.walk(source_dir):
+    for origin_path, _dirs, files in os.walk(source_dir):
         origin_path = Path(origin_path)
 
         wheel_location = os.path.join(os.path.relpath(examples_path, origin_path), wheel_file.name)

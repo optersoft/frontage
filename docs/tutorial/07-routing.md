@@ -10,7 +10,6 @@ For single page apps (SPAs) or even complex pages with internal navigation, Fron
 Inspired by Flask's simple and elegant routing system, Frontage uses decorators on page classes to define routes and parameters. The router can be configured to use either hash-based or history-based routing. Consider this example's source code:
 
 ``` py title="routing.py" linenums="1" hl_lines="5 15 43 54 64 65 66"
-
 from frontage import Application, Page, Component, t
 from frontage.router import Router
 
@@ -74,9 +73,7 @@ class DefaultPage(Page):
         with t.ul():
             for pet_id, pet_details in pets.items():
                 with t.li():
-                    t.link(pet_details["name"],
-                           href=PetPage,
-                           args={"pet_id": pet_id})  # (5)
+                    t.link(pet_details["name"], href=PetPage, args={"pet_id": pet_id})  # (5)
 
 
 app.mount("#app")
@@ -104,8 +101,7 @@ The default page is rendered for the "root" URL or when no URL is specified. The
 
 ``` py
 @app.page()
-class DefaultPage(Page):
-    ...
+class DefaultPage(Page): ...
 ```
 
 ??? note "More information on the router"

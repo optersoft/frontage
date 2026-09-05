@@ -1,4 +1,4 @@
-from frontage import Component, Page, Application, t
+from frontage import Application, Component, Page, t
 from frontage.runtime import next_tick
 
 app = Application()

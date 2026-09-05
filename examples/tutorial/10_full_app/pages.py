@@ -1,5 +1,6 @@
-from frontage import Page, t, Prop
 from common import app
+
+from frontage import Page, t
 
 
 @app.page("/charts")

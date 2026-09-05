@@ -1,16 +1,15 @@
 import itertools
 import random
 import sys
-import time
 
 from frontage.storage import BrowserStorage
 
 from . import exceptions
-from .core import Page, t, Prop
+from .core import Page, Prop, t
 from .reactivity import ReactiveDict, Stateful
 from .runtime import (
-    is_server_side,
     add_event_listener,
+    is_server_side,
     window,
 )
 
@@ -19,7 +18,7 @@ class GenericErrorPage(Page):
     props = ["error"]
 
     def populate(self):
-        t.h1(f"Error: {self.error}")
+        t.h1(f"Error: {self.error}")  # ty: ignore[unresolved-attribute]
 
 
 class TracebackErrorPage(Page):
@@ -32,13 +31,13 @@ class TracebackErrorPage(Page):
             import io
 
             buf = io.StringIO()
-            sys.print_exception(self.error, buf)
+            sys.print_exception(self.error, buf)  # ty: ignore[unresolved-attribute]
             return buf.getvalue()
 
-        return "\n".join(traceback.format_exception(type(self.error), self.error, self.error.__traceback__))
+        return "\n".join(traceback.format_exception(type(self.error), self.error, self.error.__traceback__))  # ty: ignore[unresolved-attribute]
 
     def populate(self):
-        t.h1(f"Error: {self.error}")
+        t.h1(f"Error: {self.error}")  # ty: ignore[unresolved-attribute]
         t.pre(str(self.format_exception()))
 
 
@@ -119,7 +118,7 @@ class Application(Stateful):
         self.router = None
         self._selector_or_element = None
         self.default_page = None
-        self.active_page = None
+        self.active_page: "Page | None" = None
 
         self.not_found_page = GenericErrorPage
         self.forbidden_page = GenericErrorPage
@@ -127,6 +126,11 @@ class Application(Stateful):
         self.error_page = TracebackErrorPage
 
         self.element_id_generator = element_id_generator or DefaultIdGenerator()
+
+    def _installed_router(self):
+        if self.router is None:
+            raise RuntimeError("no router installed; call Application.install_router first")
+        return self.router
 
     def install_router(self, router_class, **kwargs):
         """
@@ -164,7 +168,7 @@ class Application(Stateful):
                 raise Exception("Router not installed")
 
             def decorator(func):
-                self.router.add_route(route, func, name=name)
+                self._installed_router().add_route(route, func, name=name)
                 return func
 
             return decorator
@@ -177,9 +181,10 @@ class Application(Stateful):
             return decorator
 
     def _on_popstate(self, event):
-        if self.router.link_mode == self.router.LINK_MODE_HASH:
+        router = self._installed_router()
+        if router.link_mode == router.LINK_MODE_HASH:
             self.mount(self._selector_or_element, window.location.hash.split("#", 1)[-1])
-        elif self.router.link_mode in (self.router.LINK_MODE_DIRECT, self.router.LINK_MODE_HTML5):
+        elif router.link_mode in (router.LINK_MODE_DIRECT, router.LINK_MODE_HTML5):
             self.mount(self._selector_or_element, window.location.pathname)
 
     def remount(self, path=None, page_kwargs=None):
@@ -251,9 +256,10 @@ class Application(Stateful):
         Returns:
             str: The current path.
         """
-        if self.router.link_mode == self.router.LINK_MODE_HASH:
+        router = self._installed_router()
+        if router.link_mode == router.LINK_MODE_HASH:
             return window.location.hash.split("#", 1)[-1]
-        elif self.router.link_mode in (self.router.LINK_MODE_DIRECT, self.router.LINK_MODE_HTML5):
+        elif router.link_mode in (router.LINK_MODE_DIRECT, router.LINK_MODE_HTML5):
             return window.location.pathname
         else:
             return ""
@@ -287,7 +293,7 @@ class Application(Stateful):
                 else:
                     prop_args[prop.name] = value if not isinstance(value, list) else value[0]
 
-        self.active_page: Page = page_class(matched_route=route, application=self, extra_args=page_kwargs, **prop_args)
+        self.active_page = page_class(matched_route=route, application=self, extra_args=page_kwargs, **prop_args)
         try:
             self.active_page.mount(selector_or_element)
         except exceptions.PageError as e:
@@ -380,4 +386,4 @@ class Application(Stateful):
         Args:
             exception (RedirectException): The redirect exception containing the path to navigate to.
         """
-        self.router.navigate_to_path(exception.path)
+        self._installed_router().navigate_to_path(exception.path)

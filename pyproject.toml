@@ -72,6 +72,8 @@ extend-exclude = ["docs-legacy-files"]
 # No "UP": the package runs under MicroPython too, and pyupgrade rewrites are
 # exactly the kind of change that is fine on CPython and breaks there.
 select = ["E", "F", "I", "B"]
+# The formatter owns line width; what it cannot wrap (docstrings, long strings) is not worth a lint.
+ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 # Examples are teaching material read in the browser; star-style brevity is the point.
@@ -79,6 +81,12 @@ select = ["E", "F", "I", "B"]
 
 [tool.ty.src]
 include = ["frontage", "tests"]
+
+[tool.ty.environment]
+# What CI runs; the package itself claims 3.9 and MicroPython, which no checker models.
+python-version = "3.12"
+# Stubs for the browser-only modules (js, pyodide.ffi, pyscript.*), see typings/README.md.
+extra-paths = ["typings"]
 
 [tool.pytest.ini_options]
 # The unit tests run anywhere. The integration suite under tests/integration

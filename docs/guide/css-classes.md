@@ -8,11 +8,7 @@ class HelloWorldPage(Page):
     def populate(self):
         t.button("Primary Large Button", class_name="primary large")
         t.button("Primary Small Button", classes=["primary", "small"])
-        t.button("Primary Medium Button", classes={
-            "primary": True, 
-            "medium": True, 
-            "small": False, 
-            "large": False})
+        t.button("Primary Medium Button", classes={"primary": True, "medium": True, "small": False, "large": False})
 ```
 
 Notice that when passing a dictionary, the *value* of the dictionary indicates whether the class will be included.
@@ -38,11 +34,11 @@ To remove a class, pass it with a "/" prefix:
 ```Python
 class MyPage(Page):
     def populate(self):
-        # This will render as a div with both "card" and "card-blue" 
+        # This will render as a div with both "card" and "card-blue"
         # classes.
         t.card(classes="card-blue")
-        
+
         # This will override the default and remove the "card" class
-        t.card(classes="/card")        
+        t.card(classes="/card")
 ```
 

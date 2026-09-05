@@ -2,7 +2,7 @@ import unittest
 
 from frontage import Application
 from frontage.core import Page
-from frontage.router import Router, Route, _micropython_parse_query_string
+from frontage.router import Route, Router, _micropython_parse_query_string
 
 
 class TestRoute(unittest.TestCase):
@@ -97,9 +97,11 @@ class TestRouter(unittest.TestCase):
         page = Page()
         application.default_page = page
 
-        self.assertEqual(application.router.reverse(page), "#/")
-        application.router.link_mode = Router.LINK_MODE_HTML5
-        self.assertEqual(application.router.reverse(page), "/")
+        router = application.router
+        assert router is not None
+        self.assertEqual(router.reverse(page), "#/")
+        router.link_mode = Router.LINK_MODE_HTML5
+        self.assertEqual(router.reverse(page), "/")
 
 
 class TestMicropythonParseQueryString(unittest.TestCase):
@@ -139,8 +141,10 @@ class TestMicropythonParseQueryString(unittest.TestCase):
         self.assertEqual(_micropython_parse_query_string(query_string), expected_output)
 
     def test_single_param_without_value(self):
+        # A bare key parses like an empty one, and like URLSearchParams.getAll on Pyodide:
+        # always a list. PuePy returned a bare "" here and then crashed on a repeat of the key.
         query_string = "?name"
-        expected_output = {"name": ""}
+        expected_output = {"name": [""]}
         self.assertEqual(_micropython_parse_query_string(query_string), expected_output)
 
 

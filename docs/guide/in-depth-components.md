@@ -21,7 +21,7 @@ Props are a way to pass data to child components. Props must be defined by a com
 class MyComponent(Component):
     props = [
         "title",  # (1)!
-        Prop("author_name", "Name of Author", str, "Unknown") # (2)!
+        Prop("author_name", "Name of Author", str, "Unknown"),  # (2)!
     ]
 ```
 
@@ -43,6 +43,7 @@ from frontage import Component, Page, t
 
 class NameInput(Component):
     enclosing_tag = "input"
+
 
 class MyPage(Page):
     def populate(self):
@@ -73,9 +74,9 @@ A consumer of your component can listen for this event by defining an `on_greeti
 class MyPage(Page):
     def populate(self):
         t.my_component(on_greeting=self.on_greeting_sent)
-    
+
     def on_greeting_sent(self, event):
-        print("Incoming message from component", event.detail.get('message'))
+        print("Incoming message from component", event.detail.get("message"))
 ```
 
 !!! note "See Also"

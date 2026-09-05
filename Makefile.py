@@ -95,4 +95,8 @@ def docs_build() -> None:
 def dist_build() -> None:
     """Build sdist + wheel into ./dist and import the wheel once, as CI does before publishing."""
     sh("uv", "build")
-    sh("sh", "-c", 'uv run --isolated --no-project --with dist/*.whl -- python -c "import frontage; print(frontage.__version__)"')
+    sh(
+        "sh",
+        "-c",
+        'uv run --isolated --no-project --with dist/*.whl -- python -c "import frontage; print(frontage.__version__)"',
+    )

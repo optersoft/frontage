@@ -1,18 +1,18 @@
-from .exceptions import ElementNotInDom, PropsError, PageError
+from .exceptions import ElementNotInDom, PageError, PropsError
 from .reactivity import ReactiveDict, Stateful
 from .runtime import (
+    CustomEvent,
     add_event_listener,
-    remove_event_listener,
     create_proxy,
     document,
     is_server_side,
+    remove_event_listener,
     setTimeout,
-    CustomEvent,
 )
 from .util import (
-    mixed_to_underscores,
-    merge_classes,
     _extract_event_handlers,
+    merge_classes,
+    mixed_to_underscores,
     patch_dom_element,
 )
 
@@ -56,7 +56,7 @@ def _element_input_type(element):
     try:
         if element.tagName.lower() == "input" and element.getAttribute("type"):
             return element.getAttribute("type").lower()
-    except:
+    except Exception:
         return None
 
 
@@ -95,7 +95,7 @@ class Tag:
         self,
         tag_name,
         ref,
-        page: "Page" = None,
+        page: "Page | None" = None,
         parent=None,
         parent_component=None,
         origin=None,
@@ -497,14 +497,16 @@ class Tag:
             self.set_bind_value(self.bind, event.target.value)
 
     def set_bind_value(self, bind, value):
+        origin = self.origin
+        assert origin is not None, "a bound tag always has an origin"
         if type(bind) in (list, tuple):
-            nested_dict = self.origin.state
+            nested_dict = origin.state
             for key in bind[:-1]:
                 nested_dict = nested_dict[key]
-            with self.origin.state.mutate(bind[0]):
+            with origin.state.mutate(bind[0]):
                 nested_dict[bind[-1]] = value
         else:
-            self.origin.state[self.bind] = value
+            origin.state[self.bind] = value
 
     @property
     def page(self):
@@ -527,7 +529,7 @@ class Tag:
         existing_parent = getattr(self, "_parent", None)
         if new_parent == existing_parent:
             if new_parent and self not in new_parent.children:
-                existing_parent.children.append(self)
+                new_parent.children.append(self)
             return
 
         if existing_parent and self in existing_parent.children:
@@ -595,10 +597,9 @@ class Tag:
             print("Triggering event with underscores. Did you mean dashes?: ", event)
 
         # noinspection PyUnresolvedReferences
-        from pyscript.ffi import to_js
-
         # noinspection PyUnresolvedReferences
-        from js import Object, Map
+        from js import Map, Object
+        from pyscript.ffi import to_js
 
         if detail:
             event_object = to_js({"detail": Map.new(Object.entries(to_js(detail)))})
@@ -877,9 +878,9 @@ class Builder:
             tag_name = tag_name.replace("_", "-")
 
         if tag_name == "insert_slot":
-            print(f"Called t.insert_slot. Did you mean self.insert_slot?")
+            print("Called t.insert_slot. Did you mean self.insert_slot?")
         elif tag_name == "slot":
-            print(f"Called t.slot. Did you mean <component>.slot?")
+            print("Called t.slot. Did you mean <component>.slot?")
 
         parent = Tag.stack[-1] if Tag.stack else None
         parent_component = Tag.component_stack[-1] if Tag.component_stack else None
@@ -894,6 +895,7 @@ class Builder:
             page = root_tag.page
         else:
             raise Exception("t.generate_tag called without a context")
+        assert parent is not None and origin is not None, "a root tag implies a parent and an origin"
 
         # Determine ref value
         ref_part = "__" + (f"{parent.ref}.{tag_name}_{len(parent.children) + 1}").lstrip("_")
@@ -946,7 +948,7 @@ class Builder:
 
         return inner
 
-    def add_component(self, component: Component):
+    def add_component(self, component: "type[Component]"):
         if component.component_name:
             component_name = component.component_name.replace("_", "-")
         else:

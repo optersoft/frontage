@@ -7,7 +7,7 @@ Let's start with the simplest possible: Hello, World!
 === "hello_world.py"
 
     ``` py linenums="1"
-    --8<-- "examples/tutorial/01_hello_world/hello_world.py"
+    --8 < --"examples/tutorial/01_hello_world/hello_world.py"
     ```
 
 === "index.html"
@@ -63,25 +63,25 @@ Let's take a look at our Python code which actually renders Hello, World.
 First, we import `Application`, `Page`, and `t` from `frontage`:
 
 ``` py
---8<-- "examples/tutorial/01_hello_world/hello_world.py:1:1"
+--8 < --"examples/tutorial/01_hello_world/hello_world.py:1:1"
 ```
 
 To use Frontage, you must always create an `Application` instance, even if the application only has one page:
 
 ``` py
---8<-- "examples/tutorial/01_hello_world/hello_world.py:3:3"
+--8 < --"examples/tutorial/01_hello_world/hello_world.py:3:3"
 ```
 
 Next, we define a Page and use the `t` singleton to compose our DOM in the `populate()` method. Don't worry too much about the details for now; just know that this is how we define pages and components in Frontage:
 
 ``` py
---8<-- "examples/tutorial/01_hello_world/hello_world.py:6:9"
+--8 < --"examples/tutorial/01_hello_world/hello_world.py:6:9"
 ```
 
 Finally, we tell Frontage where to *mount* the application. This is where the application will be rendered in the DOM. The `#app` element was already defined in our HTML file.
 
 ``` py
---8<-- "examples/tutorial/01_hello_world/hello_world.py:12:12"
+--8 < --"examples/tutorial/01_hello_world/hello_world.py:12:12"
 ```
 
 And with that, the page is added to the application, and the application is mounted in the element with id `app`.

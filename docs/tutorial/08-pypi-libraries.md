@@ -52,7 +52,7 @@ from bs4 import BeautifulSoup, Comment
 
 ??? example "Full Example Source"
     ``` py title="libraries.py" 
-    --8<-- "examples/tutorial/08_libraries/libraries.py"
+    --8 < --"examples/tutorial/08_libraries/libraries.py"
     ```
 
 !!! Note "PyScript documentation on packages"

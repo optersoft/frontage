@@ -12,10 +12,7 @@ Components (including Pages) define initial state through the `initial()` method
 ```Python
 class MyComponent(Component):
     def initial(self):
-        return {
-            "name": "Monty ... Something?",
-            "movies": ["Monty Python and the Holy Grail"]
-        }
+        return {"name": "Monty ... Something?", "movies": ["Monty Python and the Holy Grail"]}
 ```
 
 ### Modifying state

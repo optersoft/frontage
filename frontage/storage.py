@@ -96,7 +96,7 @@ class BrowserStorage:
         Returns:
             bool: True if the key exists, False otherwise.
         """
-        return not self.target.getItem(key) is None
+        return self.target.getItem(key) is not None
 
     def __len__(self):
         """

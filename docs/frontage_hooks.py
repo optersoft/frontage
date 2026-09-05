@@ -20,9 +20,7 @@ def on_page_content(html, page, config, files):
             browser_buttons.append(button)
         browser_header.append(browser_buttons)
 
-        address_bar = soup.new_tag(
-            "a", **{"class": "address-bar", "target": "_blank", "href": src}
-        )
+        address_bar = soup.new_tag("a", **{"class": "address-bar", "target": "_blank", "href": src})
         address_bar.string = src
 
         browser_header.append(address_bar)

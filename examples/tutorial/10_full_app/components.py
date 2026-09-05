@@ -1,8 +1,7 @@
-from frontage import t, Component
-from frontage.util import jsobj
-from frontage import exceptions
-
 import js
+
+from frontage import Component, exceptions, t
+from frontage.util import jsobj
 
 
 class SidebarItem:

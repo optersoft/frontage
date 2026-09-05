@@ -1,7 +1,7 @@
+import ltk
 from ltk.jquery import jQuery
 
-import ltk
-from frontage import Application, Page, t, Component
+from frontage import Application, Component, Page, t
 
 app = Application()
 
@@ -60,7 +60,7 @@ class LtkPage(Page):
                         t.li(t.strong(k + ": "), str(v))
             with t.fieldset(style="flex: 1; margin: 10px;"):
                 t.legend("LTK Widgets")
-                with t.ltk() as l:
+                with t.ltk():
                     vbox = ltk.VBox(
                         ltk.Heading1("Dave's Pizza Place"),
                         ltk.VBox(

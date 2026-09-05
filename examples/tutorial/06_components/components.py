@@ -1,4 +1,4 @@
-from frontage import Application, Page, Component, t, CssClass
+from frontage import Application, Component, CssClass, Page, t
 
 app = Application()
 

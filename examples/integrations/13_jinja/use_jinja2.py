@@ -1,7 +1,7 @@
-from frontage import Application, Page, t, Component, Prop
-from frontage.runtime import add_event_listener
-
 import jinja2
+
+from frontage import Application, Component, Page, Prop, t
+from frontage.runtime import add_event_listener
 
 app = Application()
 
