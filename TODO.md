@@ -26,9 +26,10 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
 
 ## M1 (next)
 
-- [ ] `frontage/reactive.py`: Signal, Memo, Effect (two-phase), RenderEffect, batch, untrack,
-      on, Owner, context, selector. SPEC §4 C1–C15, exhaustive unit tests on CPython.
-- [ ] `frontage/store.py`: SPEC §5 T1–T5, T7.
+- [x] `frontage/reactive.py`: Signal, Memo, Effect (two-phase), RenderEffect, batch, untrack,
+      on, Owner, context, selector. SPEC §4 C1–C15; 30 unit tests; runs under MicroPython
+      (the browser smoke exercises it).
+- [x] `frontage/store.py`: SPEC §5 T1–T5, T7; 17 unit tests; runs under MicroPython.
 - [ ] `DomRenderer` and `clone_template`; the insert rules; delegated events; `Show`, `For`,
       `bind:`. SPEC §2 S5–S6, §6 W1–W7, W13, W17.
 - [ ] Counter, todo and rows examples with browser tests; the rows benchmark harness (§12).

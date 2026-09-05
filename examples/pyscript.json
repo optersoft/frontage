@@ -2,6 +2,8 @@
   "files": {
     "/frontage/__init__.py": "frontage/__init__.py",
     "/frontage/errors.py": "frontage/errors.py",
+    "/frontage/reactive.py": "frontage/reactive.py",
+    "/frontage/store.py": "frontage/store.py",
     "/frontage/renderer.py": "frontage/renderer.py",
     "/frontage/runtime.py": "frontage/runtime.py",
     "/frontage/version.py": "frontage/version.py",
