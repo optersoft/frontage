@@ -359,3 +359,27 @@ def test_a_resource_created_inside_a_hole_is_reported_not_hung():
         asyncio.run(scenario())
     finally:
         reactive.FLUSH_LIMIT = old
+
+
+def test_a_component_may_return_control_flow_directly():
+    on = Signal(True)
+    from frontage import component
+
+    @component
+    def gate():
+        return Show(on, h.b("open"), fallback=h.i("closed"))
+
+    root, r, _ = mounted(lambda: h.div(gate(), " | ", gate()))
+    assert html(root) == "<div><b>open</b> | <b>open</b></div>"
+    on.set(False)
+    assert html(root) == "<div><i>closed</i> | <i>closed</i></div>"
+
+
+def test_a_floating_hole_at_the_root_of_a_branch():
+    which = Signal("a")
+    root, r, _ = mounted(
+        lambda: Switch([Match(lambda: which() == "a", lambda: Show(Signal(True), h.b("A")))], fallback=h.i("none"))
+    )
+    assert html(root) == "<b>A</b>"
+    which.set("b")
+    assert html(root) == "<i>none</i>"

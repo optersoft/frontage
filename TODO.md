@@ -89,11 +89,22 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
 - [ ] E2 debug warnings (a signal read after `await`, a write inside a tracked compute).
 - [ ] Redeploy the site with the M2 examples.
 
-## M3 (next)
+## M3 (done 2026-09-05)
 
-- [ ] `frontage/router.py`: nested routes, params/query/location accessors, plain `<a>`
-      interception, `A`, `Navigate`, `navigate`, `Redirect`, `preload`, `query`, `action`,
-      three modes (history, hash, memory). SPEC U1–U10; the contacts example.
+- [x] `frontage/router.py`: nested routes with per-level rebuild (a level whose route object is
+      unchanged keeps its nodes), `:param` / `*rest`, `use_params` / `use_query` /
+      `use_location` / `use_match` accessors, plain `<a>` interception, `A` (relative paths
+      with `..`, active class, hover preload), `Navigate`, `Redirect`, `navigate` / `back` /
+      `forward`, `use_before_leave`, per-route `preload`, `query()` cache with dedupe and
+      `revalidate`, `router.action()` + `ActionForm`, history / hash / memory modes, `base`
+      with the document file as root. SPEC U1–U10 (scroll restoration is best-effort and
+      untested in the browser). 20 router tests in memory mode; the contacts example runs in
+      both modes on both interpreters.
+- [x] Floating holes: a component may now return control flow directly (`return Loading(…)`),
+      and the router renders no wrapper element. A hole built without a parent keeps a marker
+      and fills in when `_insert` places the marker; on dispose it removes its own content.
+- [ ] Scroll restoration in a browser test; `use_is_routing` is set and cleared inside one
+      batch, so nothing can observe it yet (make it span the async work of a transition later).
 - [x] Site redeployed 2026-09-05 with the M1 examples and the PyScript bundle (`mk site.build`
       had silently lacked the bundle copy; Pages answered the missing files with the landing
       page, which reads as a 200).

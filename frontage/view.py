@@ -47,6 +47,18 @@ TEMPLATES = True
 
 _VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
 
+# Holes built with no parent yet (a component returning `Show(...)` directly): marker id ->
+# the function that places their content once the marker itself has been inserted.
+_floating = {}
+
+
+def _insert(renderer, parent, node, anchor=None):
+    """Insert `node`, then let a floating hole whose marker this is fill in."""
+    renderer.insert_node(parent, node, anchor)
+    fill = _floating.pop(id(node), None)
+    if fill is not None:
+        fill()
+
 
 class Text:
     def __init__(self, value):
@@ -172,7 +184,7 @@ def build(view, renderer, parent=None, anchor=None):
     nodes = _build_nodes(view, renderer)
     if parent is not None:
         for node in nodes:
-            renderer.insert_node(parent, node, anchor)
+            _insert(renderer, parent, node, anchor)
     return nodes
 
 
@@ -193,7 +205,7 @@ def _build_nodes(view, renderer, cache=None):
                 _mount_hole(node, child, renderer)
             else:
                 for n in _build_nodes(child, renderer):
-                    renderer.insert_node(node, n)
+                    _insert(renderer, node, n)
         return [node]
     if isinstance(view, (list, tuple)):
         out = []
@@ -201,8 +213,9 @@ def _build_nodes(view, renderer, cache=None):
             out.extend(_build_nodes(item, renderer))
         return out
     if callable(view):
-        # A hole at the top level: it needs a parent to live in; give it a fragment marker.
-        raise TypeError("a callable view needs a parent element; wrap it in h.div(...) or mount it")
+        # A hole with no parent yet (a component returning control flow directly): its
+        # marker is the node; the content follows once the marker is inserted somewhere.
+        return [_mount_hole(None, view, renderer)]
     return [renderer.create_text(view)]
 
 
@@ -361,18 +374,33 @@ def _build_template(element, renderer, cache=None):
                 renderer.replace_node(parent, renderer.create_text(child.value), marker)
             elif isinstance(child, Mounted):
                 for n in child.nodes:
-                    renderer.insert_node(parent, n, marker)
+                    _insert(renderer, parent, n, marker)
             else:
                 _mount_hole(parent, child, renderer, marker)
     return root
 
 
+class _HoleState:
+    def __init__(self):
+        self.current = []  # the nodes currently placed before the marker
+        self.text = None  # the single text node, when the value is text
+        self.pending = None  # a result waiting for the marker to be inserted (floating holes)
+
+    def take_pending(self):
+        result, self.pending = self.pending, None
+        return result
+
+
 def _mount_hole(parent, accessor, renderer, marker=None):
-    """A reactive child position: a marker node, and an effect applying the insert rules."""
+    """A reactive child position: a marker node, and an effect applying the insert rules.
+
+    With `parent=None` the hole floats: the marker is returned and the content is placed
+    before it as soon as `_insert` puts the marker somewhere. Returns the marker."""
     if marker is None:
         marker = renderer.create_text("")
-        renderer.insert_node(parent, marker)
-    state = {"current": [], "text": None}
+        if parent is not None:
+            renderer.insert_node(parent, marker)
+    state = _HoleState()
 
     def compute():
         global _current_renderer
@@ -387,22 +415,43 @@ def _mount_hole(parent, accessor, renderer, marker=None):
             _current_renderer = saved
 
     def apply(result, prev):
+        target = parent if parent is not None else renderer.parent(marker)
+        if target is None:
+            # Not inserted anywhere yet: keep the result; `_insert` calls back when it is.
+            state.pending = result
+            _floating[id(marker)] = lambda: apply(state.take_pending(), None)
+            return
         kind, payload = result
         if kind == "text":
-            if state["text"] is not None:
+            if state.text is not None:
                 if prev is None or prev[1] != payload:
-                    renderer.replace_text(state["text"], payload)
+                    renderer.replace_text(state.text, payload)
                 return
             node = renderer.create_text(payload)
-            _reconcile(parent, state["current"], [node], marker, renderer)
-            state["current"] = [node]
-            state["text"] = node
+            _reconcile(target, state.current, [node], marker, renderer)
+            state.current = [node]
+            state.text = node
             return
-        state["text"] = None
-        _reconcile(parent, state["current"], payload, marker, renderer)
-        state["current"] = payload
+        state.text = None
+        _reconcile(target, state.current, payload, marker, renderer)
+        state.current = payload
 
     RenderEffect(compute, apply)
+
+    def cleanup():
+        _floating.pop(id(marker), None)
+        if parent is None:
+            # A floating hole's owner disposes it while the marker is still in place; the
+            # content it placed before the marker is nobody else's to remove.
+            target = renderer.parent(marker)
+            if target is not None:
+                for node in state.current:
+                    renderer.remove_node(target, node)
+                state.current = []
+                state.text = None
+
+    on_cleanup(cleanup)
+    return marker
 
 
 def _reconcile(parent, current, new, marker, renderer):
@@ -432,7 +481,7 @@ def _reconcile(parent, current, new, marker, renderer):
         if i in stay:
             anchor = node
             continue
-        renderer.insert_node(parent, node, anchor)
+        _insert(renderer, parent, node, anchor)
         anchor = node
 
 

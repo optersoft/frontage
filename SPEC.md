@@ -67,7 +67,7 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - W2 A hole whose value is a string or number updates its text node in place; `None`/`bool` renders nothing; a view mounts; a list is reconciled by node identity, moving existing nodes rather than recreating them. [M1]
 - W3 A change to one signal touches exactly the holes that read it: `RecordingRenderer` shows no operation on any other node. [M1]
 - W4 A callable attribute value is bound; `attr:` (default) sets attributes, `prop:` sets properties, `class:name={bool}` toggles one class, `class={dict}` toggles many, `style:prop` sets one style, `bind:value` / `bind:checked` / `bind:group` are two-way with an `input` listener. [M1]
-- W5 A component is a function of keyword props run once under its own owner; its return is a view or a list; no wrapper element is added. [M1]
+- W5 A component is a function of keyword props run once under its own owner; its return is a view, a list, or control flow (`Show(…)` directly); no wrapper element is added. [M1, control flow M3]
 - W6 `Show(when, fallback, children)` mounts one branch and toggles without rebuilding the mounted one; `keyed=True` rebuilds when the value changes; `children` may be a function of the value. [M1]
 - W7 `For(each, children, key=…)`: identity keys by default, `key=fn` extracts one, `key=False` is index mode where the item is an accessor; unchanged keys keep their nodes and their focus; rows dispose individually. [M1]
 - W8 `Switch`/`Match` mount the first matching branch. [M2]

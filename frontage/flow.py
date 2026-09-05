@@ -375,7 +375,7 @@ def Portal(target, children):
                 content = untrack(children) if callable(children) and not hasattr(children, "tag") else children
                 nodes = _build(content, renderer)
                 for n in nodes:
-                    renderer.insert_node(node, n)
+                    _view._insert(renderer, node, n)
                 return nodes
 
             state.owner = owner

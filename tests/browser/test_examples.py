@@ -128,3 +128,42 @@ def test_template(server, page: Page, interpreter):
         page.click("#inc")
     expect(page.locator("#parity")).to_have_class("big")
     assert errors == []
+
+
+@pytest.mark.parametrize("interpreter", ["mpy", "py"])
+@pytest.mark.parametrize("mode", ["hash", "history"])
+def test_contacts_router(server, page: Page, interpreter, mode):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{server}/examples/contacts/index.html?type={interpreter}&mode={mode}")
+    expect(page.locator("#home")).to_be_visible(timeout=60_000)
+    page.click("#to-contacts")  # a plain <a> rendered by A: intercepted, no reload
+    expect(page.locator("#pick")).to_be_visible()
+    if mode == "hash":
+        assert page.url.endswith("#/contacts")
+    else:
+        assert page.url.endswith("/contacts")
+    page.click("#link-ann")
+    expect(page.locator("#name")).to_have_text("Ann Moore")
+    expect(page.locator("#link-ann")).to_have_class("active")
+
+    def loads():
+        return int((page.locator("#loads").text_content() or "loads: 0").split(":")[1])
+
+    # Hovering a link preloads it, so the pointer's path decides between 1 and 2 loads here.
+    n1 = loads()
+    assert n1 in (1, 2)
+    page.click("#link-bob")  # the contacts layout is kept; only the detail changes
+    expect(page.locator("#name")).to_have_text("Bob Ruiz")
+    n2 = loads()
+    assert n2 - n1 in (0, 1)
+    page.click("#link-ann")  # cached by query(): no new load
+    expect(page.locator("#name")).to_have_text("Ann Moore")
+    assert loads() == n2
+    page.go_back()
+    expect(page.locator("#name")).to_have_text("Bob Ruiz")
+    page.click("#back")
+    expect(page.locator("#pick")).to_be_visible()
+    page.click("#old")  # Navigate() redirects
+    expect(page.locator("#pick")).to_be_visible()
+    assert errors == []
