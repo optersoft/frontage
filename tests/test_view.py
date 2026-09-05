@@ -49,12 +49,13 @@ def test_custom_element_tags_use_hyphens():
     assert render_to_string(h("my-tag", "x")) == "<my-tag>x</my-tag>"
 
 
-def test_build_counts_renderer_operations():
+def test_build_clones_one_template_and_fills_the_text_holes():
     r = RecordingRenderer()
     build(h.ul(h.li("a"), h.li("b")), r)
-    assert r.count("create_element") == 3
-    assert r.count("create_text") == 2
-    assert r.count("insert_node") == 4
+    assert r.count("clone_template") == 1 and r.count("find_holes") == 1
+    assert r.count("create_element") == 0
+    assert r.count("create_text") == 2 and r.count("replace_node") == 2
+    assert r.count("insert_node") == 0
 
 
 @pytest.mark.parametrize("tag", ["br", "hr", "img"])

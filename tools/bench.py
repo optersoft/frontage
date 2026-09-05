@@ -34,6 +34,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--interpreters", default="mpy,py")
+    parser.add_argument("--templates", default="1", help="1 (clone templates), 0 (node by node), or 1,0 for both")
     args = parser.parse_args()
     port = free_port()
     server = subprocess.Popen([sys.executable, str(ROOT / "tools/serve.py"), "--port", str(port), "--quiet"], cwd=ROOT)
@@ -42,35 +43,39 @@ def main():
         with sync_playwright() as p:
             browser = p.chromium.launch()
             for interp in args.interpreters.split(","):
-                page = browser.new_page()
-                t0 = time.time()
-                page.goto(f"http://127.0.0.1:{port}/examples/rows/index.html?type={interp}")
-                page.wait_for_selector("#run", timeout=120_000)
-                startup = time.time() - t0
-                print(f"\n== {interp}  (page ready in {startup:.1f}s)")
-                print(f"{'operation':<20}{'ms (median)':>14}{'ops':>10}{'rows after':>12}")
-                for button, label in OPS:
-                    times, ops = [], None
-                    for _ in range(args.runs):
-                        # Every operation is measured against a table of exactly 1,000 rows.
-                        if button != "run" and page.locator("#tbody tr").count() != 1000:
-                            if page.locator("#tbody tr").count():
+                for templates in args.templates.split(","):
+                    page = browser.new_page()
+                    t0 = time.time()
+                    page.goto(f"http://127.0.0.1:{port}/examples/rows/index.html?type={interp}&templates={templates}")
+                    page.wait_for_selector("#run", timeout=120_000)
+                    startup = time.time() - t0
+                    mode = "templates" if templates == "1" else "node by node"
+                    print(f"\n== {interp}, {mode}  (page ready in {startup:.1f}s)")
+                    print(f"{'operation':<20}{'ms (median)':>14}{'ops':>10}{'rows after':>12}")
+                    for button, label in OPS:
+                        times, ops = [], None
+                        for _ in range(args.runs):
+                            # Every operation is measured against a table of exactly 1,000 rows.
+                            if button != "run" and page.locator("#tbody tr").count() != 1000:
+                                if page.locator("#tbody tr").count():
+                                    page.click("#clear")
+                                    page.wait_for_function("document.querySelectorAll('#tbody tr').length === 0")
+                                page.click("#run")
+                                page.wait_for_function("document.querySelectorAll('#tbody tr').length === 1000")
+                            elif button == "run" and page.locator("#tbody tr").count():
                                 page.click("#clear")
                                 page.wait_for_function("document.querySelectorAll('#tbody tr').length === 0")
-                            page.click("#run")
-                            page.wait_for_function("document.querySelectorAll('#tbody tr').length === 1000")
-                        elif button == "run" and page.locator("#tbody tr").count():
-                            page.click("#clear")
-                            page.wait_for_function("document.querySelectorAll('#tbody tr').length === 0")
-                        page.click(f"#{button}")
-                        page.wait_for_function(f"document.querySelector('#stats').textContent.startsWith({label!r})")
-                        m = re.match(r".*: ([\d.]+) ms, (\d+) ops", page.locator("#stats").text_content())
-                        times.append(float(m.group(1)))
-                        ops = int(m.group(2))
-                    times.sort()
-                    rows = page.locator("#tbody tr").count()
-                    print(f"{label:<20}{times[len(times) // 2]:>14.1f}{ops:>10}{rows:>12}")
-                page.close()
+                            page.click(f"#{button}")
+                            page.wait_for_function(
+                                f"document.querySelector('#stats').textContent.startsWith({label!r})"
+                            )
+                            m = re.match(r".*: ([\d.]+) ms, (\d+) ops", page.locator("#stats").text_content())
+                            times.append(float(m.group(1)))
+                            ops = int(m.group(2))
+                        times.sort()
+                        rows = page.locator("#tbody tr").count()
+                        print(f"{label:<20}{times[len(times) // 2]:>14.1f}{ops:>10}{rows:>12}")
+                    page.close()
             browser.close()
     finally:
         server.terminate()

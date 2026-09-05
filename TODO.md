@@ -52,9 +52,25 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
       for a For over 1,000 rows: swap was 328 ms on MicroPython), and list iteration in a
       Store subscribed to a node per index. Lesson for §12: on MicroPython, Python-level work
       is the bottleneck as much as bridge crossings; the For and reconcile paths must stay lean.
-- [ ] `clone_template` and the Template path (S6, W17): 32 renderer ops per row today; a
-      clone plus the bound holes should be under 10. Measure against the table above.
+- [x] The Template path (S6, W17): an Element compiles to one HTML skeleton with `<!--h-->`
+      markers and `data-fr-h` elements; one `clone_template` per instance, holes bound after;
+      a `For` keeps one Template per row function and reuses it when the row's shape matches
+      (static attributes included). Text children are holes so like rows share a template.
+      Renderer ops per row 31 → 11. Medians of 3, 2026-09-05:
+
+      | operation | mpy templates | mpy node-by-node | py templates | py node-by-node |
+      |---|---|---|---|---|
+      | create 1,000 | 169 ms | 177 ms | 77 ms | 100 ms |
+      | append 1,000 | 182 ms | 192 ms | 90 ms | 154 ms |
+      | swap | 16 ms | 18 ms | 2.6 ms | 2.4 ms |
+      | update every 10th | 3.3 ms | 3.4 ms | 0.8 ms | 0.7 ms |
+
+      Templates are the default on both. On MicroPython the win is small because Python-level
+      work (Element construction, effects, signals) dominates, not bridge crossings; the JS
+      shim of DESIGN §8.6 would take ~7 of the 11 ops per row (hole finding) and is deferred to
+      the M5 performance pass together with a MicroPython profiling session.
 - [ ] W13 leftovers: simulate `currentTarget`, `oncapture:`; W15 custom events.
+- [ ] Redeploy the site with the new examples (index at `/examples/`).
 
 ## Outward-facing, for David
 

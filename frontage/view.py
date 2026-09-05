@@ -20,7 +20,7 @@ is an attribute; `cls` and `class_` spell `class`, and `class` may be a dict of 
 """
 
 from .reactive import Owner, RenderEffect, Signal, on_cleanup
-from .renderer import HtmlRenderer
+from .renderer import HtmlRenderer, escape
 
 __all__ = [
     "Element",
@@ -37,6 +37,13 @@ __all__ = [
 
 _UNSET = object()
 _current_renderer = None  # the renderer of the hole being computed; control flow builds with it
+
+# Elements are built by compiling their static structure to one HTML string, cloning it in one
+# renderer operation and binding only the holes. Set False to build node by node (the
+# benchmark compares the two).
+TEMPLATES = True
+
+_VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
 
 
 class Text:
@@ -167,13 +174,16 @@ def build(view, renderer, parent=None, anchor=None):
     return nodes
 
 
-def _build_nodes(view, renderer):
-    """The list of live nodes for a view. A hole contributes its marker node."""
+def _build_nodes(view, renderer, cache=None):
+    """The list of live nodes for a view. A hole contributes its marker node. `cache` lets a
+    caller that builds many like-shaped views (a `For`) reuse one compiled Template."""
     if isinstance(view, Text):
         return [renderer.create_text(view.value)]
     if isinstance(view, Mounted):
         return list(view.nodes)
     if isinstance(view, Element):
+        if TEMPLATES and getattr(renderer, "supports_templates", True):
+            return [_build_template(view, renderer, cache)]
         node = renderer.create_element(view.tag)
         _apply_attrs(node, view.attrs, renderer)
         for child in view.children:
@@ -212,10 +222,154 @@ def _normalize(value, renderer):
     return [renderer.create_text(value)]
 
 
-def _mount_hole(parent, accessor, renderer):
+# --- templates ------------------------------------------------------------------------------
+
+
+class Template:
+    """A compiled Element shape: the HTML skeleton plus, per dynamic element in document
+    order, its tag, static attributes and dynamic attribute names. `extract(element)` walks a
+    fresh Element tree of the same shape and returns its hole values without building any
+    strings, or `None` if the shape differs (then the caller compiles that tree instead).
+    A `For` keeps one Template per row function, so a thousand rows compile once."""
+
+    def __init__(self, html, specs):
+        self.html = html
+        self.specs = specs  # per element in pre-order: (tag, static attrs dict, dynamic raw names)
+
+    def extract(self, element):
+        element_holes = []
+        child_holes = []
+        specs = self.specs
+        cursor = [0]
+
+        def walk(el):
+            i = cursor[0]
+            if i >= len(specs):
+                return False
+            tag, static, dynamic = specs[i]
+            cursor[0] = i + 1
+            if el.tag != tag or len(el.attrs) != len(static) + len(dynamic):
+                return False
+            values = []
+            for raw in dynamic:
+                value = el.attrs.get(raw, _UNSET)
+                if value is _UNSET or (not callable(value) and _static_kind(raw, value)):
+                    return False
+                values.append((raw, value))
+            for name, expected in static.items():
+                value = el.attrs.get(name, _UNSET)
+                if value is _UNSET or value != expected or callable(value):
+                    return False
+            if dynamic:
+                element_holes.append(values)
+            if tag in _VOID:
+                return True
+            for child in el.children:
+                if isinstance(child, Element):
+                    if not walk(child):
+                        return False
+                else:
+                    child_holes.append(child)
+            return True
+
+        if not walk(element) or cursor[0] != len(specs):
+            return None
+        return element_holes, child_holes
+
+
+def _static_kind(raw, value):
+    kind, _ = _classify(raw)
+    return kind == "attr" or (kind == "class-dict" and not isinstance(value, dict))
+
+
+def _compile(element):
+    """(Template, element_holes, child_holes) for an Element tree.
+
+    Static attributes go into the HTML. An element with anything dynamic (a bound attribute,
+    an event, a ref, a binding) gets `data-fr-h="<n>"`, numbered in document order, and its
+    dynamic attributes are listed in `element_holes[n]`. Every child that is not an element
+    (text, a callable, prebuilt nodes) becomes a `<!--h-->` marker and an entry of
+    `child_holes`, in document order. Text is a hole too, so that rows of a list with
+    different labels share one template.
+    """
+    parts = []
+    element_holes = []
+    child_holes = []
+    specs = []
+
+    def walk(el):
+        dynamic = []
+        static = {}
+        parts.append("<")
+        parts.append(el.tag)
+        for raw, value in el.attrs.items():
+            kind, name = _classify(raw)
+            if callable(value) or not _static_kind(raw, value):
+                dynamic.append((raw, value))
+            else:
+                static[raw] = value
+                if value is True:
+                    parts.append(" " + name)
+                elif value is not None and value is not False:
+                    parts.append(f' {name}="{escape(value, quote=True)}"')
+        specs.append((el.tag, static, [raw for raw, _ in dynamic]))
+        if dynamic:
+            parts.append(f' data-fr-h="{len(element_holes)}"')
+            element_holes.append(dynamic)
+        parts.append(">")
+        if el.tag in _VOID:
+            return
+        for child in el.children:
+            if isinstance(child, Element):
+                walk(child)
+            else:
+                child_holes.append(child)
+                parts.append("<!--h-->")
+        parts.append(f"</{el.tag}>")
+
+    walk(element)
+    return Template("".join(parts), specs), element_holes, child_holes
+
+
+def _build_template(element, renderer, cache=None):
+    """Instantiate `element` from a Template: `cache` (a dict) keeps the last Template so a
+    like-shaped element skips compilation."""
+    template = cache.get("template") if cache is not None else None
+    holes = template.extract(element) if template is not None else None
+    if holes is None:
+        template, element_holes, child_holes = _compile(element)
+        if cache is not None:
+            cache["template"] = template
+    else:
+        assert template is not None
+        element_holes, child_holes = holes
+    root = renderer.clone_template(template.html)
+    if element_holes or child_holes:
+        elements, markers = renderer.find_holes(root)
+        for i in range(len(element_holes)):
+            node = elements[i]
+            for raw, value in element_holes[i]:
+                _apply_attr(node, raw, value, renderer)
+            renderer.set_property(node, "data-fr-h", None)  # the marker has done its job
+        for i in range(len(child_holes)):
+            marker = markers[i]
+            child = child_holes[i]
+            parent = renderer.parent(marker)
+            if isinstance(child, Text):
+                renderer.replace_node(parent, renderer.create_text(child.value), marker)
+            elif isinstance(child, Mounted):
+                for n in child.nodes:
+                    renderer.insert_node(parent, n, marker)
+            else:
+                _mount_hole(parent, child, renderer, marker)
+    return root
+
+
+def _mount_hole(parent, accessor, renderer, marker=None):
     """A reactive child position: a marker node, and an effect applying the insert rules."""
-    marker = renderer.create_text("")
-    renderer.insert_node(parent, marker)
+    if marker is None:
+        marker = renderer.create_text("")
+        renderer.insert_node(parent, marker)
     state = {"current": [], "text": None}
 
     def compute():
@@ -354,8 +508,20 @@ def _apply_attr(node, raw_name, value, renderer):
         _set(node, kind, name, value, renderer)
 
 
+_classified = {}
+
+
 def _classify(raw):
-    """(kind, name) for a builder keyword or a template attribute name."""
+    """(kind, name) for a builder keyword or a template attribute name. Memoized: it runs
+    once per attribute per element built, and MicroPython pays for every string test."""
+    found = _classified.get(raw)
+    if found is None:
+        found = _classify_uncached(raw)
+        _classified[raw] = found
+    return found
+
+
+def _classify_uncached(raw):
     if raw == "ref":
         return "ref", raw
     if raw in ("cls", "class_", "class"):

@@ -18,8 +18,8 @@ class _Renderers:
     current = None
 
 
-def _build(view, renderer):
-    return _build_nodes(view, renderer)
+def _build(view, renderer, cache=None):
+    return _build_nodes(view, renderer, cache)
 
 
 def Show(when, children, fallback=None, keyed=False):
@@ -83,6 +83,7 @@ def For(each, children, key=None, fallback=None):
     rows = {}  # key -> dict(owner, nodes, index, item)
     order = []
     home = get_owner()  # rows belong here, not to the hole's effect (see Show)
+    template_cache = {}  # rows share one compiled Template when their shape matches
     on_cleanup(lambda: [row["owner"].dispose() for row in rows.values()])
 
     def key_of(item, i):
@@ -111,7 +112,7 @@ def For(each, children, key=None, fallback=None):
             new_order.append(k)
             row = rows.get(k)
             if row is None:
-                row = _make_row(item, i, key is False, children, renderer, home)
+                row = _make_row(item, i, key is False, children, renderer, home, template_cache)
                 rows[k] = row
             else:
                 if row["index"].peek() != i:
@@ -132,7 +133,7 @@ def For(each, children, key=None, fallback=None):
     return accessor
 
 
-def _make_row(item, i, index_mode, children, renderer, home):
+def _make_row(item, i, index_mode, children, renderer, home, cache):
     owner = Owner(parent=home)
     index = Signal(i)
     item_signal = Signal(item, equal=lambda a, b: a is b)
@@ -142,7 +143,7 @@ def _make_row(item, i, index_mode, children, renderer, home):
             view = children(item_signal, i)
         else:
             view = children(item, index)
-        return _build(view, renderer)
+        return _build(view, renderer, cache)
 
     nodes = run_with_owner(owner, lambda: untrack(make))
     return {"owner": owner, "nodes": nodes, "index": index, "item": item_signal}

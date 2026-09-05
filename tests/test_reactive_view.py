@@ -336,12 +336,12 @@ def test_swap_costs_two_moves_and_append_costs_only_new_nodes():
     swapped = list(range(1000))
     swapped[1], swapped[998] = swapped[998], swapped[1]
     items.set(swapped)
-    assert r.count("insert_node") == 2 and r.count("remove_node") == 0 and r.count("create_element") == 0
+    assert r.count("insert_node") == 2 and r.count("remove_node") == 0 and r.count("clone_template") == 0
     after = rows_of(root)
     assert after[1] is before[998] and after[998] is before[1] and after[0] is before[0]
     r.log.clear()
     items.set(swapped + list(range(1000, 1010)))
-    assert r.count("create_element") == 10 and r.count("insert_node") == 10 + 10  # a text and an li per row
+    assert r.count("clone_template") == 10 and r.count("insert_node") == 10  # one clone and one insert per row
 
 
 def test_reverse_and_clear_and_remove_one():
@@ -350,10 +350,55 @@ def test_reverse_and_clear_and_remove_one():
     r.log.clear()
     items.set([5, 4, 3, 2, 1])
     assert html(root) == "<ul><li>5</li><li>4</li><li>3</li><li>2</li><li>1</li></ul>"
-    assert r.count("insert_node") == 4 and r.count("create_element") == 0
+    assert r.count("insert_node") == 4 and r.count("clone_template") == 0
     r.log.clear()
     items.set([5, 4, 2, 1])
     assert r.count("remove_node") == 1 and r.count("insert_node") == 0
     r.log.clear()
     items.set([])
     assert r.count("remove_node") == 4 and html(root) == "<ul></ul>"
+
+
+def test_template_marker_attribute_is_stripped_and_templates_are_shared():
+    on = Signal(True)
+    root, r, _ = mounted(h.ul(h.li("a", class_x=on), h.li("b", class_x=on)))
+    assert html(root) == '<ul><li class="x">a</li><li class="x">b</li></ul>'
+    from frontage.renderer import HtmlRenderer as HR
+
+    # the two <li> differ only in text, which is a hole, so the <ul> compiles to one template
+    assert any("<!--h-->" in k and k.count("<li") == 2 for k in HR._templates)
+
+
+def test_for_rows_share_one_compiled_template(monkeypatch):
+    from frontage import view as _view
+
+    compiled = []
+    original = _view._compile
+
+    def counting(element):
+        compiled.append(element.tag)
+        return original(element)
+
+    monkeypatch.setattr(_view, "_compile", counting)
+    items = Signal(list(range(50)))
+    root, r, _ = mounted(h.ul(For(items, lambda item, i: h.li(str(item), class_odd=lambda: item % 2 == 1))))
+    assert compiled.count("li") == 1 and compiled.count("ul") == 1
+    assert r.count("clone_template") == 51
+    assert html(root).count("<li") == 50
+
+
+def test_template_reuse_falls_back_when_a_static_attribute_differs(monkeypatch):
+    from frontage import view as _view
+
+    compiled = []
+    original = _view._compile
+
+    def counting(element):
+        compiled.append(element.tag)
+        return original(element)
+
+    monkeypatch.setattr(_view, "_compile", counting)
+    items = Signal([1, 2, 3])
+    root, r, _ = mounted(h.ul(For(items, lambda item, i: h.li(str(item), data_id=item))))
+    assert compiled.count("li") == 3  # data-id is baked into the HTML, so each row compiles
+    assert html(root) == '<ul><li data-id="1">1</li><li data-id="2">2</li><li data-id="3">3</li></ul>'

@@ -79,13 +79,27 @@ class Renderer:
         """Attach `handler(event)`; returns a function that detaches it."""
         raise NotImplementedError
 
+    def replace_node(self, parent, new, old):
+        raise NotImplementedError
+
+    def clone_template(self, html):
+        """A fresh copy of the single root element described by `html`, in one operation;
+        the parse happens once per distinct string."""
+        raise NotImplementedError
+
+    def find_holes(self, root):
+        """`(elements, markers)`: the elements carrying `data-fr-h`, ordered by that index,
+        and the comment markers `<!--h-->` in document order, `root` included."""
+        raise NotImplementedError
+
 
 class HtmlNode:
     """A node of `HtmlRenderer`: an element with a tag, or text with `tag=None`."""
 
-    def __init__(self, tag, text=None):
+    def __init__(self, tag, text=None, comment=False):
         self.tag = tag
         self.text = text
+        self.comment = comment
         self.attrs = {}
         self.props = {}  # DOM properties (value, checked, …) live apart from attributes
         self.styles = {}
@@ -110,8 +124,10 @@ class HtmlNode:
             node = node.parent
         return ev
 
-    def to_html(self):
+    def to_html(self, comments=False):
         if self.tag is None:
+            if self.comment:
+                return f"<!--{self.text}-->" if comments else ""
             return escape(self.text)
         out = ["<", self.tag]
         for name, value in self.attrs.items():
@@ -128,7 +144,7 @@ class HtmlNode:
         if self.tag in _VOID:
             return "".join(out)
         for child in self.children:
-            out.append(child.to_html())
+            out.append(child.to_html(comments))
         out.append(f"</{self.tag}>")
         return "".join(out)
 
@@ -151,8 +167,19 @@ class FakeEvent:
         self.default_prevented = True
 
 
+try:  # the template path needs an HTML parser; CPython has one, MicroPython does not
+    import html.parser as _html_parser  # noqa: F401
+
+    _CAN_PARSE = True
+except ImportError:
+    _CAN_PARSE = False
+
+
 class HtmlRenderer(Renderer):
     """Renders into plain Python nodes that serialise to HTML. No browser involved."""
+
+    # Without an HTML parser (MicroPython) the view layer builds node by node instead.
+    supports_templates = _CAN_PARSE
 
     def create_element(self, tag):
         return HtmlNode(tag)
@@ -233,6 +260,93 @@ class HtmlRenderer(Renderer):
 
         return remove
 
+    def replace_node(self, parent, new, old):
+        i = parent.children.index(old)
+        if new.parent is not None:
+            new.parent.children.remove(new)
+        parent.children[i] = new
+        new.parent = parent
+        old.parent = None
+
+    _templates = {}
+
+    def clone_template(self, html):
+        tree = HtmlRenderer._templates.get(html)
+        if tree is None:
+            tree = _parse(html)
+            HtmlRenderer._templates[html] = tree
+        return _copy(tree)
+
+    def find_holes(self, root):
+        elements = {}
+        markers = []
+
+        def walk(node):
+            if node.tag is None:
+                if node.comment and node.text == "h":
+                    markers.append(node)
+                return
+            index = node.attrs.get("data-fr-h")
+            if index is not None:
+                elements[int(index)] = node
+            for child in node.children:
+                walk(child)
+
+        walk(root)
+        return [elements[i] for i in sorted(elements)], markers
+
+
+def _parse(html):
+    """Parse the HTML of a template into HtmlNodes. CPython only (html.parser)."""
+    from html.parser import HTMLParser
+
+    class Builder(HTMLParser):
+        def __init__(self):
+            HTMLParser.__init__(self, convert_charrefs=True)
+            self.root = None
+            self.stack = []
+
+        def _add(self, node):
+            if self.stack:
+                node.parent = self.stack[-1]
+                self.stack[-1].children.append(node)
+            elif self.root is None:
+                self.root = node
+
+        def handle_starttag(self, tag, attrs):
+            node = HtmlNode(tag)
+            for name, value in attrs:
+                node.attrs[name] = True if value is None else value
+            self._add(node)
+            if tag not in _VOID:
+                self.stack.append(node)
+
+        def handle_endtag(self, tag):
+            if self.stack and self.stack[-1].tag == tag:
+                self.stack.pop()
+
+        def handle_data(self, data):
+            if data:
+                self._add(HtmlNode(None, data))
+
+        def handle_comment(self, data):
+            self._add(HtmlNode(None, data, comment=True))
+
+    builder = Builder()
+    builder.feed(html)
+    builder.close()
+    return builder.root
+
+
+def _copy(node):
+    clone = HtmlNode(node.tag, node.text, node.comment)
+    clone.attrs = dict(node.attrs)
+    for child in node.children:
+        c = _copy(child)
+        c.parent = clone
+        clone.children.append(c)
+    return clone
+
 
 class RecordingRenderer(Renderer):
     """Forwards to another renderer and records `(operation, *args)` for every call."""
@@ -291,6 +405,18 @@ class RecordingRenderer(Renderer):
     def add_listener(self, node, event, handler, capture=False):
         self._record("add_listener", event)
         return self.inner.add_listener(node, event, handler, capture)
+
+    def replace_node(self, parent, new, old):
+        self._record("replace_node")
+        return self.inner.replace_node(parent, new, old)
+
+    def clone_template(self, html):
+        self._record("clone_template")
+        return self.inner.clone_template(html)
+
+    def find_holes(self, root):
+        self._record("find_holes")
+        return self.inner.find_holes(root)
 
     def count(self, op):
         return sum(1 for entry in self.log if entry[0] == op)

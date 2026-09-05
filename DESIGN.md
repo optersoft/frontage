@@ -404,6 +404,14 @@ tenth row, swap two rows, remove a row, clear. It decides: whether the JavaScrip
 8.6 is needed and where; whether MicroPython is first-class or best-effort; and whether
 the builder without templates is acceptable in 0.1. Numbers, not opinions.
 
+**First measurement (2026-09-05, M1, this laptop's Chromium).** Create 1,000 rows: 169 ms on
+MicroPython, 77 ms on Pyodide, 11 renderer operations per row with templates against 31
+without. Templates ship as the default on both interpreters. On MicroPython the template
+gain was small (177 → 169 ms), because the cost there is Python execution rather than the
+bridge; the two fixes the benchmark forced (O(1) dependency tracking, one version node per
+list) mattered far more (swap 328 → 16 ms). The JavaScript shim question stays open until
+M5, with the numbers in `TODO.md`.
+
 ## 13. Testing
 
 - `SPEC.md` first: behaviours, one line each, grouped by chapter, in our words.

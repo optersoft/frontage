@@ -123,6 +123,12 @@ class CountingDomRenderer(DomRenderer):
 
 
 renderer = CountingDomRenderer()
+
+# ?templates=0 builds node by node instead of cloning templates, so tools/bench.py can compare.
+if "templates=0" in str(window.location.search):
+    from frontage import view as _view
+
+    _view.TEMPLATES = False
 stats = Signal("")
 
 

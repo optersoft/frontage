@@ -10,7 +10,7 @@ from .reactive import on_cleanup
 from .renderer import Renderer
 from .runtime import create_proxy, document, in_browser
 
-__all__ = ["DomRenderer", "resolve"]
+__all__ = ["DomRenderer", "is_node", "resolve"]
 
 # Events that bubble, so one listener on the document can serve every element.
 DELEGATED = {
@@ -61,11 +61,17 @@ BOOLEAN_ATTRS = {
 }
 
 
+def is_node(value):
+    """True for a DOM node. JavaScript `null` reaches Python as `None` on MicroPython but as a
+    `JsNull` proxy on Pyodide, so `is None` alone is not a null check here."""
+    return value is not None and getattr(value, "nodeType", None) is not None
+
+
 def resolve(target):
     """A node from a CSS selector, or the node itself."""
     if isinstance(target, str):
         node = document.querySelector(target)
-        if node is None:
+        if not is_node(node):
             raise LookupError(f"mount: nothing matches {target!r}")
         return node
     return target
@@ -117,13 +123,16 @@ class DomRenderer(Renderer):
         return node.nodeType == 3
 
     def parent(self, node):
-        return node.parentNode
+        parent = node.parentNode
+        return parent if is_node(parent) else None
 
     def first_child(self, node):
-        return node.firstChild
+        child = node.firstChild
+        return child if is_node(child) else None
 
     def next_sibling(self, node):
-        return node.nextSibling
+        sibling = node.nextSibling
+        return sibling if is_node(sibling) else None
 
     def toggle_class(self, node, name, on):
         node.classList.toggle(name, bool(on))
@@ -133,6 +142,38 @@ class DomRenderer(Renderer):
             node.style.removeProperty(prop)
         else:
             node.style.setProperty(prop, str(value))
+
+    def replace_node(self, parent, new, old):
+        parent.replaceChild(new, old)
+
+    # -- templates ----------------------------------------------------------------------------
+
+    _templates = {}
+
+    def clone_template(self, html):
+        template = DomRenderer._templates.get(html)
+        if template is None:
+            template = document.createElement("template")
+            template.innerHTML = html
+            DomRenderer._templates[html] = template
+        return template.content.firstChild.cloneNode(True)
+
+    def find_holes(self, root):
+        elements = []
+        if root.hasAttribute("data-fr-h"):
+            elements.append(root)
+        found = root.querySelectorAll("[data-fr-h]")
+        for i in range(found.length):
+            elements.append(found.item(i))
+        # Elements come back in document order; the template numbers them in that order too.
+        markers = []
+        walker = document.createTreeWalker(root, 128)  # NodeFilter.SHOW_COMMENT
+        node = walker.nextNode()
+        while is_node(node):
+            if node.data == "h":
+                markers.append(node)
+            node = walker.nextNode()
+        return elements, markers
 
     # -- events -------------------------------------------------------------------------------
 
@@ -177,7 +218,7 @@ class DomRenderer(Renderer):
 
         def dispatch(ev):
             node = ev.target
-            while node is not None and getattr(node, "nodeType", 0) == 1:
+            while is_node(node) and node.nodeType == 1:
                 fid = node.getAttribute("data-fr")
                 if fid:
                     handler = handlers.get(fid, {}).get(event)
