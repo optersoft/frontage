@@ -1,261 +1,333 @@
 # Frontage design
 
-**Status: draft, 2026-09-05.** Decisions marked *open* are for David to settle; everything
-else is the proposal. This document is the plan for rewriting Frontage as Optersoft's own
-code. It replaces nothing yet: the tree on `main` today is the PuePy fork and stays the
-executable reference until the rewrite passes the same examples.
+**Status: draft 2, 2026-09-05.** Supersedes draft 1, which was written to keep PuePy's shape.
+This draft is written from a study of [Leptos](https://github.com/leptos-rs/leptos) (Rust,
+MIT), whose architecture is a better model for what a Python browser framework should be.
+Decisions marked *open* are for David to settle; everything else is the proposal.
 
 ## 1. The decision
 
-Frontage started on 2026-09-05 as a fork of PuePy 0.6.5. The fork works, but it can never be
-fully Optersoft's: the copyright is the upstream authors', the license is fixed at Apache 2.0,
-attribution travels with every distribution, and the story is "we adopted a dormant project".
-For a public flagship of a studio that sells development, training and consulting, ownership
-is the point. So Frontage is rewritten from scratch as a **clean-room implementation**:
-same job, same shape where the shape is good, none of the code.
+Frontage is a **clean-room implementation**, Optersoft's own code, of a reactive web framework
+for Python in the browser. It replaces the PuePy fork on `main` today, which moves to the
+branch `puepy-reference` and serves as an acceptance test until the rewrite passes the same
+examples. The reasons are in draft 1 and still hold: ownership of copyright, license and
+story. What changed is the model. PuePy rebuilds a whole page on every state change and
+diffs it against the DOM. Leptos shows the other way, and it is the right one.
 
-What carries over untouched: the name, the PyPI plan, `pyproject.toml` and the uv/ruff/ty
-toolchain, `ci.yml` with the OIDC publisher, the Cloudflare Pages site and landing page,
-`Makefile.py`, and the repo conventions. What is replaced: `frontage/`, `tests/`,
-`examples/`, `docs/`.
+What carries over untouched: the name, PyPI plan, `pyproject.toml`, the uv/ruff/ty
+toolchain, `ci.yml` with the OIDC publisher, the Cloudflare Pages site, `Makefile.py`.
 
-## 2. Goals
+## 2. What Leptos teaches, and what transfers
 
-1. **Python only, in the browser.** A developer who knows Python and HTML builds a reactive
-   single-page app with no JavaScript, no Node and no bundler. Deployment is serving files.
-2. **Small enough to read.** The core stays under ~3,000 lines. A user can read the whole
-   framework in an afternoon, which is also what makes it teachable in a course.
-3. **Two runtimes.** Pyodide for the full standard library and PyPI, MicroPython for a
-   download an order of magnitude smaller. The same app runs on both.
-4. **Current PyScript.** Target the 2026 line from day one (2026.7.3 at writing), through the
-   `pyscript` module, not the raw `js` module, so the same import works on both interpreters.
-5. **Honest testing.** Unit tests that run anywhere, plus the examples driven in a real
-   browser under both runtimes, with PyScript served locally so CI does not depend on a CDN.
+Leptos is ~80,000 lines of Rust across a dozen crates. Its ideas, not its code, are what
+matter here. Five transfer directly to Python; two do not.
 
-## 3. Non-goals
+**Transfer:**
 
-- Server-side rendering or hydration. Frontage renders in the browser, full stop. SEO-facing
-  sites are not its audience; the docs say so.
-- A component library or a CSS framework. Tailwind, Bootstrap and Shoelace work through
-  plain classes and web components, as the examples show.
-- Compatibility with PuePy at the import level. `from puepy import …` will not work. Porting
-  a PuePy app should be a rename plus a handful of mechanical edits (section 6), no more.
-- Supporting PyScript releases older than the one the examples pin.
+1. **Fine-grained reactivity instead of re-render and diff.** Signals, memos and effects
+   form a graph. A signal read inside a view position creates an effect that updates that
+   one text node or attribute. There is no virtual DOM and no morphing. `reactive_graph`'s
+   README states the assumption: effects (DOM writes) are expensive, propagation is cheap.
+   In PyScript that assumption is stronger still, because every DOM call crosses the
+   Python-to-JavaScript bridge. The model that minimises DOM writes is the model for us.
+2. **Ownership and cleanup.** Every effect and computation belongs to an `Owner`; when a
+   view is removed its owner is disposed, which cancels effects, runs `on_cleanup`
+   callbacks and drops what it held. In PyScript this is not a nicety: every Python
+   callback handed to the DOM is a `create_proxy` that leaks unless destroyed. Frontage
+   needs an owner tree from day one to have any story about memory at all.
+3. **Control flow as components, keyed lists.** `Show`, `For` with a key function, `Either`,
+   `Suspense`, `ErrorBoundary`. `For` diffs keys, not nodes, and moves existing DOM
+   elements; a row whose key is unchanged is never touched, which is what keeps focus and
+   input state, the "refs problem" PuePy needed a chapter for.
+4. **URL drives state; nested routes.** The router matches a URL against a tree, renders
+   each level into its parent's `Outlet`, exposes params and query as reactive values, and
+   upgrades real `<a>` and `<form>` elements rather than replacing them.
+5. **Async as reactive values.** A `Resource` is an async function that re-runs when the
+   signals it read change and exposes its result as a signal; `Suspense` shows a fallback
+   while resources under it load; `Action` is the same for mutations, with `pending` and
+   `value` as signals. This is the whole story for "fetch some data", and PuePy had none.
 
-## 4. Clean-room rules
+**Do not transfer:**
 
-These make "Optersoft's own code" true rather than a claim.
+- The statically typed view tree (`tachys`). It exists so Rust can monomorphise views;
+  Python gets nothing from it. Our view tree is a plain object tree.
+- `Copy` arena handles for signals. Rust needs them for closures; Python references suffice.
+- Compile-time feature flags for `csr` / `ssr` / `hydrate`. Frontage detects its runtime.
+- Server functions (`#[server]`). Frontage has no server half in 0.x. Section 8 keeps the
+  door open.
 
-- **What may be consulted:** PuePy's documentation and examples for *behaviour* (what a
-  feature does, what the tutorial teaches), its public API names, and the browser test
-  suite as a specification of observable behaviour. Ideas and interfaces are not what
-  copyright protects.
-- **What may not be copied:** PuePy's source, its tests, its docstrings, and its prose.
-  Not paraphrased line by line either. The rewrite is written from the spec in this
-  document and the behaviour list in `SPEC.md` (to be written from the docs, section 10),
-  not with the old source open in the next window.
-- **Where the old tree lives:** branch `puepy-reference`, never merged, deleted once the
-  rewrite passes the whole example suite and 0.1.0 ships. Its `tests/integration/` is the
-  acceptance test until then, rewritten as ours as part of M1.
-- **Credit stays.** README and the landing page keep one line: inspired by PuePy, which
-  showed the shape. That is courtesy, not obligation, and it is the truth.
-- **Every PR says so.** The template asks "written from the spec, without the reference
-  source open?" A yes is the contributor's statement, and the maintainer's on merge.
+## 3. Goals
 
-## 5. Platform
+1. **Python only, in the browser.** Reactive UI with no JavaScript, Node or bundler.
+2. **Fine-grained.** A state change touches the DOM nodes that read it, nothing else.
+3. **Two runtimes.** Pyodide and MicroPython, one codebase, the browser suite run on both.
+4. **Small.** Core under ~4,000 lines, readable in an afternoon. This is what makes it
+   teachable, and teaching is half of what Optersoft does.
+5. **Renderer-agnostic views**, so the same view tree can render to a DOM or to an HTML
+   string. This is what makes server rendering possible later without a rewrite.
+6. **Honest testing.** The reactive graph and the string renderer test on plain CPython with
+   no DOM at all; the examples run in a real browser under both runtimes in CI.
+
+## 4. Non-goals for 0.x
+
+- Server-side rendering and hydration as shipped features. The design allows them
+  (section 8); 0.x does not deliver them.
+- A component library or CSS framework.
+- Import compatibility with PuePy. Porting an app is a rewrite of its views, mechanical
+  but real. The shape below is different on purpose.
+- PyScript releases older than the one the examples pin.
+
+## 5. Clean-room rules
+
+- **Consult:** PuePy's and Leptos's documentation and examples for behaviour and API design;
+  the reactive-graph algorithm as described in Leptos's book appendix and the Reactively
+  article it cites; PuePy's browser tests as an acceptance specification.
+- **Do not copy:** source code, tests, docstrings or prose from either project. The code is
+  written from `SPEC.md` (section 12) with neither repository open.
+- **Where the old tree lives:** branch `puepy-reference`, never merged, deleted after 0.1.0.
+- **Credit.** README: "Frontage's reactive model follows Leptos; the project began as a
+  fork of PuePy." Courtesy, both true, neither an obligation.
+- **Every PR states** it was written from the spec without reference source open.
+
+## 6. Platform
 
 | | |
 |---|---|
-| PyScript | ≥ 2026.7.3; the examples pin one exact release |
-| Pyodide | 3.14 (what 2026.6.1+ ships); Python 3.14 semantics |
-| MicroPython | the build PyScript ships; no `typing`, partial stdlib |
-| Browsers | evergreen Chromium, Firefox, WebKit; the suite runs on all three |
-| Server | CPython ≥ 3.11 for tests and tooling only |
+| PyScript | ≥ 2026.7.3; examples pin one exact release, served locally in CI |
+| Pyodide | 3.14 (2026.6.1+); Python 3.14 semantics, including template strings |
+| MicroPython | the build PyScript ships (template strings, `weakref`, `asyncio.Future` since 2026.3.1) |
+| Browsers | evergreen Chromium, Firefox, WebKit |
+| Server | CPython ≥ 3.12 for tests, tooling and the string renderer |
 
-**How to write for both interpreters.** The package is written in the MicroPython subset:
-string annotations only, no runtime `typing` import, no dataclasses, no `functools` beyond
-what MicroPython has, no f-string `=` specifier. Ruff's `UP` rules stay off; a CI job runs
-the browser suite under `mpy` as well as `py`, and that job is the guard, not a style guide.
-This is the same constraint PuePy accepted and it costs less than it sounds. *Open:* whether
-MicroPython is first-class (a release blocks on it) or best-effort (a release notes what
-broke). Proposal: first-class. The small-download story is half the pitch.
+**Both interpreters.** The package is written in the MicroPython subset: string annotations,
+no runtime `typing`, no dataclasses, no `functools` beyond MicroPython's. Ruff's `UP` rules
+stay off; the `mpy` browser job is the guard. *Open:* MicroPython first-class or
+best-effort. Proposal: first-class; the small download is half the pitch, and Pyodide's 10 MB
+is the number every PyScript sceptic quotes.
 
-**The bridge to the browser** is `pyscript.document`, `pyscript.window`,
-`pyscript.ffi.create_proxy` / `to_js` and `pyscript.js_modules`. They exist on both
-interpreters, which removes the platform branching PuePy needed. `pyscript.web` (its own
-Element wrapper) is not used: Frontage owns its element model, and two abstractions over
-the same node is one too many.
+**The bridge** is `pyscript.document`, `pyscript.window`, `pyscript.ffi.create_proxy` /
+`to_js`, `pyscript.js_modules` and `asyncio`, all present on both interpreters. Not
+`pyscript.web`, which is a second element model we do not need.
 
-## 6. Public API
+## 7. The reactive core (`frontage.reactive`)
 
-Keep PuePy's shape where it is good, because it is good and because it is what the tutorial
-audience already understands. Names below are the proposal; the module layout in section 7
-is where they live.
+A direct port of the *idea* of `reactive_graph`, sized for Python.
 
 ```python
-from frontage import Application, Component, Page, Prop, t
+from frontage import Signal, Memo, Effect
 
-app = Application()
-
-
-@app.page("/", name="home")
-class Home(Page):
-    def initial(self):
-        return {"count": 0}
-
-    def populate(self):
-        with t.section(classes="counter"):
-            t.h1(f"Count: {self.state['count']}")
-            t.button("+", on_click=self.increment)
-            t.input(placeholder="Your name", bind="name")
-
-    def increment(self, event):
-        self.state["count"] += 1
-
-
-app.mount("#app")
+count = Signal(0)
+double = Memo(lambda: count.get() * 2)
+Effect(lambda: print("double is", double.get()))   # runs once, then on change
+count.set(2)
+count.update(lambda n: n + 1)
 ```
 
-**Kept from PuePy:** `Application`, `Page`, `Component`, `Prop`, the `t` builder with
-`with` nesting, `initial()` / `populate()`, `state` as a reactive mapping, `bind=` on form
-elements, `on_<event>=` handlers, `ref=` and `self.refs`, slots and `insert_slot()`, props
-declared on the class, `on_ready` / `on_redraw` lifecycle hooks, the router with hash and
-history modes, `Redirect` / `NotFound` / `Forbidden` / `Unauthorized` as exceptions raised
-from `populate()`, `page_title()`, `add_event_listener`, `trigger_event` for custom events
-bubbling to a parent.
+- **Nodes**: `Signal` (source), `Memo` (source and subscriber), `Effect` (subscriber),
+  `RenderEffect` (an `Effect` that runs synchronously on creation, for DOM binding).
+- **Automatic, dynamic dependency tracking.** A global "current observer" stack; a `get()`
+  while an observer runs records the edge; each run re-records from scratch, so a branch
+  that stops reading a signal stops subscribing to it.
+- **Three node states**, Clean / Check / Dirty, exactly as Leptos and Reactively describe:
+  setting a signal marks it Dirty and its transitive subscribers Check; a Check node asks
+  its sources to update first and recomputes only if one actually changed. Memos compare
+  with `==` by default and accept an `equal=` function. Effects therefore run once per
+  batch, never for an upstream change that netted out to no change.
+- **Scheduling.** Setting a signal updates its value immediately; effects run on the next
+  microtask (`queueMicrotask` in the browser, `asyncio.get_running_loop().call_soon` or
+  synchronously under CPython tests). `batch()` defers until its block ends. `untrack()`
+  reads without subscribing.
+- **Ownership.** `Owner` is a tree. Every effect and memo is created under the current
+  owner; a component's view runs under an owner of its own. `owner.dispose()` runs
+  `on_cleanup` callbacks, cancels effects, disposes children, and **destroys every
+  `create_proxy` registered under it**. `provide_context(value)` / `use_context(Type)` walk
+  the owner tree; this is how a page shares state with deep descendants, and how the
+  router hands params to a route.
+- **Stores** (`frontage.store`, 0.2): nested reactivity over plain dicts and lists, one
+  node per path, so `store["user"]["name"]` is readable as a signal and writing it does not
+  notify `store["user"]["email"]`. Leptos's `reactive_stores`, in the shape Python data has.
 
-**Changed:**
+The whole module is testable on CPython with no browser, and that test suite is where the
+correctness of the framework lives.
 
-- Routes are declared on the decorator: `@app.page("/pets/<id>")`. Route names default to
-  the snake-cased class name. `Application.install_router()` goes; the router exists as
-  soon as a route does, in hash mode unless `Application(link_mode="history")`.
-- State has one shape: a `State` mapping with `watch(key, callback)` and a `mutate()`
-  context manager for in-place changes to nested objects. No second `ReactiveDict` name.
-- Handlers may be `async def`. Awaiting `fetch` from a click handler is the most common
-  thing a beginner wants to do and it must not need a wrapper.
-- Redraw scheduling is explicit and documented: one microtask after a state change,
-  coalesced, morphing only the tags that read the changed keys. `redraw()` remains for the
-  manual case.
-- Errors from `populate()` render an error page that names the component and the key, in
-  development mode. Production mode (`Application(debug=False)`) renders the configured
-  error page only.
-- Everything in `frontage/__init__.py` is in `__all__`, and nothing else is public.
+## 8. Views (`frontage.view`)
 
-**Dropped:** `CssClass` (generate real CSS files or use classes), `Builder`/`html` string
-injection as a public API (an `unsafe_html()` escape hatch remains, named for what it is),
-`BrowserStorage` as a core module (it becomes `frontage.storage`, optional, documented as a
-thin dict view over `localStorage`), and the runtime-detection constants as public names.
+**The view tree is plain objects**, built two ways that produce the same thing.
 
-*Open:* keep the name `t` for the builder, or spell it `html`? `t` is short and PuePy users
-know it; `html` reads better in a course. Proposal: `t`, with `html` as an alias in the
-docs' first chapter only if teaching shows it is needed.
+**The builder**, always available and what the template compiles to (Leptos's
+`counter_without_macros`):
 
-## 7. Architecture
+```python
+from frontage import html as h
 
-```
-frontage/
-  __init__.py     public names, __all__, __version__
-  runtime.py      which interpreter, the pyscript bridge, next_tick(); nothing else imports js
-  state.py        State (reactive mapping), watchers, mutate(), the notification queue
-  dom.py          the Tag tree: t builder, attributes, classes, children, refs, event wiring
-  render.py       Tag tree -> DOM; the morph step (section 8); redraw scheduling
-  component.py    Component, Prop, slots, props validation, parent/child, trigger_event
-  page.py         Page, Application, mount(), error pages, debug mode
-  router.py       Route matching, reverse(), hash/history modes, navigation guards
-  storage.py      optional: dict view over localStorage / sessionStorage
-  errors.py       Redirect, NotFound, Forbidden, Unauthorized, FrontageError
+def counter(initial=0):
+    count = Signal(initial)
+    return h.div(
+        h.button("-", on_click=lambda ev: count.update(lambda n: n - 1)),
+        h.span("Value: ", count, "!"),
+        h.button("+", on_click=lambda ev: count.update(lambda n: n + 1)),
+        cls="counter",
+    )
 ```
 
-Dependency direction is top to bottom: `errors` and `runtime` import nothing of ours;
-`state` imports `runtime`; `dom` imports `state`; and so on. `router` and `storage` are
-leaves the application wires in. A module never reaches around this order, and a test can
-import `state` or `router` without a browser.
+**The template**, a Python 3.14 template string (PEP 750), available on both interpreters,
+parsed once per call site and cached; Frontage's answer to `view!`:
 
-**Server-side stand-ins.** On CPython the browser globals are objects that raise a sentence
-naming the global when touched, never `None`. This is what lets the unit tests import the
-whole package and what gives a clear error to anyone who runs an app outside a browser.
+```python
+def counter(initial=0):
+    count = Signal(initial)
+    return html(t"""
+        <div class="counter">
+            <button on:click={lambda ev: count.update(lambda n: n - 1)}>-</button>
+            <span>Value: {count}!</span>
+            <button on:click={lambda ev: count.update(lambda n: n + 1)}>+</button>
+        </div>
+    """)
+```
 
-## 8. Rendering
+*Open:* template strings are new in 3.14 and in MicroPython 2026.3; if either implementation
+proves incomplete, the template layer waits and the builder ships alone. Proposal: build the
+builder first (M1), the template on top (M2), and let the tutorial teach the template.
 
-The Tag tree is rebuilt by `populate()` on each redraw and reconciled into the live DOM.
-Reconciliation is **morphdom** (BSD-style license, ~1,000 lines of JavaScript, the same
-choice PuePy made and the right one: writing a DOM differ in Python that runs on
-MicroPython is a project of its own). It is loaded through `pyscript.js_modules` from the
-app's config. If it is absent, the fallback is whole-subtree replacement, which is correct
-and slow, and a console warning says so once.
+**Children** may be: `str` (a text node), a `Signal` or `Memo` (a text node bound by a
+`RenderEffect`), a zero-argument callable (same, tracked), another view, `None` (nothing),
+or a list. **Attributes** are keyword arguments; a `Signal` or callable value becomes a
+bound attribute. Prefixes follow Leptos because they name real DOM distinctions the
+beginner will otherwise hit as bugs: `attr` (default), `prop_value` (a DOM property, the
+one that works for form inputs), `class_active=signal` (toggle one class), `style_color`,
+`on_click` (event), `bind_value=signal` (two-way, on `input`), `bind_checked`,
+`bind_group`, `ref=NodeRef()`.
 
-Keys: a `key=` attribute on a tag inside a loop is passed to morphdom as the node id it
-matches on, which is what keeps focus and input state across a redraw. This is the "refs
-problem" from the tutorial, solved by naming the mechanism instead of an example.
+**Components are functions.** A component is a function that takes keyword props, runs
+once under its own `Owner`, and returns a view. Props that are signals stay reactive
+inside; plain values are plain. `children` is a callable returning a view; named slots are
+callables passed as props. No base class, no `populate()`, no magic attribute lookup.
 
-Redraw scope: a tag records which state keys `populate()` read while building it. A change
-to a key redraws the smallest enclosing component that read it. *Open:* whether that
-tracking is worth its complexity in 0.1, or whether 0.1 redraws the whole page (simpler,
-what PuePy does) and scoping is 0.2. Proposal: whole page in 0.1, measured, then decide.
+**Control flow**, as components:
 
-## 9. Testing
+| | |
+|---|---|
+| `Show(when=signal, fallback=..., children)` | mounts one branch, toggles without rebuilding |
+| `For(each=signal_of_list, key=fn, children=fn(item))` | keyed; adds, removes and moves rows, never rebuilds one whose key survived |
+| `Either(cond, a, b)` / `Match(signal, {case: view})` | branch by value |
+| `Suspense(fallback, children)` | fallback while any `Resource` read beneath is loading |
+| `Transition` | `Suspense` that keeps the old view while reloading |
+| `ErrorBoundary(fallback=fn(errors), children)` | catches exceptions raised in effects beneath; renders the fallback |
+| `Portal(target, children)` | render into another DOM node |
 
-- **Unit tests** on CPython with a small DOM stand-in of ours (attributes, children,
-  events; enough for `dom`, `render`, `state`, `router`, `component`). No browser.
-- **Browser suite**: the examples driven by Playwright, under `py` and `mpy`, on Chromium in
-  every CI run and on Firefox and WebKit nightly. The server fixture is `autouse`, so any
-  test runs alone. PyScript is served from a local copy (`tools/pyscript/<version>/`,
-  fetched by `mk pyscript.fetch`, gitignored), so CI never waits on a CDN and a release is
-  reproducible.
-- **The examples are the acceptance suite.** Each tutorial chapter has an example, and each
-  example has a browser test. A feature without an example is not done.
-- **Gate:** `mk check` runs ruff, ty and the unit tests; the browser suite is `mk test
-  --integration` and a required CI job.
+**Renderers.** The view tree does not touch `document` directly. It talks to a `Renderer`
+with a dozen methods (`create_element`, `create_text`, `set_attribute`, `set_property`,
+`insert_before`, `remove`, `add_listener`, …). Two implementations: `DomRenderer` in the
+browser, `HtmlRenderer` on CPython, which writes an HTML string. The second is what makes
+the view layer unit-testable without a browser, and it is the seam server rendering would
+later plug into: a Python web server rendering the first paint, PyScript hydrating it.
+Hydration is not in 0.x; the marker comments it would need are designed in now and cost
+nothing.
 
-## 10. Documentation
+**Events are delegated.** One listener per event type on the mount root, dispatching by
+element identity to the Python handler. In PyScript this replaces one `create_proxy` per
+handler with one per event type, and a removed element's handler is simply dropped from a
+dict. Leptos does this behind a feature flag; here it is the only mode. Handlers may be
+`async def`. `Event(name)` creates a custom event a child can `emit()` to a parent.
 
-Documentation lives in `academy-pages` and is served at `academy.optersoft.com/tool/frontage`,
-by the fleet's convention. The tutorial is rewritten for the new API, chapter by chapter,
-each chapter pointing at its live example on `frontage.optersoft.com/examples/…`. The
-reference is generated from docstrings.
+## 9. Async (`frontage.async_`)
 
-Before code: `SPEC.md`, a behaviour list written from PuePy's docs and its browser tests in
-our words, one line per observable behaviour, grouped by the tutorial's chapters. It is the
-clean-room artefact, the thing the code is written from, and the checklist M1 to M3 tick.
+- `Resource(fetcher)`: runs `fetcher` (an `async def`) under tracking, re-runs when a signal
+  it read changes, exposes `.get()` (value or `None`), `.loading`, `.error` as signals.
+  `Suspense` finds the resources read under it through the owner tree.
+- `Action(fn)`: `.dispatch(input)` runs `fn(input)` once; `.pending`, `.value`, `.input`
+  are signals. What a form submits to.
+- Tasks are spawned with `asyncio.create_task` on both interpreters; every task is owned,
+  so a disposed owner cancels its in-flight fetches.
 
-## 11. Distribution
+## 10. Router (`frontage.router`)
 
-- **PyPI** `frontage`, a pure-Python wheel, published by `ci.yml` on a tag.
-- **The wheel on the site**, at `frontage.optersoft.com/dist/frontage-<version>-py3-none-any.whl`,
-  so a `pyscript.json` can name it by URL with no PyPI hop. `mk site.build` copies it.
-- **A minimal `pyscript.json`** documented in chapter one: the wheel in `packages`,
-  morphdom in `js_modules`. That file is the whole install.
+Leptos's principles, verbatim: URL drives state; nested routing; progressive enhancement.
 
-## 12. License and ownership
+```python
+app = Router(
+    Route("/", Home),
+    Route("/contacts", ContactList, children=[
+        Route(":id", Contact, children=[
+            Route("", ContactInfo),
+            Route("conversations", Conversations),
+        ]),
+        Route("", SelectAContact),
+    ]),
+    fallback=NotFound,
+)
+mount("#app", app)
+```
 
-- **MIT OR Apache-2.0**, at the user's choice, the pair every other Optersoft repo ships
-  under and the same reasoning: MIT is the shortest read, Apache adds the patent grant and
-  the trademark reservation. Copyright Optersoft, S.L. `LICENSE-MIT` and `LICENSE-APACHE`.
-- **Inbound = outbound.** Contributions are accepted under the same dual license, stated in
-  the README, no separate agreement.
-- **Frontage is a trademark of Optersoft.** Stated in README and NOTICE, as today.
-- The switch from Apache-only happens when the first line of rewritten code lands on
-  `main`, and not one commit earlier: the fork tree is Apache and stays Apache on its
-  branch.
+- **Nested routes** render into the parent's `Outlet()`. Navigating between siblings
+  re-renders only the level that changed; the parent's state and effects survive.
+- **Params and query** are memos: `use_params()["id"]` is reactive, so a `Resource` that
+  reads it reloads on navigation.
+- **Plain `<a>` works.** The router intercepts same-origin clicks at the document level (one
+  delegated listener) and calls `history.pushState`. `A(href)` additionally resolves
+  relative paths within nested routes and sets `aria-current`. `Form` does the same for
+  `GET` forms. Nothing here needs a component to be a link.
+- History and hash modes; hash for the no-server tutorial case.
+- `navigate(path)`, `Redirect(path)` raised from a component body.
 
-## 13. Milestones
+## 11. Errors and development mode
+
+Exceptions in a component body or an effect are routed to the nearest `ErrorBoundary`; with
+none, to the mount root, which in `debug=True` renders the traceback with the component and
+signal named, and in production renders a configured fallback and logs. Both interpreters
+give tracebacks; the debug page makes them readable in a `<pre>`.
+
+## 12. Testing
+
+- `SPEC.md` first: behaviours, one line each, grouped by chapter, written in our words
+  from both projects' docs. The clean-room artefact and the checklist.
+- **Reactive core**: exhaustive unit tests on CPython, including the diamond and
+  branching graphs the Leptos appendix draws, cleanup ordering, and batch semantics.
+- **Views**: unit tests through `HtmlRenderer` (structure) and through a small recording
+  fake renderer (which DOM operations a state change caused, and how few).
+- **Keyed diff**: property-based tests against a brute-force reference: random key
+  sequences, assert the DOM order equals the target and count operations.
+- **Browser suite**: the examples under Playwright, `py` and `mpy`, Chromium every run,
+  Firefox and WebKit nightly; PyScript served from a local copy; the server fixture is
+  `autouse`.
+
+## 13. Documentation and distribution
+
+Docs on `academy.optersoft.com/tool/frontage`, chapter per concept in the order above,
+each chapter with its live example on `frontage.optersoft.com/examples/…`. Distribution is
+the wheel on PyPI and mirrored on the site, plus a three-line `pyscript.json` that is the
+whole install. Reference generated from docstrings.
+
+## 14. License and ownership
+
+**Apache License 2.0**, copyright Optersoft, S.L. Not the MIT OR Apache pair the Python CLIs
+use: for a company the value of Apache is section 3 (patent grant both ways), section 5
+(contributions arrive under the same terms, no CLA), and section 6 (no trademark rights). A
+dual license lets the user pick MIT and take none of those obligations, which is the Rust
+ecosystem's convention and a loss here. PyScript itself is Apache 2.0. Frontage is a
+trademark of Optersoft, stated in README and NOTICE. The fork on `puepy-reference` stays
+under its own Apache 2.0 notice; the rewrite carries Optersoft's from the first commit.
+
+## 15. Milestones
 
 | | Deliverable | Done when |
 |---|---|---|
-| M0 | `SPEC.md`; `puepy-reference` branch; empty package skeleton with `runtime`, `errors`; unit-test DOM stand-in; local PyScript fixture | `mk check` green on an empty package; browser suite runs hello-world under `py` and `mpy` |
-| M1 | `state`, `dom`, `render`, `component`, `page`; tutorial examples 1 to 6 rewritten | their browser tests pass on both runtimes |
-| M2 | `router`, error pages, `storage`; examples 7 to 10 | full example suite green on Chromium, both runtimes |
-| M3 | tutorial and reference on academy; landing page updated; wheel on the site | `0.1.0` tagged and on PyPI |
-| M4 | Firefox and WebKit in CI; redraw scoping decision; the `refs` chapter rewritten around `key=` | `0.2.0` |
+| M0 | `SPEC.md`; `puepy-reference` branch; skeleton; local PyScript fixture; `Renderer` protocol with `HtmlRenderer` and a fake | `mk check` green; hello-world renders to a string |
+| M1 | `reactive` (signals, memos, effects, owner, context, batch); `view` builder; `DomRenderer`; delegated events; `Show`, `For`; `bind_*`; counter and todo examples | unit suite green; browser suite green for those examples on both runtimes |
+| M2 | `t"…"` templates; `Resource`, `Action`, `Suspense`, `Transition`; `ErrorBoundary`; `NodeRef`; fetch and forms examples | same |
+| M3 | `router` (nested, params, `A`, `Form`, hash + history); contacts example; debug error page | full example suite green on Chromium, both runtimes |
+| M4 | docs on academy; landing page; wheel on the site | **0.1.0** on PyPI |
+| M5 | `store`; Firefox + WebKit in CI; `Portal`; performance pass with the js-framework-benchmark rows example | **0.2.0** |
+| later | `HtmlRenderer` exposed as server rendering; hydration; islands | when someone needs it |
 
-M0 to M2 are code and can run in parallel with the docs port once `SPEC.md` exists. The
-estimate is weeks, not days; the fork on the reference branch is what ships if something
-needs to be shown before M3.
+## 16. Open decisions
 
-## 14. Open decisions
-
-1. MicroPython first-class or best-effort (section 5). Proposal: first-class.
-2. Builder name `t` or `html` (section 6). Proposal: `t`.
-3. Redraw scoping in 0.1 or 0.2 (section 8). Proposal: 0.2.
-4. Route declaration on the decorator, retiring `install_router()` (section 6). Proposal: yes.
-5. Whether `storage` ships in 0.1 at all, or waits for someone to ask.
+1. MicroPython first-class or best-effort (section 6). Proposal: first-class.
+2. Template strings in M2, or builder only until t-strings prove solid on both runtimes
+   (section 8). Proposal: M2, with the builder as the fallback the tutorial can switch to.
+3. Attribute prefix spelling: `on_click` / `class_active` / `prop_value` as keyword
+   arguments, or a single `attrs={}` dict with `"on:click"` keys. Proposal: keywords; they
+   read as Python and the template syntax uses the colon form.
+4. Whether `Store` ships in 0.1 or 0.2. Proposal: 0.2.
+5. Whether to design the hydration markers now (cheap) or leave server rendering out of the
+   view layer entirely (simpler). Proposal: design the seam, ship nothing.
