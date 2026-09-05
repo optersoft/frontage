@@ -16,3 +16,4 @@ test-results/
 /www/
 /tools/pyscript/
 .wrangler/
+/build/

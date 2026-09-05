@@ -9,6 +9,7 @@
     mk check                the gate: lint, types, unit tests
     mk serve [--port N]     the examples at http://127.0.0.1:8000/examples/, package read live
     mk dist.build           sdist + wheel into ./dist, then import the wheel once
+    mk export APP [--out D] a self-contained static directory for one app (examples/counter, …)
     mk site.build           frontage.optersoft.com into ./www: web/ + the live examples
     mk site.deploy          build, then publish ./www to Cloudflare Pages (project `frontage`)
 
@@ -106,6 +107,23 @@ def dist_build() -> None:
     )
 
 
+@task(requires=["uv"])
+def export(app: str, *, out: str = "", no_pyscript: bool = False) -> None:
+    """Export one app directory as static files that run without this repo, PyPI or a CDN.
+
+    Args:
+        app: the app directory (it has an index.html and the .py files)
+        out: destination directory (default build/<app name>)
+        no_pyscript: link PyScript from pyscript.net instead of bundling the local copy
+    """
+    args = ["tools/export.py", app]
+    if out:
+        args += ["--out", out]
+    if no_pyscript:
+        args.append("--no-pyscript")
+    sh("uv", "run", "--frozen", "python", *args)
+
+
 @task(name="site.build")
 def site_build() -> None:
     """Assemble frontage.optersoft.com into ./www.
@@ -123,6 +141,8 @@ def site_build() -> None:
     if not bundles:
         raise MakeError("no local PyScript bundle: run `mk pyscript.fetch` first")
     shutil.copytree(bundles[-1], WWW / "pyscript", ignore=shutil.ignore_patterns("*.map"))
+    # The wheel, so a pyscript.json can name it by URL with no PyPI hop.
+    sh("uv", "build", "--wheel", "--out-dir", str(WWW / "dist"))
     files = sum(1 for f in WWW.rglob("*") if f.is_file())
     size = sum(f.stat().st_size for f in WWW.rglob("*") if f.is_file()) // (1024 * 1024)
     note(f"www/ assembled: {files} files, {size} MB")

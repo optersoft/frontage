@@ -39,7 +39,7 @@
     <div class="brand">Frontage</div>
     <nav>
       <a href="/examples/">Examples</a>
-      <a href="https://academy.optersoft.com/tool/frontage">Docs</a>
+      <a href="https://academy.optersoft.com/python/frontage">Docs</a>
       <a href="https://pypi.org/project/frontage/">PyPI</a>
       <a href="https://github.com/optersoft/frontage">GitHub</a>
     </nav>
@@ -50,52 +50,73 @@
     <a href="https://pyscript.net">PyScript</a> over WebAssembly. No JavaScript, no Node,
     no bundler. You write Python and the browser runs it.</p>
 
-<pre><code>from frontage import Application, Page, t
-
-app = Application()
+<pre><code>from frontage import Signal, component, html, mount
 
 
-@app.page()
-class Hello(Page):
-    def initial(self):
-        return dict(name="")
+@component
+def counter(initial=0):
+    count = Signal(initial)
 
-    def populate(self):
-        with t.div(classes="container"):
-            t.h1("Welcome to Frontage")
-            if self.state["name"]:
-                t.p(f"Hello there, {self.state['name']}")
-            else:
-                t.p("Why don't you tell me your name?")
-            t.input(placeholder="Enter your name", bind="name")
+    def inc(ev):
+        count.update(lambda n: n + 1)
+
+    return html(t"""
+        &lt;div class="counter"&gt;
+            &lt;button on:click={inc}&gt;+&lt;/button&gt;
+            &lt;span&gt;Value: {count}&lt;/span&gt;
+        &lt;/div&gt;
+    """)
 
 
-app.mount("#app")</code></pre>
+mount(lambda: counter(initial=0), "#app")</code></pre>
+  <p>Signals hold state. Anything callable inside a template is a hole that updates in place
+    when what it read changes. That is the whole model: no re-render, no diff, no DSL.</p>
 
   <h2>What you get</h2>
   <ul class="grid">
-    <li><strong>Reactivity</strong>Change a component's state and the DOM updates. Redraws are diffed with morphdom.</li>
-    <li><strong>Components</strong>Props, slots and events in the style of Vue. Each component is one Python class.</li>
-    <li><strong>Routing</strong>A hash or history router for single-page apps, with navigation guards.</li>
-    <li><strong>Your runtime</strong>Full CPython via Pyodide, or MicroPython when a small download matters more.</li>
-    <li><strong>No build step</strong>Serve the files. That is the whole deployment.</li>
-    <li><strong>Open source</strong>Apache 2.0, maintained by Optersoft.</li>
+    <li><strong>Fine-grained reactivity</strong>Signals, memos and effects. A change touches the DOM nodes that read it and nothing else.</li>
+    <li><strong>Templates</strong>Python 3.14 template strings, <code>html(t"…")</code>, or a builder with <code>with</code> blocks. Both clone once and bind only the holes.</li>
+    <li><strong>Control flow and async</strong><code>Show</code>, <code>For</code>, <code>Switch</code>; <code>Resource</code> and <code>Action</code> with <code>Loading</code> and <code>Errored</code> boundaries.</li>
+    <li><strong>A nested router</strong>The URL drives state. Plain links work; a level whose route did not change keeps its state.</li>
+    <li><strong>Two runtimes</strong>MicroPython when the download matters, Pyodide when you want the standard library and PyPI.</li>
+    <li><strong>No build step</strong>Serve the files. <code>mk export</code> writes a directory that runs anywhere.</li>
   </ul>
 
+  <h2>How small</h2>
+  <p>The counter above, complete, as the browser downloads it:</p>
+  <table style="border-collapse:collapse;margin:.5rem 0 1rem">
+    <tr><th style="text-align:left;padding:.2rem 1rem .2rem 0">Runtime</th><th style="text-align:right;padding:.2rem 1rem">Transferred</th><th style="text-align:right;padding:.2rem 0">Compressed</th></tr>
+    <tr><td style="padding:.2rem 1rem .2rem 0">MicroPython</td><td style="text-align:right;padding:.2rem 1rem">0.84 MB</td><td style="text-align:right">0.32 MB</td></tr>
+    <tr><td style="padding:.2rem 1rem .2rem 0">Pyodide</td><td style="text-align:right;padding:.2rem 1rem">13.8 MB</td><td style="text-align:right">6.4 MB</td></tr>
+  </table>
+  <p>Frontage itself is 131 KB of Python, 39 KB compressed. The rest is the interpreter.
+    Measured on 2026-09-05 with PyScript 2026.7.3; the
+    <a href="https://github.com/optersoft/frontage/blob/main/tools/bench.py">benchmark</a> and its numbers are in the repository.</p>
+
   <h2>See it run</h2>
-  <p>The <a href="/examples/">tutorial examples</a> run live on this site, straight from the
-    same files the documentation walks through. Start with
-    <a href="/examples/tutorial/01_hello_world/index.html">Hello, World</a> and end with
-    <a href="/examples/tutorial/10_full_app/index.html">a full app</a>.</p>
+  <p>The <a href="/examples/">examples</a> run live on this site, on MicroPython by default
+    (add <code>?type=py</code> for Pyodide). They are the same files the browser test suite
+    drives: a <a href="/examples/counter/index.html">counter</a>, a
+    <a href="/examples/todo/index.html">todo list</a>, the
+    <a href="/examples/rows/index.html">benchmark table</a>, data
+    <a href="/examples/fetch/index.html">fetching</a>, a
+    <a href="/examples/forms/index.html">form</a>, and a
+    <a href="/examples/contacts/index.html">routed app</a>.</p>
 
   <h2>Install</h2>
   <p>Frontage is a client-side library: installing it means telling PyScript where the wheel is.
     The <a href="https://academy.optersoft.com/python/frontage">documentation</a> walks through a first project.</p>
-<pre><code>pip download frontage --no-deps --dest .</code></pre>
+<pre><code>{
+  "packages": ["https://frontage.optersoft.com/dist/frontage-0.1.0-py3-none-any.whl"]
+}</code></pre>
+  <p>That <code>pyscript.json</code> is the whole install. The wheel is also on
+    <a href="https://pypi.org/project/frontage/">PyPI</a>.</p>
 
   <footer>
     Frontage is built and maintained by <a href="https://optersoft.com">Optersoft</a>, a software studio
-    that sells development, training and consulting.
+    that sells development, training and consulting. Apache 2.0. Its reactive model follows
+    <a href="https://www.solidjs.com/">Solid</a> and <a href="https://leptos.dev/">Leptos</a>; the project began
+    as a fork of <a href="https://github.com/kkinder/puepy">PuePy</a> by Ken Kinder.
   </footer>
 </main>
 </body>
