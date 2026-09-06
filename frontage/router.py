@@ -278,8 +278,10 @@ class HashMode:
         _manual_scroll_restoration()
 
     def current(self):
+        # Only a fragment that is a path is a route: `#section` (an anchor) or a runner's
+        # `#{"code": …}` payload means "the root", not "no such page".
         raw = str(window.location.hash)
-        return raw[1:] if raw.startswith("#") else "/"
+        return raw[1:] if raw.startswith("#/") else "/"
 
     def push(self, url):
         window.location.hash = url

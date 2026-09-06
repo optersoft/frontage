@@ -1,13 +1,13 @@
 # Frontage
 
-[frontage.optersoft.com](https://frontage.optersoft.com) · [documentation](https://academy.optersoft.com/tool/frontage) · [PyPI](https://pypi.org/project/frontage/)
+[documentation](https://academy.optersoft.com/python/frontage) · [live examples](https://academy.optersoft.com/python/frontage/examples) · [PyPI](https://pypi.org/project/frontage/)
 
 **A fine-grained reactive UI framework for Python in the browser.** Signals, memos and
 effects; templates that clone once and bind only their holes; a keyed `For`; a nested
 router; running on [PyScript](https://pyscript.net) over WebAssembly, on Pyodide or
 MicroPython. No JavaScript, no Node, no bundler: you write Python and the browser runs it.
 
-> **Status: 0.8.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete through
+> **Status: 0.8.1, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete through
 > its M5 milestone: reactive core, store, templates (`h` and `html(t"…")`), control flow and
 > boundaries, `Resource`/`Action`, a nested router, widgets, `State`, timers, the playground;
 > 0.3.0 added the command line (`export`, `tailwind`, `check`); 0.4.0 added **prerendering
@@ -55,7 +55,7 @@ which runs your code on MicroPython and keeps it in the link. **Learn it** at
 chapters with exercises, each with its app published on GitLab Pages. **Install it** with a `pyscript.json`:
 
 ```json
-{ "packages": ["https://frontage.optersoft.com/dist/frontage-0.8.0-py3-none-any.whl"] }
+{ "packages": ["https://frontage.optersoft.com/dist/frontage-0.8.1-py3-none-any.whl"] }
 ```
 
 | The counter above, as downloaded | MicroPython | Pyodide |
@@ -109,7 +109,8 @@ mk pyscript.fetch       # PyScript's offline bundle (core + both interpreters) i
 mk serve                # examples and playground at http://127.0.0.1:8000/, package read live, reload on save
 mk test --browser       # every example in Chromium, under MicroPython and Pyodide
 mk export examples/todo # python -m frontage export, with the local PyScript bundle
-mk site.deploy          # publish frontage.optersoft.com (Cloudflare Pages)
+mk docs.examples        # the academy's Examples page, from examples/ (../academy-pages)
+mk site.deploy          # publish frontage.optersoft.com (Cloudflare Pages): wheels, playground, redirects
 ```
 
 Without `mk`: `uv sync --all-groups`, `uv run pytest`, `uv run ruff check`, `uv run ty check`.

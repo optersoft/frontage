@@ -422,7 +422,7 @@ def _build_template(element, renderer, cache=None):
     else:
         assert template is not None
         element_holes, child_holes = holes
-    hyd = getattr(renderer, "hydration", None)
+    hyd = renderer.hydration
     hydrating = hyd is not None and hyd.active
     root = None
     elements, markers = [], []
@@ -439,23 +439,24 @@ def _build_template(element, renderer, cache=None):
             node = elements[i]
             for raw, value in element_holes[i]:
                 _apply_attr(node, raw, value, renderer)
-            if not getattr(renderer, "hydration_markers", False):
+            if not renderer.hydration_markers:
                 renderer.set_property(node, "data-fr-h", None)  # the marker has done its job
         for i in range(len(child_holes)):
             marker = markers[i]
             child = child_holes[i]
             parent = renderer.parent(marker)
-            if isinstance(child, Text):
+            kind = type(child)
+            if kind is Text:
                 # Static text keeps its marker in prerendered HTML, so hydration can adopt it.
                 previous = renderer.previous_sibling(marker) if hydrating else None
                 if previous is not None and renderer.is_text(previous):
                     renderer.replace_text(previous, child.value)
                     renderer.remove_node(parent, marker)  # as a fresh build would have
-                elif getattr(renderer, "hydration_markers", False) or hydrating:
+                elif renderer.hydration_markers or hydrating:
                     renderer.insert_node(parent, renderer.create_text(child.value), marker)
                 else:
                     renderer.replace_node(parent, renderer.create_text(child.value), marker)
-            elif isinstance(child, Mounted):
+            elif kind is Mounted:
                 for n in child.nodes:
                     _insert(renderer, parent, n, marker)
             else:
@@ -538,27 +539,36 @@ def _mount_hole(parent, accessor, renderer, marker=None):
                 return
             node = state.adopted if state.adopted is not None else renderer.create_text(payload)
             state.adopted = None
-            _reconcile(target, state.current, [node], marker, renderer)
+            if state.current:
+                _reconcile(target, state.current, [node], marker, renderer)
+            else:  # the first value: one insert, no reconcile (a hole's common whole life)
+                renderer.insert_node(target, node, marker)
             state.current = [node]
             state.text = node
-            _finish_hydration(state, target, marker, hyd)
+            if hyd is not None:
+                _finish_hydration(state, target, marker, hyd)
             return
         state.text = None
-        _reconcile(target, state.current, payload, marker, renderer)
+        if state.current or hyd is not None:
+            _reconcile(target, state.current, payload, marker, renderer)
+        else:
+            for node in payload:
+                _insert(renderer, target, node, marker)
         state.current = payload
-        _finish_hydration(state, target, marker, hyd)
+        if hyd is not None:
+            _finish_hydration(state, target, marker, hyd)
 
     def on_screen():
         target = parent if parent is not None else renderer.parent(marker)
         return target is not None and renderer.is_connected(target)
 
     RenderEffect(compute, apply, target=on_screen)
-
-    def cleanup():
-        _floating.pop(id(marker), None)
-        if parent is None:
-            # A floating hole's owner disposes it while the marker is still in place; the
-            # content it placed before the marker is nobody else's to remove.
+    if parent is None:
+        # Only a floating hole needs a cleanup: its owner disposes it while the marker is
+        # still in place, and the content it placed before the marker is nobody else's to
+        # remove. A hole with a parent has nothing registered in `_floating` either.
+        def cleanup():
+            _floating.pop(id(marker), None)
             target = renderer.parent(marker)
             if target is not None:
                 for node in state.current:
@@ -566,7 +576,7 @@ def _mount_hole(parent, accessor, renderer, marker=None):
                 state.current = []
                 state.text = None
 
-    on_cleanup(cleanup)
+        on_cleanup(cleanup)
     return marker
 
 
@@ -661,10 +671,14 @@ def _apply_attrs(node, attrs, renderer):
     for raw_name, value in attrs.items():
         # The common case inline (a static attribute or property): one call instead of four.
         found = _classified.get(raw_name)
-        if found is not None and (found[0] == "attr" or found[0] == "prop") and not callable(value):
-            renderer.set_property(node, found[1], value)
-        else:
-            _apply_attr(node, raw_name, value, renderer)
+        if found is not None:
+            kind = found[0]
+            if (kind == "attr" or kind == "prop" or (kind == "class-dict" and type(value) is str)) and not callable(
+                value
+            ):
+                renderer.set_property(node, found[1], value)
+                continue
+        _apply_attr(node, raw_name, value, renderer)
 
 
 def _apply_attr(node, raw_name, value, renderer):

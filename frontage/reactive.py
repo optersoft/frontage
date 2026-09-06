@@ -187,8 +187,8 @@ class Owner:
     """A node of the ownership tree. Owns computations and cleanups; carries context."""
 
     def __init__(self, parent: "Owner | None | _Unset" = _UNSET):
-        if isinstance(parent, _Unset):
-            parent = _current_owner()
+        if isinstance(parent, _Unset):  # one class: cheap on MicroPython, and ty narrows it
+            parent = _owner
         self._parent = parent
         self._owned = []
         self._cleanups = []
@@ -251,12 +251,13 @@ def get_owner():
 
 
 def run_with_owner(owner, fn, *args, **kwargs):
-    saved = (_owner, _listener)
-    _set_scope(owner, None)
+    global _owner, _listener
+    saved_owner, saved_listener = _owner, _listener
+    _owner, _listener = owner, None
     try:
         return fn(*args, **kwargs)
     finally:
-        _set_scope(*saved)
+        _owner, _listener = saved_owner, saved_listener
 
 
 def on_cleanup(fn):
@@ -365,22 +366,30 @@ def _flush():
         return
     _flushing = True
     runs = 0
+    render, effects = _render_queue, _effect_queue
+    ri = ei = 0  # cursors: `pop(0)` on a list of 2,000 queued holes was quadratic
     try:
-        while _render_queue or _effect_queue:
-            queue = _render_queue if _render_queue else _effect_queue
-            effect = queue.pop(0)
+        while True:
+            if ri < len(render):
+                effect = render[ri]
+                ri += 1
+            elif ei < len(effects):
+                effect = effects[ei]
+                ei += 1
+            else:
+                break
             effect._queued = False
             if not effect._disposed:
                 effect._update_if_necessary()
             runs += 1
             if runs > FLUSH_LIMIT:
-                del _render_queue[:]
-                del _effect_queue[:]
                 raise RuntimeError(
                     f"reactive update loop: more than {FLUSH_LIMIT} effect runs in one batch. An effect is "
                     "writing a signal it also reads, or a Resource is being created inside a hole."
                 )
     finally:
+        del render[:]
+        del effects[:]
         _flushing = False
 
 
@@ -494,18 +503,25 @@ class _Computation(Owner):
         Owner.__init__(self)
         self._fn = fn
         self._sources = []
-        self._source_ids = set()  # membership in O(1); a For over 1,000 rows tracks 1,000+ nodes
+        self._source_ids = (
+            None  # a set once tracking starts: membership in O(1) (a For over 1,000 rows tracks 1,000+ nodes)
+        )
         self._state = DIRTY
         self._queued = False
 
     def _track(self, source):
         key = id(source)
-        if key not in self._source_ids:
-            self._source_ids.add(key)
+        ids = self._source_ids
+        if ids is None:
+            ids = self._source_ids = set()
+        if key not in ids:
+            ids.add(key)
             self._sources.append(source)
             source._observers.append(self)
 
     def _clear_sources(self):
+        if not self._sources:
+            return
         for source in self._sources:
             observers = source._observers
             for i in range(len(observers)):
@@ -513,7 +529,7 @@ class _Computation(Owner):
                     del observers[i]
                     break
         self._sources = []
-        self._source_ids = set()
+        self._source_ids = None
 
     def _compute(self):
         """Run `fn` tracked, as owner and listener, after disposing the previous run's work.
@@ -521,20 +537,23 @@ class _Computation(Owner):
         `NotReady` ends the run quietly (the dependencies read so far stay, so the run repeats
         when they change); any other exception goes to the nearest `Errored`. Both return
         `_SKIPPED`, which the callers treat as "leave things as they are"."""
-        self._dispose_owned()
-        self._clear_sources()
-        saved = (_owner, _listener)
-        _set_scope(self, self)
+        global _owner, _listener
+        if self._owned or self._cleanups:
+            self._dispose_owned()
+        if self._sources:
+            self._clear_sources()
+        saved_owner, saved_listener = _owner, _listener
+        _owner = _listener = self
         try:
             return self._fn()
         except NotReady:
             return _SKIPPED
         except Exception as exc:
-            _set_scope(*saved)
+            _owner, _listener = saved_owner, saved_listener
             route_error(self._parent, exc)
             return _SKIPPED
         finally:
-            _set_scope(*saved)
+            _owner, _listener = saved_owner, saved_listener
 
     def _run(self):
         raise NotImplementedError
@@ -750,11 +769,14 @@ class Effect(_Computation):
         self._parked = _UNSET
         self._target = target
         self._state = CLEAN  # so the mark below is a transition and enqueues the first run
-        _begin_batch()
-        try:
-            _mark(self, DIRTY)
-        finally:
-            _end_batch()
+        if _batch_depth or _flushing:
+            _mark(self, DIRTY)  # the open batch, or the running flush, picks it up
+        else:
+            _begin_batch()
+            try:
+                _mark(self, DIRTY)
+            finally:
+                _end_batch()
 
     def _run(self):
         self._state = CLEAN  # before the run, so a write during it re-marks and re-queues us
@@ -777,10 +799,21 @@ class Effect(_Computation):
         return True if target is None else bool(target())
 
     def _apply(self, value):
-        if self._effect is not None:
-            self._run_cleanup()
+        global _listener, _untracking
+        effect = self._effect
+        if effect is not None:
+            if self._cleanup is not None:
+                self._run_cleanup()
             prev = None if self._value is _UNSET else self._value
-            result = untrack(self._effect, value, prev)
+            # `untrack(effect, value, prev)`, inlined: this runs once per hole per update.
+            saved = _listener
+            _listener = None
+            _untracking += 1
+            try:
+                result = effect(value, prev)
+            finally:
+                _untracking -= 1
+                _listener = saved
             if callable(result):
                 self._cleanup = result
         self._value = value
@@ -824,15 +857,15 @@ class RenderEffect(Effect):
 
 def untrack(fn, *args):
     """Run `fn` without recording dependencies."""
-    global _untracking
-    saved = (_owner, _listener)
-    _set_scope(_owner, None)
+    global _untracking, _listener
+    saved = _listener
+    _listener = None
     _untracking += 1
     try:
         return fn(*args)
     finally:
         _untracking -= 1
-        _set_scope(*saved)
+        _listener = saved
 
 
 def on(deps, fn):

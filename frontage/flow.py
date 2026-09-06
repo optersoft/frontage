@@ -173,7 +173,7 @@ def _is(a, b):
 def _make_row(item, i, index_mode, children, renderer, home, cache):
     owner = Owner(parent=home)
     index = Signal(i)
-    item_signal = Signal(item, equal=_is)
+    item_signal = Signal(item, equal=_is) if index_mode else None  # keyed rows never read it
 
     def make():
         if index_mode:

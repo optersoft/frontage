@@ -21,6 +21,10 @@ _MISSING = object()
 _writing = []  # a stack, so nested set() calls are fine
 
 
+def _is(a, b):
+    return a is b
+
+
 def _is_container(value):
     # Two single-class tests: on MicroPython `isinstance(x, (dict, list))` that misses (every
     # scalar read) costs fifteen times as much.
@@ -49,7 +53,7 @@ class Store:
             from . import reactive
 
             if reactive._listener is not None:
-                node = Signal(value, equal=lambda a, b: a is b)
+                node = Signal(value, equal=_is)
                 self._nodes[key] = node
         if node is not None:
             node()  # subscribe
