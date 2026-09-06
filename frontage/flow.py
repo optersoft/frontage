@@ -91,7 +91,7 @@ def For(each, children, key=None, fallback=None):
     """One row per item of `each()`, keyed so unchanged rows keep their nodes.
 
     `key=None` keys by the item itself (identity for unhashable items); `key=fn` extracts a
-    key; `key=False` is index mode: rows are reused by position and `children` receives an
+    key and `key="id"` reads that item key; `key=False` is index mode: rows are reused by position and `children` receives an
     accessor for the item and a plain index. Otherwise `children(item, index)` where `index`
     is an accessor.
     """
@@ -110,6 +110,8 @@ def For(each, children, key=None, fallback=None):
                 return item
             except TypeError:
                 return id(item)
+        if isinstance(key, str):
+            return item[key]
         return key(item)
 
     def accessor():
@@ -215,11 +217,14 @@ def Switch(cases, fallback=None):
 
 
 class _LoadingScope:
-    def __init__(self):
+    def __init__(self, keep=False):
         self.pending = Signal(0)
+        self.keep = keep
         self._resources = []
 
-    def add(self, resource):
+    def add(self, resource, refreshing=False):
+        if self.keep and refreshing:
+            return
         if resource not in self._resources:
             self._resources.append(resource)
             self.pending.set(self.pending.peek() + 1)
@@ -230,10 +235,12 @@ class _LoadingScope:
             self.pending.set(self.pending.peek() - 1)
 
 
-def Loading(fallback, children):
+def Loading(fallback, children, keep=False):
     """Show `fallback` while any `Resource` read beneath `children` is loading. The children
-    are built once and kept; only which of the two is in the DOM changes."""
-    scope = _LoadingScope()
+    are built once and kept; only which of the two is in the DOM changes. With `keep=True`
+    only a resource's *first* load shows the fallback: a refetch keeps the content on screen
+    (the resource returns its previous value meanwhile, and `loading()` says it is refreshing)."""
+    scope = _LoadingScope(keep)
     home = get_owner()
     owner = Owner(parent=home)
     content_state = _Branch()

@@ -302,6 +302,7 @@ class Router:
         self.matches = Memo(lambda: match_routes(self.routes, self._strip_base(self.location().pathname)))
         self.params = Memo(lambda: dict(self.matches()[-1].params) if self.matches() else {})
         self.is_routing = Signal(False)
+        self._inflight = 0  # preloads started by the current navigation and still running
         self._guards = []
         self._scroll = {}
         self._unlisten = None
@@ -425,10 +426,25 @@ class Router:
         self._scroll_to(self._scroll.get(url, 0))
 
     def _set_url(self, url):
+        from .reactive import on_mount
+
         with batch():
             self.is_routing.set(True)
             self.url.set(url)
+            # The route effects this update runs start the preloads; the navigation is over
+            # once the update has settled and they have finished.
+            on_mount(self._settle_routing)
+
+    def _settle_routing(self):
+        if self._inflight == 0 and self.is_routing.peek():
             self.is_routing.set(False)
+
+    async def _tracked(self, coro):
+        try:
+            await coro
+        finally:
+            self._inflight -= 1
+            self._settle_routing()
 
     def back(self):
         self.mode.go(-1)
@@ -482,6 +498,9 @@ class Router:
         if hasattr(result, "send") and hasattr(result, "throw"):
             from .reactive import spawn
 
+            if intent == "navigate":
+                self._inflight += 1
+                result = self._tracked(result)
             spawn(result, None)
 
     # -- links -----------------------------------------------------------------------------------

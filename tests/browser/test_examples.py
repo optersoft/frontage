@@ -186,3 +186,17 @@ def test_playground_runs_and_shares(server, page: Page):
     page.reload()
     expect(page.locator("#x")).to_have_text("shared", timeout=60_000)
     assert errors == []
+
+
+def test_playground_tailwind(server, page: Page):
+    """The playground loads Tailwind's browser build from jsdelivr (this test needs the network)
+    without preflight, and it styles the DOM Frontage inserts."""
+    page.goto(f"{server}/playground/index.html")
+    expect(page.locator("#status")).to_contain_text("ran on micropython", timeout=60_000)
+    page.select_option("#example", "tailwind")
+    expect(page.locator("#app button")).to_have_text("Count")
+    page.wait_for_function("getComputedStyle(document.querySelector('#app button')).borderRadius !== '0px'")
+    page.click("#app button")
+    expect(page.locator("#app p")).to_have_text("clicked 1 times")
+    # No preflight: the page's own header button keeps its border.
+    assert page.locator("#run").evaluate("e => getComputedStyle(e).borderTopWidth") == "1px"

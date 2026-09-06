@@ -104,18 +104,35 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
       machinery (boundaries, floating holes, root Errored) costs nothing measurable. Decision:
       no JavaScript shim in 0.x; MicroPython is bound by Python execution, not the bridge.
 
-## After 0.2.0 (the plan's "later", not scheduled)
+## 0.3.0 (2026-09-06) — the command line, and what React still had to teach
+
+- [x] `mount` empties its target (`clear=False` appends).
+- [x] `python -m frontage`: `export` (moved out of tools/, fetches the bundle into a cache),
+      `tailwind` (Tailwind's standalone CLI, downloaded once, `tailwind.css` created if missing —
+      what `dx` does), `check` (lambda in a t-string, `html(f"…")`; `.py` and the `py` blocks
+      of `.md`; in `mk lint`), `pyscript`.
+- [x] The playground loads Tailwind's browser build (utilities only) and has a `tailwind`
+      example; docs chapters Style and Export.
+- [x] `Loading(keep=True)`: a refetch keeps the content on screen (React's transition, the
+      part that fits a synchronous reactive graph).
+- [x] `is_routing` is true while a navigation's preloads run, not for one batch.
+- [x] `unique_id()`; widgets give their control an id and the label a `for`.
+- [x] `tree(handle)`: the owner tree as text; `component` names its owner.
+- [x] `For(key="id")`.
+- [ ] Not done from that list: a real `startTransition` (needs concurrent rendering; DESIGN
+      §16 "later").
+
+## After 0.3.0 (the plan's "later", not scheduled)
 
 - [ ] Server rendering through `HtmlRenderer` and hydration; async memos, `is_pending`,
       transactions and optimistic writes (Solid 2.0's model) — DESIGN §16 "later", for a 1.0.
-- [ ] E2 debug warnings; the scroll-restoration browser test; `use_is_routing`.
-- [ ] Docs: `.ca`/`.es` variants once a programme places the pages; a chapter on deploying
-      (`mk export`, history mode needs the host to serve the page for every path).
+- [ ] E2 debug warnings; the scroll-restoration browser test.
+- [ ] Docs: `.ca`/`.es` variants once a programme places the pages.
+- [ ] A console script (`frontage …`) once the name is worth taking on PATH; `python -m` until then.
 
 ## Outward-facing, for David
 
-- [ ] DNS: proxied CNAME `frontage -> frontage-a8x.pages.dev` in the optersoft.com zone; the Pages
-      project has the domain attached and waits on it. Then connect the project to the GitHub
-      repo and retire the hand deploy.
+- [x] DNS: frontage.optersoft.com is live (2026-09-06).
+- [ ] Connect the Pages project to the GitHub repo and retire the hand deploy.
 - [ ] Email PuePy's author about the fork and the rewrite (courtesy; nothing is owed).
 - [ ] Check `frontage.dev`.

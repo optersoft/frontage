@@ -148,6 +148,36 @@ def app():
 
 mount(app, "#app")
 ''',
+    "tailwind": '''from frontage import Signal, component, html, mount
+
+# Tailwind's browser build is on this page, so utility classes just work: it watches the
+# DOM and writes the CSS for every class it sees, including the ones Frontage inserts.
+
+
+@component
+def card():
+    count = Signal(0)
+
+    def inc(ev):
+        count.update(lambda n: n + 1)
+
+    def times():
+        return f"clicked {count()} times"
+
+    return html(t"""
+        <div class="max-w-sm rounded-xl bg-white p-6 shadow-lg ring-1 ring-zinc-200 dark:bg-zinc-800 dark:ring-zinc-700">
+            <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Tailwind</h2>
+            <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-300">{times}</p>
+            <button on:click={inc}
+                    class="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+                Count
+            </button>
+        </div>
+    """)
+
+
+mount(card, "#app")
+''',
 }
 
 editor = document.getElementById("code")

@@ -72,6 +72,8 @@ def lint(*, fix: bool = False) -> None:
     """
     sh("uv", "run", "--frozen", "ruff", "check", *(["--fix"] if fix else []), ".")
     sh("uv", "run", "--frozen", "ruff", "format", *([] if fix else ["--check"]), ".")
+    # The rules the browser interpreters enforce and a desktop Python does not.
+    sh("uv", "run", "--frozen", "python", "-m", "frontage", "check", "examples", "web", "frontage")
 
 
 @task(requires=["uv"])
@@ -116,11 +118,15 @@ def export(app: str, *, out: str = "", no_pyscript: bool = False) -> None:
         out: destination directory (default build/<app name>)
         no_pyscript: link PyScript from pyscript.net instead of bundling the local copy
     """
-    args = ["tools/export.py", app]
+    args = ["-m", "frontage", "export", app]
     if out:
         args += ["--out", out]
     if no_pyscript:
         args.append("--no-pyscript")
+    else:
+        bundles = sorted((ROOT / "tools" / "pyscript").glob("*/pyscript"))
+        if bundles:
+            args += ["--pyscript", str(bundles[-1])]
     sh("uv", "run", "--frozen", "python", *args)
 
 
@@ -138,7 +144,9 @@ def site_build() -> None:
     # The playground fetches the package by absolute path like the examples do; the
     # frontage/ copy below serves both.
     shutil.copytree(ROOT / "examples", WWW / "examples", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-    shutil.copytree(ROOT / "frontage", WWW / "frontage", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    shutil.copytree(
+        ROOT / "frontage", WWW / "frontage", ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "cli", "__main__.py")
+    )
     bundles = sorted((ROOT / "tools" / "pyscript").glob("*/pyscript"))
     if not bundles:
         raise MakeError("no local PyScript bundle: run `mk pyscript.fetch` first")

@@ -7,10 +7,11 @@ effects; templates that clone once and bind only their holes; a keyed `For`; a n
 router; running on [PyScript](https://pyscript.net) over WebAssembly, on Pyodide or
 MicroPython. No JavaScript, no Node, no bundler: you write Python and the browser runs it.
 
-> **Status: 0.2.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete through
+> **Status: 0.3.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete through
 > its M5 milestone: reactive core, store, templates (`h` and `html(t"…")`), control flow and
-> boundaries, `Resource`/`Action`, a nested router, widgets, `State`, timers, the playground.
-> The API is young and will move; the [browser suite](tests/browser/) runs every example under
+> boundaries, `Resource`/`Action`, a nested router, widgets, `State`, timers, the playground;
+> 0.3.0 adds the command line (`export`, `tailwind`, `check`), `Loading(keep=True)`, a live
+> `is_routing`, `unique_id`, `tree`. The API is young and will move; the [browser suite](tests/browser/) runs every example under
 > MicroPython and Pyodide on Chromium each push and on Firefox and WebKit nightly.
 
 ```python
@@ -45,11 +46,11 @@ does not accept a `lambda` inside a template's braces.
 
 **Try it** at [frontage.optersoft.com/playground](https://frontage.optersoft.com/playground/),
 which runs your code on MicroPython and keeps it in the link. **Learn it** at
-[academy.optersoft.com/python/frontage](https://academy.optersoft.com/python/frontage), six
+[academy.optersoft.com/python/frontage](https://academy.optersoft.com/python/frontage), eight
 chapters with exercises. **Install it** with a `pyscript.json`:
 
 ```json
-{ "packages": ["https://frontage.optersoft.com/dist/frontage-0.2.0-py3-none-any.whl"] }
+{ "packages": ["https://frontage.optersoft.com/dist/frontage-0.3.0-py3-none-any.whl"] }
 ```
 
 | The counter above, as downloaded | MicroPython | Pyodide |
@@ -58,6 +59,18 @@ chapters with exercises. **Install it** with a `pyscript.json`:
 | compressed | 0.32 MB | 6.4 MB |
 
 Frontage itself is 131 KB (39 KB compressed); the rest is the interpreter.
+
+The same package is a small command line on your machine, stdlib only:
+
+```sh
+uv run --with frontage python -m frontage check app.py     # the rules MicroPython enforces and CPython does not
+uv run --with frontage python -m frontage tailwind         # Tailwind CSS: the standalone CLI, fetched once, no Node
+uv run --with frontage python -m frontage export . --out build   # a self-contained static folder
+```
+
+Tailwind with no build at all: the playground loads Tailwind's browser build, so utility
+classes work as you type. The [Style](https://academy.optersoft.com/python/frontage/style)
+and [Export](https://academy.optersoft.com/python/frontage/export) chapters cover both.
 
 ## Why
 
@@ -78,7 +91,7 @@ mk check                # lint, types, unit tests: the gate
 mk pyscript.fetch       # PyScript's offline bundle (core + both interpreters) into tools/pyscript/
 mk serve                # examples and playground at http://127.0.0.1:8000/, package read live
 mk test --browser       # every example in Chromium, under MicroPython and Pyodide
-mk export examples/todo # a self-contained static directory that runs anywhere
+mk export examples/todo # python -m frontage export, with the local PyScript bundle
 mk site.deploy          # publish frontage.optersoft.com (Cloudflare Pages)
 ```
 

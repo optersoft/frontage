@@ -24,6 +24,7 @@ from .reactive import (
     run_with_owner,
     selector,
     spawn,
+    tree,
     untrack,
     use,
 )
@@ -34,9 +35,11 @@ from .state import State, computed, field
 from .store import Store, reconcile, snapshot
 from .template import html
 from .version import __version__
-from .view import Element, Mounted, NodeRef, Text, build, component, emit, h, mount, render_to_string, text
+from .view import Element, Mounted, NodeRef, Text, build, component, emit, h, mount, render_to_string, text, unique_id
 
 __all__ = [
+    "tree",
+    "unique_id",
     "A",
     "Action",
     "ActionForm",

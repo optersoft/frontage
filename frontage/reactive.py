@@ -89,6 +89,7 @@ class Owner:
         self._cleanups = []
         self._context = None
         self._disposed = False
+        self.name = None  # set by `component` (the function's name); shown by `tree`
         if parent is not None:
             parent._owned.append(self)
 
@@ -587,3 +588,30 @@ def selector(source, equal=None):
         return node()
 
     return is_selected
+
+
+def tree(owner, depth=None):
+    """The ownership tree under `owner` as text, one line per owner, for the console.
+
+    A `mount` handle is accepted too. Components show their function's name, computations
+    their kind; a context provider shows the keys it provides."""
+    root = getattr(owner, "owner", owner)
+    lines = []
+    _tree_lines(root, 0, lines, depth)
+    return "\n".join(lines)
+
+
+def _tree_lines(owner, level, lines, depth):
+    label = owner.name or type(owner).__name__
+    fn = getattr(owner, "_fn", None) or getattr(owner, "_compute", None)
+    if owner.name is None and fn is not None:
+        label += f" {getattr(fn, '__name__', '')}".rstrip()
+    context = owner._context
+    if context:
+        label += " [" + ", ".join(sorted(str(getattr(k, "name", None) or type(k).__name__) for k in context)) + "]"
+    if owner._disposed:
+        label += " (disposed)"
+    lines.append("  " * level + label)
+    if depth is None or level < depth:
+        for child in owner._owned:
+            _tree_lines(child, level + 1, lines, depth)

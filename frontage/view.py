@@ -161,12 +161,25 @@ def text(value):
     return node
 
 
+_ids = [0]
+
+
+def unique_id(prefix="fr"):
+    """An id unique in this page, `fr-1`, `fr-2`, …: for `label for=`, `aria-describedby` and
+    whatever else must name an element. The `widgets` give their controls one."""
+    _ids[0] += 1
+    return f"{prefix}-{_ids[0]}"
+
+
 def component(fn):
     """Mark a function as a component: each call runs under its own `Owner`, so what the
     component created is disposed together when the view that holds it goes away."""
 
+    name = getattr(fn, "__name__", None)
+
     def wrapper(*args, **kwargs):
         owner = Owner()
+        owner.name = name
         return owner.run(fn, *args, **kwargs)
 
     try:  # MicroPython functions have no writable __name__

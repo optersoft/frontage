@@ -51,7 +51,7 @@ class Resource:
         if scope is not None and state in (PENDING, REFRESHING):
             if scope not in self._scopes:
                 self._scopes.append(scope)
-                scope.add(self)
+                scope.add(self, state == REFRESHING)
         error = self._error()
         if state == ERRORED and error is not None:
             raise error

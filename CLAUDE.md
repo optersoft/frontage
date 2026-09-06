@@ -2,7 +2,7 @@
 
 Frontage: a fine-grained reactive UI framework for Python in the browser (PyScript; Pyodide
 and MicroPython), published to PyPI as `frontage`, Apache 2.0, copyright Optersoft. Rewritten
-clean-room from `SPEC.md` per `DESIGN.md`; `main` is past milestone **M5** (0.2.0). `origin` is
+clean-room from `SPEC.md` per `DESIGN.md`; `main` is past milestone **M5** (0.3.0: the plan plus the command line). `origin` is
 `github.com/optersoft/frontage` (GitHub, because PyPI publishing needs Actions); the PuePy fork is
 on branch `puepy-reference`.
 
@@ -30,10 +30,11 @@ on branch `puepy-reference`.
 | `frontage/state.py` (+ `.pyi`) | `State` with `field`/`computed`; the stub types fields as their values |
 | `frontage/widgets.py` | form controls bound to signals |
 | `frontage/dom.py` | the `Renderer` over the real DOM, delegated events, template cloning |
+| `frontage/cli/` + `__main__.py` | `python -m frontage`: `export`, `tailwind` (standalone CLI fetched into `~/.cache/frontage`), `check` (lambda in a t-string, `html(f"…")`), `pyscript` (the pinned bundle version lives here). CPython only; never listed in a `pyscript.json` |
 | `frontage/errors.py` | `FrontageError`, `RenderError`, `NotReady`, `format_exception` |
 | `tests/` | unit tests, CPython, no browser; `tests/browser/` is Playwright over `examples/` and starts its own server |
 | `examples/` | one page per example; `pyscript.json` lists the package files by path so edits show live |
-| `tools/serve.py`, `tools/fetch_pyscript.py`, `tools/export.py`, `tools/bench.py` | dev server, offline PyScript fetch, static export, the rows benchmark; `tools/pyscript/` is gitignored |
+| `tools/serve.py`, `tools/fetch_pyscript.py`, `tools/bench.py` | dev server, offline PyScript fetch into `tools/pyscript/` (gitignored; the version is `frontage.cli.pyscript.VERSION`), the rows benchmark |
 | `web/` | the landing page and `web/playground/` of frontage.optersoft.com; `mk site.build` assembles `www/` (with the bundle and the wheel) |
 | `typings/` | ty stubs for the browser-only modules |
 | branch `puepy-reference` | the PuePy fork, the acceptance test until 0.1.0; never merged |
@@ -50,8 +51,14 @@ on branch `puepy-reference`.
 - **Count bridge crossings.** Every DOM call from Python crosses to JavaScript. The
   `RecordingRenderer` exists so tests assert how few operations an update costs. A change that
   adds operations to a hot path needs a number, not an argument.
-- **PyScript is pinned** in `tools/fetch_pyscript.py` and served locally; examples load
+- **PyScript is pinned** in `frontage/cli/pyscript.py` and served locally; examples load
   `/pyscript/core.js`. Bumping the version is one line there and a browser run.
+- **`mk lint` runs `python -m frontage check`** over `examples`, `web` and the package, and the
+  academy chapters get the same run by hand before a push: it found three lambdas the browser
+  suite could not (they were in docs). Any new page directory on the site also needs a line
+  in `web/_redirects` (PyScript resolves its interpreters relative to the page).
+- **Pages that load Tailwind's browser build import `theme.css` + `utilities.css` only**: the
+  full import brings preflight, which restyles the page around the app.
 - **The version** is `frontage/version.py`; hatchling reads it; the browser reads it as code.
 - **MicroPython differences met so far**, each now handled or documented: no writable
   `__name__`, no `co_argcount`, no `html.parser`, no `__getattribute__` hook, no `__mro__`, no
