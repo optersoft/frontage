@@ -132,9 +132,9 @@ def export(app: str, *, out: str = "", no_pyscript: bool = False) -> None:
     sh("uv", "run", "--frozen", "python", *args)
 
 
-@task(name="site.build")
+@task(name="site.build", needs=[pyscript_fetch])
 def site_build() -> None:
-    """Assemble frontage.optersoft.com into ./www.
+    """Assemble frontage.optersoft.com into ./www (fetching the PyScript bundle when absent).
 
     web/ is the landing page; examples/ goes under /examples/, the package under /frontage/
     and the local PyScript bundle (without source maps) under /pyscript/: the same three
