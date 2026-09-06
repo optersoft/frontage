@@ -160,5 +160,5 @@ constraint holds).
 
 - [x] DNS: frontage.optersoft.com is live (2026-09-06).
 - [ ] Connect the Pages project to the GitHub repo and retire the hand deploy.
-- [ ] Email PuePy's author about the fork and the rewrite (courtesy; nothing is owed).
-- [ ] Check `frontage.dev`.
+- [x] Email PuePy's author about the fork and the rewrite (courtesy; nothing is owed).
+- [x] Check `frontage.dev`.

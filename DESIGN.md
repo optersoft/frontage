@@ -145,8 +145,6 @@ component library; PuePy import compatibility; PyScript releases older than the 
 - **Do not copy:** source, tests, docstrings or prose from any of them. Code is written from
   `SPEC.md` (section 13) with no reference repository open.
 - **Old tree:** branch `puepy-reference`, never merged, deleted after 0.1.0.
-- **Credit** in README: "Frontage's reactive model follows Solid and Leptos; the project began
-  as a fork of PuePy." True, courteous, not required.
 - **Every PR states** it was written from the spec without reference source open.
 
 ## 6. Platform

@@ -121,4 +121,4 @@ rights to the name or the logo (Apache License section 6). You may say that your
 is built with Frontage; a fork or a derivative must ship under another name.
 
 Frontage's reactive model follows [Solid](https://www.solidjs.com/) and
-[Leptos](https://leptos.dev/); the project began as a fork of [PuePy](https://github.com/kkinder/puepy).
+[Leptos](https://leptos.dev/).

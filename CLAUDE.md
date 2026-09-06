@@ -53,10 +53,15 @@ on branch `puepy-reference`.
   adds operations to a hot path needs a number, not an argument.
 - **PyScript is pinned** in `frontage/cli/pyscript.py` and served locally; examples load
   `/pyscript/core.js`. Bumping the version is one line there and a browser run.
-- **`mk lint` runs `python -m frontage check`** over `examples`, `web` and the package, and the
-  academy chapters get the same run by hand before a push: it found three lambdas the browser
-  suite could not (they were in docs). Any new page directory on the site also needs a line
-  in `web/_redirects` (PyScript resolves its interpreters relative to the page).
+- **The academy chapters are part of a release.** The docs live in
+  `~/optersoft/academy-pages/python/frontage/` (served at academy.optersoft.com), not here.
+  Every change that a user can see — a new or renamed API, a new flag, a moved command, a
+  wheel version bump — is not done until the chapter that covers it says so and the pushed
+  pages match the version on PyPI. Before a version commit: grep the chapters for the old
+  spelling, update the wheel name in Basic, and run `python -m frontage check` over
+  `python/frontage/*.md` (it found three lambdas the browser suite could not, and it is not
+  in `mk lint` because the pages are another repo). Any new page directory on the site also
+  needs a line in `web/_redirects` (PyScript resolves its interpreters relative to the page).
 - **Pages that load Tailwind's browser build import `theme.css` + `utilities.css` only**: the
   full import brings preflight, which restyles the page around the app.
 - **Hydration is fences, not ids.** Prerendered HTML wraps every hole's content in
