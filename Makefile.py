@@ -12,7 +12,6 @@
     mk export APP [--out D] a self-contained static directory for one app (examples/counter, …)
     mk site.build           frontage.optersoft.com into ./www: the wheels, the playground, redirects
     mk site.deploy          build, then publish ./www to Cloudflare Pages by hand (fallback)
-    mk docs.examples        write the academy's Examples page from examples/ (../academy-pages)
 
 PyPI gets the package from CI on a `vX.Y.Z` tag (.github/workflows/ci.yml);
 nothing here publishes a package. The site ships the same way: the Cloudflare
@@ -20,10 +19,10 @@ Pages project `frontage` is connected to github.com/optersoft/frontage
 (2026-09-06), so a push to `main` builds and deploys frontage.optersoft.com.
 `mk site.deploy` is the hand deploy from before that, kept as a fallback when
 the Pages build is broken. Documentation lives on academy.optersoft.com, not
-here, and since 2026-09-06 so do the examples: frontage.optersoft.com redirects
-there and serves only /dist/ (the wheels) and /playground/. `mk docs.examples`
-writes the academy's Examples page from examples/, one `::: pyscript` frame per
-example, so the repo stays the one copy. `mk` with no arguments lists everything.
+here, and since 2026-09-06 the chapters run their apps in the page (the academy's
+`::: pyscript` frames, MicroPython, the released wheel by URL): frontage.optersoft.com
+redirects there and serves only /dist/ (the wheels) and /playground/. examples/ is
+the browser suite's and the benchmark's material. `mk` with no arguments lists everything.
 """
 
 # /// script
@@ -142,8 +141,7 @@ def site_build() -> None:
 
     web/ holds the redirects to the academy and the playground; the package goes under
     /frontage/ and the local PyScript bundle (without source maps) under /pyscript/, the
-    absolute paths the playground loads (tools/serve.py serves the same ones). The examples
-    themselves are on the academy since 2026-09-06 (`mk docs.examples`).
+    absolute paths the playground loads (tools/serve.py serves the same ones).
     """
     if WWW.exists():
         shutil.rmtree(WWW)
@@ -178,20 +176,6 @@ def _released_wheels(dest: Path) -> None:
                 continue
             urllib.request.urlretrieve(f["url"], dest / f["filename"])
             note(f"dist/{f['filename']} (PyPI, {version})")
-
-
-@task(name="docs.examples", requires=["uv"])
-def docs_examples(*, pages: str = "") -> None:
-    """Write the academy's Examples page (python/frontage/examples.md) from examples/.
-
-    One `::: pyscript` frame per example, running on MicroPython from the released wheel
-    of this version, so the repository stays the one copy of each example. The page goes
-    to the sibling academy-pages checkout unless `--pages` names another tree.
-
-    Args:
-        pages: the academy-pages checkout (default: ../academy-pages)
-    """
-    sh("uv", "run", "--frozen", "python", "tools/academy_examples.py", *(["--pages", pages] if pages else []))
 
 
 @task(name="site.deploy", needs=[site_build], requires=["wrangler"], dangerous=True)

@@ -35,7 +35,7 @@ on branch `puepy-reference`.
 | `frontage/lsp/` | the language server behind `frontage lsp`: `protocol` (Content-Length framing over stdio, hand-written, no dependency), `documents` (open files, UTF-16 positions), `scanner` (the tolerant t-string lexer and the HTML state machine that answers *where is the cursor*), `rules` (the three static rules, with ranges — `cli/check.py` is the command line over these), `data` (elements, attributes, frontage's prefixes), `features` (completion, hover, definition, semantic tokens), `server`. CPython only, like `cli/`; never in a `pyscript.json` |
 | `frontage/errors.py` | `FrontageError`, `RenderError`, `NotReady`, `format_exception` |
 | `tests/` | unit tests, CPython, no browser; `tests/browser/` is Playwright over `examples/` and starts its own server |
-| `examples/` | one page per example; `pyscript.json` lists the package files by path so edits show live. **The examples are published on the academy**, at `python/frontage/examples`, a page `mk docs.examples` (`tools/academy_examples.py`) generates from this directory: one `::: pyscript` frame per example, MicroPython, the released wheel by URL. Regenerate it after a release; never edit it there |
+| `examples/` | one page per example, the browser suite's and the benchmark's material; `pyscript.json` lists the package files by path so edits show live. Not published: the academy chapters run their own apps in the page (`::: pyscript` frames on MicroPython, the released wheel by URL), so a chapter's code block is both what the reader reads and what runs |
 | `tools/serve.py`, `tools/fetch_pyscript.py`, `tools/bench.py`, `tools/profile/` + `tools/profile_rows.py` | dev server (live reload via `frontage.cli.serve`), offline PyScript fetch into `tools/pyscript/` (gitignored; the version is `frontage.cli.pyscript.VERSION`), the rows benchmark, the rows profile (phases + calibration, served at `/profile/`) |
 | `editors/` | the editor clients. `editors/vscode/` is the VS Code one — a thin client plus the TextMate injection grammar and the snippets, plain JavaScript so there is no build step; `editors/README.md` is the config block for Zed, Neovim, Helix and Emacs, which need no code at all |
 | `web/` | what frontage.optersoft.com still serves since 2026-09-06: `_redirects` (everything else goes to academy.optersoft.com/python/frontage), `_headers` (CORS on `/dist/`) and `web/playground/`; `mk site.build` assembles `www/` with the package, the bundle and every released wheel |
@@ -87,8 +87,8 @@ on branch `puepy-reference`.
   pages match the version on PyPI. Before a version commit: grep the chapters for the old
   spelling, update the wheel name in Basic, and run `python -m frontage check` over
   `python/frontage/*.md` (it found three lambdas the browser suite could not, and it is not
-  in `mk lint` because the pages are another repo). After the release, `mk docs.examples`
-  regenerates the academy's Examples page so its frames name the new wheel. Any new page directory on the site also
+  in `mk lint` because the pages are another repo). The chapters' `::: pyscript` frames name
+  the wheel by URL too (`packages=`), so the wheel bump is one `sed` over the chapters. Any new page directory on the site also
   needs a line in `web/_redirects` (PyScript resolves its interpreters relative to the page).
   **Each chapter's app is a repository** at `gitlab.com/optersoft/python/frontage-<chapter>`
   (checkout `~/xtec/python-frontage-<chapter>`), exported to GitLab Pages by its pipeline with

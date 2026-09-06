@@ -444,9 +444,9 @@ are needed rather than the order of this document: shipping comes second (Basic,
 Template, Style, Flow, Async, Router, State, Prerender), so every project after the first
 ends on a public URL. Each chapter has a repository at
 `gitlab.com/optersoft/python/frontage-<chapter>` published on GitLab Pages by its own
-pipeline, and links its live example on the academy's Examples page, generated from this
-repository's `examples/` (one `::: pyscript` frame each; `frontage.optersoft.com` redirects
-there and keeps only the wheels and the playground). Distribution:
+pipeline, and runs that app in the page itself (the academy's `::: pyscript` frame, on
+MicroPython from the released wheel; `frontage.optersoft.com` redirects to the academy and
+keeps only the wheels and the playground). Distribution:
 the wheel on PyPI and mirrored on the site; a `pyscript.json` of a few lines is the whole
 install. Reference generated from docstrings.
 

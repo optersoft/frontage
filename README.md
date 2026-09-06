@@ -1,6 +1,6 @@
 # Frontage
 
-[documentation](https://academy.optersoft.com/python/frontage) · [live examples](https://academy.optersoft.com/python/frontage/examples) · [PyPI](https://pypi.org/project/frontage/)
+[documentation](https://academy.optersoft.com/python/frontage) · [PyPI](https://pypi.org/project/frontage/)
 
 **A fine-grained reactive UI framework for Python in the browser.** Signals, memos and
 effects; templates that clone once and bind only their holes; a keyed `For`; a nested
@@ -109,7 +109,6 @@ mk pyscript.fetch       # PyScript's offline bundle (core + both interpreters) i
 mk serve                # examples and playground at http://127.0.0.1:8000/, package read live, reload on save
 mk test --browser       # every example in Chromium, under MicroPython and Pyodide
 mk export examples/todo # python -m frontage export, with the local PyScript bundle
-mk docs.examples        # the academy's Examples page, from examples/ (../academy-pages)
 mk site.deploy          # publish frontage.optersoft.com (Cloudflare Pages): wheels, playground, redirects
 ```
 
