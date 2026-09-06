@@ -2,7 +2,7 @@
 
 Frontage: a fine-grained reactive UI framework for Python in the browser (PyScript; Pyodide
 and MicroPython), published to PyPI as `frontage`, Apache 2.0, copyright Optersoft. Rewritten
-clean-room from `SPEC.md` per `DESIGN.md`; `main` is past milestone **M5** (0.3.0: the plan plus the command line). `origin` is
+clean-room from `SPEC.md` per `DESIGN.md`; `main` is past milestone **M6** (0.4.0: the plan, the command line, prerendering with hydration). `origin` is
 `github.com/optersoft/frontage` (GitHub, because PyPI publishing needs Actions); the PuePy fork is
 on branch `puepy-reference`.
 
@@ -29,8 +29,8 @@ on branch `puepy-reference`.
 | `frontage/router.py` | routes, matching, three modes, `A`, `Navigate`, `Redirect`, `query`, `ActionForm` |
 | `frontage/state.py` (+ `.pyi`) | `State` with `field`/`computed`; the stub types fields as their values |
 | `frontage/widgets.py` | form controls bound to signals |
-| `frontage/dom.py` | the `Renderer` over the real DOM, delegated events, template cloning |
-| `frontage/cli/` + `__main__.py` | `python -m frontage`: `export`, `tailwind` (standalone CLI fetched into `~/.cache/frontage`), `check` (lambda in a t-string, `html(f"…")`), `pyscript` (the pinned bundle version lives here). CPython only; never listed in a `pyscript.json` |
+| `frontage/dom.py` | the `Renderer` over the real DOM, delegated events, template cloning; `Hydration`, the cursor `mount(hydrate=True)` walks over prerendered HTML |
+| `frontage/cli/` + `__main__.py` | `python -m frontage`: `export`, `prerender` (imports the app with `runtime.prerender.active`, renders each route with `HtmlRenderer(hydration_markers=True)`, awaits resources, injects HTML + JSON + the replay script), `tailwind` (standalone CLI fetched into `~/.cache/frontage`), `check` (lambda in a t-string, `html(f"…")`, HTML the parser rewrites), `pyscript` (the pinned bundle version lives here). CPython only; never listed in a `pyscript.json` |
 | `frontage/errors.py` | `FrontageError`, `RenderError`, `NotReady`, `format_exception` |
 | `tests/` | unit tests, CPython, no browser; `tests/browser/` is Playwright over `examples/` and starts its own server |
 | `examples/` | one page per example; `pyscript.json` lists the package files by path so edits show live |
@@ -59,6 +59,17 @@ on branch `puepy-reference`.
   in `web/_redirects` (PyScript resolves its interpreters relative to the page).
 - **Pages that load Tailwind's browser build import `theme.css` + `utilities.css` only**: the
   full import brings preflight, which restyles the page around the app.
+- **Hydration is fences, not ids.** Prerendered HTML wraps every hole's content in
+  `<!--[-->` … `<!--h-->` and keeps `data-fr-h`; static template text keeps its `<!--h-->` too
+  (the client adopts the text by it, then removes it). Each hole positions the cursor from its
+  own fence, so effect order does not matter. An adopted element must use
+  `Hydration.find_holes`, which skips fenced spans: `querySelectorAll` would also return the
+  markers and `data-fr-h` of the templates built *inside* the hole's content, and every index
+  shifts (that was the first hydration bug). Compare DOM nodes with `isSameNode`, never `is`:
+  Pyodide hands out a new proxy per access.
+- **Resources hydrate by creation order.** The prerenderer writes their values in the order
+  they were created; the browser hands them back in the same order and skips the first load.
+  Same code, same order; a Resource the server never created just fetches.
 - **The version** is `frontage/version.py`; hatchling reads it; the browser reads it as code.
 - **MicroPython differences met so far**, each now handled or documented: no writable
   `__name__`, no `co_argcount`, no `html.parser`, no `__getattribute__` hook, no `__mro__`, no

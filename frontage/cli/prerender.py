@@ -1,0 +1,271 @@
+"""`python -m frontage prerender APP`: the app's pages as finished HTML, hydrated on load.
+
+Exports the app (see `export`), then imports it on this CPython for each route, renders every
+`mount` with the HTML renderer, waits for its resources, and writes the result into the page's
+target element with the fences hydration reads, the resources' values as JSON, and a script
+that queues clicks and input until Python is ready. In the browser, `mount` finds the
+`data-fr-hydrate` target and adopts the HTML instead of building it.
+
+The app is imported with `frontage.runtime.prerender.active`: `mount(view, "#app")` registers,
+the router starts at the route being rendered, `Portal` renders nothing. What the app touches
+at import must exist on CPython (no `window`, no `pyscript`; those belong in effects and
+handlers). Resource values must be JSON, and a failed load fails the build."""
+
+import argparse
+import asyncio
+import importlib.util
+import json
+import re
+import sys
+from pathlib import Path
+
+from . import export as export_cli
+
+# Queued until `mount` hydrates, then replayed on the same targets (see DomRenderer.end_hydration).
+REPLAY = """<script>
+(function(){var q=[],t=["click","input","change"],on=function(e){q.push([e.type,e.target])};
+t.forEach(function(n){document.addEventListener(n,on,true)});
+window.__frontage_replay=function(){t.forEach(function(n){document.removeEventListener(n,on,true)});
+q.forEach(function(p){var n=p[1];if(n&&n.isConnected){n.dispatchEvent(p[0]==="click"?new MouseEvent("click",{bubbles:true,cancelable:true}):new Event(p[0],{bubbles:true}))}});q=[]};
+})();
+</script>
+"""
+
+_ENTRY = re.compile(r"""src\s*=\s*["']\./([\w./-]+\.py)["']""")
+
+
+class Prerendered:
+    """One route's output: the page HTML and, per mount, what went into it."""
+
+    def __init__(self, path, html, mounts):
+        self.path = path
+        self.html = html
+        self.mounts = mounts  # [(selector, inner html, resource values)]
+
+
+def import_app(entry, path="/"):
+    """Import the app's entry module with prerendering on; returns the registered mounts."""
+    from frontage import aio, view
+    from frontage.runtime import prerender
+
+    entry = Path(entry).resolve()
+    prerender.active = True
+    prerender.path = path
+    prerender.mounts = []
+    view._ids[0] = 0  # `unique_id` counts from the same point the browser will
+    aio._begin_prerender()
+    sys.path.insert(0, str(entry.parent))
+    name = f"_frontage_app_{abs(hash((str(entry), path)))}"
+    try:
+        spec = importlib.util.spec_from_file_location(name, entry)
+        assert spec is not None and spec.loader is not None, entry
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.remove(str(entry.parent))
+        sys.modules.pop(name, None)
+        prerender.active = False
+    return list(prerender.mounts)
+
+
+async def render_mount(view, debug, fallback, timeout):
+    """Render one registered mount to `(html, resource values)`, resources settled."""
+    from frontage import aio
+    from frontage.aio import ERRORED, PENDING, REFRESHING
+    from frontage.renderer import HtmlRenderer
+    from frontage.view import mount
+
+    registry = aio._begin_prerender()
+    renderer = HtmlRenderer(hydration_markers=True)
+    root = renderer.create_element("div")
+    handle = mount(view, root, renderer, debug=debug, fallback=fallback)
+    try:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while any(r.state() in (PENDING, REFRESHING) for r in registry):
+            if loop.time() > deadline:
+                raise TimeoutError(f"resources still loading after {timeout}s")
+            await asyncio.sleep(0.005)
+        failed = [r for r in registry if r.state() == ERRORED]
+        if failed:
+            raise RuntimeError(f"resource #{registry.index(failed[0])} failed: {failed[0].error()!r}")
+        html = "".join(child.to_html(comments=True) for child in root.children)
+        if 'class="frontage-error"' in html:
+            raise RuntimeError("the view raised while rendering:\n" + _error_text(html))
+        values = [r.peek() for r in registry]
+        try:
+            json.dumps(values)
+        except TypeError as exc:
+            raise RuntimeError(f"a resource's value is not JSON ({exc}); hydration needs JSON values") from None
+        return html, values
+    finally:
+        handle.dispose()
+        aio._end_prerender()
+
+
+def _error_text(html):
+    import html as html_module
+
+    match = re.search(r'<pre class="frontage-error">(.*?)</pre>', html, re.S)
+    return html_module.unescape(match.group(1)) if match else html
+
+
+def find_entry(page_html):
+    """The app's Python file named by the page: `src="./app.py"` in a script tag or in
+    inline JavaScript (the examples build their tag at run time)."""
+    match = _ENTRY.search(page_html)
+    return match.group(1) if match else None
+
+
+def inject(page_html, selector, inner, values):
+    """`page_html` with the element `selector` (an id) holding `inner`, marked for
+    hydration, followed by the resources' values when there are any."""
+    if not selector.startswith("#") or not re.fullmatch(r"#[\w-]+", selector):
+        raise ValueError(f"prerender mounts into an element by id (`#app`), not {selector!r}")
+    element_id = selector[1:]
+    span = _element_span(page_html, element_id)
+    if span is None:
+        raise ValueError(f"no element with id {element_id!r} in the page")
+    open_start, open_end, close_start, close_end = span
+    opening = page_html[open_start:open_end]
+    if "data-fr-hydrate" not in opening:
+        opening = opening[:-1] + " data-fr-hydrate>"
+    data = ""
+    if values:
+        text = json.dumps(values, separators=(",", ":")).replace("</", "<\\/")
+        data = f'<script type="application/json" data-fr-data="{element_id}">{text}</script>'
+    return page_html[:open_start] + opening + inner + page_html[close_start:close_end] + data + page_html[close_end:]
+
+
+def _element_span(page_html, element_id):
+    """(start of the opening tag, its end, start of the closing tag, its end)."""
+    from html.parser import HTMLParser
+
+    lines = page_html.split("\n")
+    offsets = [0]
+    for line in lines:
+        offsets.append(offsets[-1] + len(line) + 1)
+
+    class Find(HTMLParser):
+        def __init__(self):
+            HTMLParser.__init__(self)
+            self.depth = None
+            self.tag = None
+            self.span = None
+
+        def _offset(self):
+            line, col = self.getpos()
+            return offsets[line - 1] + col
+
+        def handle_starttag(self, tag, attrs):
+            if self.span is not None:
+                return
+            if self.depth is None:
+                if dict(attrs).get("id") == element_id:
+                    self.depth = 0
+                    self.tag = tag
+                    start = self._offset()
+                    self.open = (start, start + len(self.get_starttag_text() or ""))
+            elif tag == self.tag:
+                self.depth += 1
+
+        def handle_endtag(self, tag):
+            if self.depth is None or self.span is not None or tag != self.tag:
+                return
+            if self.depth == 0:
+                start = self._offset()
+                end = page_html.index(">", start) + 1
+                self.span = (self.open[0], self.open[1], start, end)
+            else:
+                self.depth -= 1
+
+    finder = Find()
+    finder.feed(page_html)
+    finder.close()
+    return finder.span
+
+
+def add_replay(page_html):
+    if "__frontage_replay" in page_html:
+        return page_html
+    if "</head>" in page_html:
+        return page_html.replace("</head>", REPLAY + "</head>", 1)
+    return REPLAY + page_html
+
+
+def relocate(page_html, depth):
+    """Relative `./` references in a page written `depth` directories below the app."""
+    if depth == 0:
+        return page_html
+    return re.sub(r"""(["'])\./""", lambda m: m.group(1) + "../" * depth, page_html)
+
+
+def prerender(
+    app, out=None, routes=("/",), entry=None, timeout=30.0, bundle_pyscript=True, pyscript_dir=None, quiet=True
+):
+    """Export `app` into `out` and write its prerendered pages there; returns the outputs."""
+    out = export_cli.export(app, out, bundle_pyscript=bundle_pyscript, pyscript_dir=pyscript_dir, quiet=quiet)
+    page = (out / "index.html").read_text()
+    entry = entry or find_entry(page)
+    if entry is None:
+        raise ValueError("cannot tell which .py the page runs; pass --entry")
+    entry_path = Path(app).resolve() / entry
+    if not entry_path.exists():
+        raise FileNotFoundError(f"{entry_path} does not exist")
+    results = []
+    for route in routes:
+        mounts = import_app(entry_path, route)
+        if not mounts:
+            raise RuntimeError(f"{entry} never called mount(view, '#id') while importing for {route}")
+        html = page
+        rendered = []
+        for selector, view, debug, fallback in mounts:
+            inner, values = asyncio.run(render_mount(view, debug, fallback, timeout))
+            html = inject(html, selector, inner, values)
+            rendered.append((selector, inner, values))
+        html = add_replay(html)
+        parts = [p for p in route.strip("/").split("/") if p]
+        target = out.joinpath(*parts) / "index.html" if parts else out / "index.html"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(relocate(html, len(parts)))
+        results.append(Prerendered(route, html, rendered))
+    return results
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="python -m frontage prerender", description=__doc__)
+    parser.add_argument("app", help="a directory with an index.html and the app's .py files")
+    parser.add_argument("--out", default=None, help="destination (default: ./build/<app name>)")
+    parser.add_argument("--route", action="append", default=None, help="a path to render (repeatable; default /)")
+    parser.add_argument("--entry", default=None, help="the app's .py file (default: the one the page names)")
+    parser.add_argument("--timeout", type=float, default=30.0, help="seconds to wait for resources per route")
+    parser.add_argument(
+        "--no-pyscript", action="store_true", help="link PyScript from pyscript.net instead of bundling it"
+    )
+    parser.add_argument("--pyscript", default=None, help="an unpacked bundle (the directory with core.js) to copy")
+    args = parser.parse_args(argv)
+    try:
+        results = prerender(
+            args.app,
+            args.out,
+            routes=tuple(args.route or ["/"]),
+            entry=args.entry,
+            timeout=args.timeout,
+            bundle_pyscript=not args.no_pyscript,
+            pyscript_dir=args.pyscript,
+            quiet=False,
+        )
+    except (FileNotFoundError, ValueError, RuntimeError, TimeoutError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    out = Path(args.out).resolve() if args.out else Path.cwd() / "build" / Path(args.app).resolve().name
+    for result in results:
+        resources = sum(len(values) for _, _, values in result.mounts)
+        print(f"prerendered {result.path}: {len(result.mounts)} mount(s), {resources} resource value(s)")
+    print(f"written to {out}; serve it with any static file server")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

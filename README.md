@@ -7,11 +7,11 @@ effects; templates that clone once and bind only their holes; a keyed `For`; a n
 router; running on [PyScript](https://pyscript.net) over WebAssembly, on Pyodide or
 MicroPython. No JavaScript, no Node, no bundler: you write Python and the browser runs it.
 
-> **Status: 0.3.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete through
+> **Status: 0.4.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete through
 > its M5 milestone: reactive core, store, templates (`h` and `html(t"…")`), control flow and
 > boundaries, `Resource`/`Action`, a nested router, widgets, `State`, timers, the playground;
-> 0.3.0 adds the command line (`export`, `tailwind`, `check`), `Loading(keep=True)`, a live
-> `is_routing`, `unique_id`, `tree`. The API is young and will move; the [browser suite](tests/browser/) runs every example under
+> 0.3.0 added the command line (`export`, `tailwind`, `check`); 0.4.0 adds **prerendering
+> with hydration** (M6): pages that show before Python loads. The API is young and will move; the [browser suite](tests/browser/) runs every example under
 > MicroPython and Pyodide on Chromium each push and on Firefox and WebKit nightly.
 
 ```python
@@ -66,7 +66,14 @@ The same package is a small command line on your machine, stdlib only:
 uv run --with frontage python -m frontage check app.py     # the rules MicroPython enforces and CPython does not
 uv run --with frontage python -m frontage tailwind         # Tailwind CSS: the standalone CLI, fetched once, no Node
 uv run --with frontage python -m frontage export . --out build   # a self-contained static folder
+uv run --with frontage python -m frontage prerender . --out build --route / --route /about
 ```
+
+`prerender` runs the app on your machine, waits for its resources, and writes each route as
+finished HTML with the values embedded. In the browser `mount` hydrates: it adopts the HTML
+already on screen instead of building it, skips the fetches the page already holds, and
+replays the clicks made before Python was ready. Static hosting only, no server: Leptos's
+async rendering mode as a build step.
 
 Tailwind with no build at all: the playground loads Tailwind's browser build, so utility
 classes work as you type. The [Style](https://academy.optersoft.com/python/frontage/style)

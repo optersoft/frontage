@@ -122,10 +122,36 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
 - [ ] Not done from that list: a real `startTransition` (needs concurrent rendering; DESIGN
       §16 "later").
 
-## After 0.3.0 (the plan's "later", not scheduled)
+## M6 — prerender and hydrate (0.4.0, 2026-09-06)
 
-- [ ] Server rendering through `HtmlRenderer` and hydration; async memos, `is_pending`,
-      transactions and optimistic writes (Solid 2.0's model) — DESIGN §16 "later", for a 1.0.
+Decided from the Preact + Leptos analysis of 2026-09-06. The estimate recorded then: **rough
+size under a thousand lines with tests; islands, streaming and server functions stay off the
+plan.** Actual: 967 net lines (744 in the package, 223 of tests), one day. Built as a static build step, never a server (the WASM-only
+constraint holds).
+
+- [x] `python -m frontage prerender APP [--route …]`: export, import the app on CPython with
+      `runtime.prerender.active` (`mount` registers, the router starts at the route, `Portal`
+      renders nothing), render with `HtmlRenderer(hydration_markers=True)`, await every
+      `Resource`, embed the values as JSON, one `index.html` per route with `../` paths.
+- [x] `mount` hydrates a `data-fr-hydrate` target: `Hydration` cursor in `dom.py`, fences
+      `<!--[-->`…`<!--h-->` per hole, adoption of elements and text in document order, a
+      mismatch rebuilds that piece and sweeps the server's nodes with one console warning.
+- [x] Hydrated resources skip their first load; `is_routing`, `Loading` unaffected.
+- [x] The replay script: clicks and input made before Python boots are replayed on mount.
+- [x] `check` flags HTML the parser rewrites (`<div>` in `<p>`, `<tr>` under `<table>`, `<a>`
+      in `<a>`), the hydration-mismatch class Leptos documents.
+- [x] Browser tests: counter (adoption proven by a tagged node, early click replayed) and
+      fetch (no refetch, data block consumed), both interpreters.
+- [ ] Off the plan, on purpose: islands (Python has no tree shaking, so an `@island` saves
+      boot work, not download), streaming modes and server functions (need a server).
+- [ ] Later: `--crawl` (follow `A` links to find routes, as preact-iso does); a `debug`
+      import with mismatch details per node; `unique_id` collisions when a page has two
+      mounts (the counter is per page, not per mount).
+
+## After 0.4.0 (the plan's "later", not scheduled)
+
+- [ ] Async memos, `is_pending`, transactions and optimistic writes (Solid 2.0's model) —
+      DESIGN §16 "later", for a 1.0. A live server rendering mode is not planned.
 - [ ] E2 debug warnings; the scroll-restoration browser test.
 - [ ] Docs: `.ca`/`.es` variants once a programme places the pages.
 - [ ] A console script (`frontage …`) once the name is worth taking on PATH; `python -m` until then.

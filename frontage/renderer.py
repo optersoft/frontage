@@ -96,6 +96,23 @@ class Renderer:
         and the comment markers `<!--h-->` in document order, `root` included."""
         raise NotImplementedError
 
+    def previous_sibling(self, node):
+        raise NotImplementedError
+
+    # -- hydration (the browser renderer implements these; others never hydrate) ------------
+
+    hydration = None  # a `dom.Hydration` while `mount(hydrate=True)` runs
+    hydration_markers = False  # write the fences hydration reads (the prerenderer's HtmlRenderer)
+
+    def hydratable(self, node):
+        return False
+
+    def begin_hydration(self, node):
+        raise NotImplementedError
+
+    def end_hydration(self):
+        raise NotImplementedError
+
 
 class HtmlNode:
     """A node of `HtmlRenderer`: an element with a tag, or text with `tag=None`."""
@@ -180,13 +197,30 @@ except ImportError:
 
 
 class HtmlRenderer(Renderer):
-    """Renders into plain Python nodes that serialise to HTML. No browser involved."""
+    """Renders into plain Python nodes that serialise to HTML. No browser involved.
+
+    With `hydration_markers=True` (what `python -m frontage prerender` uses) every hole is
+    fenced by comments, `<!--[-->` before its content and `<!--h-->` after, and elements keep
+    their `data-fr-h`, so a browser can adopt the HTML instead of building it (`to_html`
+    with `comments=True` writes the fences)."""
 
     # Without an HTML parser (MicroPython) the view layer builds node by node instead.
     supports_templates = _CAN_PARSE
 
+    def __init__(self, hydration_markers=False):
+        self.hydration_markers = hydration_markers
+
     def create_element(self, tag):
         return HtmlNode(tag)
+
+    def create_marker(self, text="h"):
+        """A comment node: a hole marker that survives serialisation."""
+        return HtmlNode(None, text, comment=True)
+
+    def previous_sibling(self, node):
+        siblings = node.parent.children if node.parent else []
+        i = siblings.index(node) - 1
+        return siblings[i] if i >= 0 else None
 
     def create_text(self, text):
         return HtmlNode(None, str(text))

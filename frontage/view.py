@@ -17,6 +17,12 @@ Attribute keywords carry their kind in a prefix: `on_click` (an event), `prop_va
 property, the form inputs need), `class_active` (toggle one class), `style_color`,
 `bind_value` / `bind_checked` / `bind_group` (two-way), `ref` (a `NodeRef`). Anything else
 is an attribute; `cls` and `class_` spell `class`, and `class` may be a dict of toggles.
+
+Hydration: a renderer with `hydration_markers` (the prerenderer's `HtmlRenderer`) fences each
+hole's content between `<!--[-->` and its `<!--h-->` marker and keeps `data-fr-h`; a renderer
+carrying a `hydration` object (the browser's, while `mount(hydrate=True)` runs) adopts the
+nodes it finds inside those fences, in order, instead of creating them, then drops the fence
+and whatever nothing adopted.
 """
 
 from .errors import format_exception
@@ -201,11 +207,21 @@ def build(view, renderer, parent=None, anchor=None):
     return nodes
 
 
+def _text_node(value, renderer):
+    """A text node for `value`: the next one in the prerendered HTML while hydrating."""
+    hyd = getattr(renderer, "hydration", None)
+    if hyd is not None and hyd.active:
+        node = hyd.claim_text(str(value))
+        if node is not None:
+            return node
+    return renderer.create_text(value)
+
+
 def _build_nodes(view, renderer, cache=None):
     """The list of live nodes for a view. A hole contributes its marker node. `cache` lets a
     caller that builds many like-shaped views (a `For`) reuse one compiled Template."""
     if isinstance(view, Text):
-        return [renderer.create_text(view.value)]
+        return [_text_node(view.value, renderer)]
     if isinstance(view, Mounted):
         return list(view.nodes)
     if isinstance(view, Element):
@@ -229,7 +245,7 @@ def _build_nodes(view, renderer, cache=None):
         # A hole with no parent yet (a component returning control flow directly): its
         # marker is the node; the content follows once the marker is inserted somewhere.
         return [_mount_hole(None, view, renderer)]
-    return [renderer.create_text(view)]
+    return [_text_node(view, renderer)]
 
 
 def _normalize(value, renderer):
@@ -247,7 +263,7 @@ def _normalize(value, renderer):
         return list(value.nodes)
     if isinstance(value, (Element, Text)):
         return _build_nodes(value, renderer)
-    return [renderer.create_text(value)]
+    return [_text_node(value, renderer)]
 
 
 # --- templates ------------------------------------------------------------------------------
@@ -263,6 +279,7 @@ class Template:
     def __init__(self, html, specs):
         self.html = html
         self.specs = specs  # per element in pre-order: (tag, static attrs dict, dynamic raw names)
+        self.tag = specs[0][0] if specs else None
 
     def extract(self, element):
         element_holes = []
@@ -371,20 +388,39 @@ def _build_template(element, renderer, cache=None):
     else:
         assert template is not None
         element_holes, child_holes = holes
-    root = renderer.clone_template(template.html)
+    hyd = getattr(renderer, "hydration", None)
+    hydrating = hyd is not None and hyd.active
+    root = None
+    elements, markers = [], []
+    if hyd is not None and hydrating:
+        root = hyd.claim_element(template.tag)
+        if root is not None and (element_holes or child_holes):
+            elements, markers = hyd.find_holes(root)  # skips the fenced spans of nested content
+    if root is None:
+        root = renderer.clone_template(template.html)
+        if element_holes or child_holes:
+            elements, markers = renderer.find_holes(root)
     if element_holes or child_holes:
-        elements, markers = renderer.find_holes(root)
         for i in range(len(element_holes)):
             node = elements[i]
             for raw, value in element_holes[i]:
                 _apply_attr(node, raw, value, renderer)
-            renderer.set_property(node, "data-fr-h", None)  # the marker has done its job
+            if not getattr(renderer, "hydration_markers", False):
+                renderer.set_property(node, "data-fr-h", None)  # the marker has done its job
         for i in range(len(child_holes)):
             marker = markers[i]
             child = child_holes[i]
             parent = renderer.parent(marker)
             if isinstance(child, Text):
-                renderer.replace_node(parent, renderer.create_text(child.value), marker)
+                # Static text keeps its marker in prerendered HTML, so hydration can adopt it.
+                previous = renderer.previous_sibling(marker) if hydrating else None
+                if previous is not None and renderer.is_text(previous):
+                    renderer.replace_text(previous, child.value)
+                    renderer.remove_node(parent, marker)  # as a fresh build would have
+                elif getattr(renderer, "hydration_markers", False) or hydrating:
+                    renderer.insert_node(parent, renderer.create_text(child.value), marker)
+                else:
+                    renderer.replace_node(parent, renderer.create_text(child.value), marker)
             elif isinstance(child, Mounted):
                 for n in child.nodes:
                     _insert(renderer, parent, n, marker)
@@ -398,6 +434,11 @@ class _HoleState:
         self.current = []  # the nodes currently placed before the marker
         self.text = None  # the single text node, when the value is text
         self.pending = None  # a result waiting for the marker to be inserted (floating holes)
+        self.hydrated = False  # the first compute under hydration has happened
+        self.start = None  # the `<!--[-->` fence, from compute to the apply that removes it
+        self.adopted = None  # the prerendered text node a text value adopted
+        self.claimed = None  # what that compute adopted, for the leftover sweep
+        self.fenced = False  # prerendering: the fence has been written
 
     def take_pending(self):
         result, self.pending = self.pending, None
@@ -409,23 +450,40 @@ def _mount_hole(parent, accessor, renderer, marker=None):
 
     With `parent=None` the hole floats: the marker is returned and the content is placed
     before it as soon as `_insert` puts the marker somewhere. Returns the marker."""
+    hyd = getattr(renderer, "hydration", None)
+    fencing = getattr(renderer, "hydration_markers", False)
     if marker is None:
-        marker = renderer.create_text("")
-        if parent is not None:
-            renderer.insert_node(parent, marker)
+        if hyd is not None and hyd.active:
+            marker = hyd.claim_hole()  # a floating hole: its fence and marker are in place
+        if marker is None:
+            marker = renderer.create_marker() if fencing else renderer.create_text("")
+            if parent is not None:
+                renderer.insert_node(parent, marker)
     state = _HoleState()
 
     def compute():
         global _current_renderer
         saved, _current_renderer = _current_renderer, renderer
+        start = None
+        if hyd is not None and not state.hydrated:
+            state.hydrated = True
+            start = hyd.start_of(marker)
+            if start is not None:
+                hyd.push(renderer.next_sibling(start))
         try:
             value = accessor()
             # Strings and numbers are the common case: keep one text node and update it.
             if isinstance(value, (str, int, float)) and not isinstance(value, bool):
-                return ("text", str(value))
+                text = str(value)
+                if hyd is not None and start is not None:
+                    state.adopted = hyd.claim_text(text)
+                return ("text", text)
             return ("nodes", _normalize(value, renderer))
         finally:
             _current_renderer = saved
+            if hyd is not None and start is not None:
+                state.claimed = hyd.pop()
+                state.start = start
 
     def apply(result, prev):
         target = parent if parent is not None else renderer.parent(marker)
@@ -434,20 +492,26 @@ def _mount_hole(parent, accessor, renderer, marker=None):
             state.pending = result
             _floating[id(marker)] = lambda: apply(state.take_pending(), None)
             return
+        if fencing and not state.fenced:
+            state.fenced = True
+            renderer.insert_node(target, renderer.create_marker("["), marker)
         kind, payload = result
         if kind == "text":
             if state.text is not None:
                 if prev is None or prev[1] != payload:
                     renderer.replace_text(state.text, payload)
                 return
-            node = renderer.create_text(payload)
+            node = state.adopted if state.adopted is not None else renderer.create_text(payload)
+            state.adopted = None
             _reconcile(target, state.current, [node], marker, renderer)
             state.current = [node]
             state.text = node
+            _finish_hydration(state, target, marker, hyd)
             return
         state.text = None
         _reconcile(target, state.current, payload, marker, renderer)
         state.current = payload
+        _finish_hydration(state, target, marker, hyd)
 
     RenderEffect(compute, apply)
 
@@ -465,6 +529,14 @@ def _mount_hole(parent, accessor, renderer, marker=None):
 
     on_cleanup(cleanup)
     return marker
+
+
+def _finish_hydration(state, target, marker, hyd):
+    """After the first apply of a hydrated hole: drop the fence and what nobody adopted."""
+    start, state.start = state.start, None
+    if start is not None:
+        hyd.finish(target, start, marker, state.claimed or [], state.current)
+        state.claimed = None
 
 
 def _reconcile(parent, current, new, marker, renderer):
@@ -706,11 +778,16 @@ class _Root:
         self.owner.dispose()
 
 
-def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True):
+def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hydrate=None):
     """Build `view` under `parent` with its own root `Owner`; returns a handle with `dispose()`.
 
     `parent` is emptied first — a "Loading…" placeholder in the HTML is the usual reason it
     is not — unless `clear=False`, which appends after whatever is already there.
+
+    A target that `python -m frontage prerender` wrote (it carries `data-fr-hydrate`) is
+    hydrated instead: the view adopts the HTML already on screen, node by node, binds it, and
+    replays the clicks and input made before Python was ready. `hydrate=True/False` forces
+    either way. On CPython with a selector, `mount` registers the view for the prerenderer.
 
     Pass a *function* (a component, or `lambda: app(...)`) rather than a built view: it runs
     inside the root owner, so everything it creates (components, resources, control flow)
@@ -723,10 +800,30 @@ def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True):
     function of the error), or a one-line notice.
     """
     if renderer is None or isinstance(parent, str):
+        from .runtime import in_browser, prerender
+
+        if not in_browser:
+            if prerender.active and isinstance(parent, str):
+                prerender.mounts.append((parent, view, debug, fallback))
+                return _Root(Owner(parent=None), [])
+            raise RuntimeError(
+                "mount needs a browser: pass a renderer and a node (HtmlRenderer in tests), "
+                "or render the page with `python -m frontage prerender`"
+            )
         from .dom import DomRenderer, resolve
 
         renderer = renderer or DomRenderer()
         parent = resolve(parent)
+    if hydrate is None:
+        hydrate = renderer.hydratable(parent)
+    root_marker = None
+    if hydrate:
+        clear = False
+        hyd = renderer.begin_hydration(parent)
+        from .aio import _set_hydration_values
+
+        _set_hydration_values(hyd.data)
+        root_marker = hyd.root_marker(parent)
     if clear:
         while (child := renderer.first_child(parent)) is not None:
             renderer.remove_node(parent, child)
@@ -744,17 +841,25 @@ def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True):
 
         # The root is a hole holding an Errored boundary, so nothing wraps the user's view;
         # a factory runs inside that boundary's owner and is disposed with the mount.
-        _mount_hole(parent, Errored(page, view), renderer)
+        _mount_hole(parent, Errored(page, view), renderer, root_marker)
 
-    owner.run(root)
+    try:
+        owner.run(root)
+    finally:
+        if hydrate:
+            from .aio import _set_hydration_values
+
+            _set_hydration_values(None)
+            renderer.end_hydration()
     return _Root(owner, [])
 
 
-def render_to_string(view):
-    """The view as HTML, with no browser. Holes render their current value."""
-    renderer = HtmlRenderer()
+def render_to_string(view, hydration_markers=False):
+    """The view as HTML, with no browser. Holes render their current value; with
+    `hydration_markers` the HTML carries the fences a browser hydrates from."""
+    renderer = HtmlRenderer(hydration_markers=hydration_markers)
     root = renderer.create_element("div")
     handle = mount(view, root, renderer)
-    html = "".join(child.to_html() for child in root.children)
+    html = "".join(child.to_html(comments=hydration_markers) for child in root.children)
     handle.dispose()
     return html

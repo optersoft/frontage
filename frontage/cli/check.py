@@ -3,6 +3,9 @@ Python does not, found before the page loads.
 
 - A `lambda` inside a template string's braces is a SyntaxError on MicroPython: name the function.
 - `html(f"…")` builds text, not a template: it wants a t-string.
+- HTML the browser's parser rewrites (a block element inside `<p>`, `<tr>` straight under
+  `<table>`, `<a>` inside `<a>`): the page then differs from the template, and a prerendered
+  page cannot be hydrated.
 
 Scans `.py` files and the ```py / ```python blocks of `.md` files; directories recurse.
 Exit status 1 when anything was found. Needs Python 3.14 to parse template strings."""
@@ -17,6 +20,60 @@ _TemplateStr = getattr(ast, "TemplateStr", None)
 _Interpolation = getattr(ast, "Interpolation", None)
 _FENCE = re.compile(r"^```(?:py|python)\s*$")
 
+# Elements a `<p>` cannot hold: the parser closes the paragraph first.
+_BLOCK = {
+    "address", "article", "aside", "blockquote", "details", "div", "dl", "fieldset", "figure", "footer", "form",
+    "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "main", "menu", "nav", "ol", "p", "pre", "section",
+    "table", "ul",
+}  # fmt: skip
+
+
+def nesting_findings(markup):
+    """`(message)` for each place the browser's parser would rewrite `markup`."""
+    from html.parser import HTMLParser
+
+    found = []
+
+    class Walk(HTMLParser):
+        def __init__(self):
+            HTMLParser.__init__(self)
+            self.stack = []
+
+        def handle_starttag(self, tag, attrs):
+            stack = self.stack
+            if tag in _BLOCK and "p" in stack:
+                found.append(f"<{tag}> inside <p>: the browser closes the paragraph first; use a <div> or <span>")
+            if tag == "tr" and stack and stack[-1] == "table":
+                found.append("<tr> straight under <table>: the browser inserts <tbody>; write it")
+            if tag == "a" and "a" in stack:
+                found.append("<a> inside <a>: the browser splits them")
+            if tag not in (
+                "area",
+                "base",
+                "br",
+                "col",
+                "embed",
+                "hr",
+                "img",
+                "input",
+                "link",
+                "meta",
+                "source",
+                "track",
+                "wbr",
+            ):
+                stack.append(tag)
+
+        def handle_endtag(self, tag):
+            if tag in self.stack:
+                while self.stack and self.stack.pop() != tag:
+                    pass
+
+    walker = Walk()
+    walker.feed(markup)
+    walker.close()
+    return found
+
 
 def check_source(source, path="<string>", offset=0):
     """Findings for one piece of Python as `(path, line, message)`; `offset` shifts the lines."""
@@ -28,6 +85,12 @@ def check_source(source, path="<string>", offset=0):
     found = []
     for node in ast.walk(tree):
         if _TemplateStr is not None and isinstance(node, _TemplateStr):
+            markup = "".join(
+                part.value if isinstance(part, ast.Constant) else "<!--h-->" for part in getattr(node, "values", ())
+            )
+            if "<" in markup:
+                for message in nesting_findings(markup):
+                    found.append((path, getattr(node, "lineno", 1) + offset, message))
             for part in getattr(node, "values", ()):
                 if (
                     _Interpolation is not None

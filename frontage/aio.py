@@ -24,20 +24,60 @@ REFRESHING = "refreshing"
 ERRORED = "errored"
 
 
+# Hydration: the values `python -m frontage prerender` settled, in creation order, while a
+# hydrating mount runs; a Resource created then takes the next one and skips its first load.
+_hydration = None
+# Prerendering: every Resource created, so the prerenderer can wait for them and write their
+# values into the page.
+_registry = None
+
+
+def _set_hydration_values(values):
+    global _hydration
+    _hydration = list(values) if values else None
+
+
+def _begin_prerender():
+    """Start recording every Resource created (the prerenderer waits for them); returns the list."""
+    global _registry
+    _registry = []
+    return _registry
+
+
+def _end_prerender():
+    global _registry
+    _registry = None
+
+
 class Resource:
     def __init__(self, fetcher, source=None, initial=None):
+        global _hydration
         self._fetcher = fetcher
         self._source = source
+        hydrated = False
+        if _hydration:
+            initial = _hydration.pop(0)
+            hydrated = True
         self._value = Signal(initial, equal=lambda a, b: a is b)
         self._error = Signal(None, equal=lambda a, b: a is b)
-        self._state = Signal(READY if initial is not None else UNRESOLVED)
+        self._state = Signal(READY if hydrated or initial is not None else UNRESOLVED)
         self._generation = 0
         self._task = None
         self._scopes = []
+        self._skip_load = hydrated
         self._owner = get_owner()
+        if _registry is not None:
+            _registry.append(self)
         on_cleanup(self._cancel)
+
+        def start(value, prev):
+            if self._skip_load:  # the page already shows this value; no refetch on boot
+                self._skip_load = False
+                return
+            self._load(value)
+
         # Track the source in the compute phase; start the load in the effect phase.
-        Effect(lambda: source() if source is not None else None, lambda value, prev: self._load(value))
+        Effect(lambda: source() if source is not None else None, start)
 
     # -- reading --------------------------------------------------------------------------------
 

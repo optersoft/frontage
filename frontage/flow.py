@@ -361,16 +361,20 @@ def Dynamic(component, **props):
 
 def Portal(target, children):
     """Build `children` into another node (`target`: a node or, in the browser, a selector)
-    while this hole stays empty; removed when the owner goes."""
+    while this hole stays empty; removed when the owner goes. A selector target is a browser
+    thing: the prerenderer leaves it empty and the browser builds it on mount."""
     home = get_owner()
     owner = Owner(parent=home)
     state = _Branch()
 
     def accessor():
         from . import view as _view
+        from .runtime import in_browser
 
         renderer = _view._current_renderer
         assert renderer is not None
+        if isinstance(target, str) and not in_browser:
+            return Mounted([])
         if state.owner is None:
             node = target
             if isinstance(target, str):
@@ -379,8 +383,15 @@ def Portal(target, children):
                 node = resolve(target)
 
             def make():
-                content = untrack(children) if callable(children) and not hasattr(children, "tag") else children
-                nodes = _build(content, renderer)
+                hyd = getattr(renderer, "hydration", None)
+                if hyd is not None:
+                    hyd.push(None)  # the portal's nodes are not in the prerendered target
+                try:
+                    content = untrack(children) if callable(children) and not hasattr(children, "tag") else children
+                    nodes = _build(content, renderer)
+                finally:
+                    if hyd is not None:
+                        hyd.pop()
                 for n in nodes:
                     _view._insert(renderer, node, n)
                 return nodes

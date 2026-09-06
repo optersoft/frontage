@@ -19,7 +19,9 @@ __all__ = [
     "document",
     "in_browser",
     "platform",
+    "prerender",
     "to_js",
+    "warn",
     "window",
 ]
 
@@ -38,6 +40,31 @@ def _detect():
 
 platform = _detect()
 in_browser = platform in (PYODIDE, MICROPYTHON)
+
+
+class _Prerender:
+    """What `python -m frontage prerender` tells the package while it imports an app on
+    CPython: `active`, the `path` being rendered (the router starts there), and where
+    `mount` registers instead of drawing."""
+
+    def __init__(self):
+        self.active = False
+        self.path = "/"
+        self.mounts = []
+
+
+prerender = _Prerender()
+
+
+def warn(message):
+    """A warning in the browser console, or on stderr."""
+    if in_browser:
+        try:
+            window.console.warn(message)
+            return
+        except Exception:
+            pass
+    print(f"frontage: {message}", file=sys.stderr)
 
 
 class Unavailable:

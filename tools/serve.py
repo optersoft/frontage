@@ -20,6 +20,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         "/examples/": ROOT / "examples",
         "/frontage/": ROOT / "frontage",
         "/playground/": ROOT / "web" / "playground",
+        "/build/": ROOT / "build",  # `python -m frontage prerender` output, for the browser tests
     }
     quiet = False
 

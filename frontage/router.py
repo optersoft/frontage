@@ -288,8 +288,12 @@ class Router:
         self.root = root
         self.fallback = fallback
         self.base = base.rstrip("/")
-        if mode == "memory":
-            self.mode = MemoryMode(initial)
+        if mode == "memory" or not in_browser:
+            # Without a browser (tests, `python -m frontage prerender`) every mode is the
+            # memory one; the prerenderer says which path is being rendered.
+            from .runtime import prerender
+
+            self.mode = MemoryMode(prerender.path if prerender.active else initial)
         elif mode == "hash":
             self.mode = HashMode()
         elif mode == "history":

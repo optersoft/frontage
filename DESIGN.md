@@ -1,6 +1,6 @@
 # Frontage design
 
-**Status: implemented through M5 (0.2.0, 2026-09-06; 0.3.0 the same day added the command line, see TODO.md); draft 4 of 2026-09-05 is the plan it followed.** Draft 1 kept PuePy's shape. Draft 2 was written from Leptos.
+**Status: implemented through M5 (0.2.0, 2026-09-06; 0.3.0 the same day added the command line and 0.4.0 prerendering with hydration, M6 in TODO.md); draft 4 of 2026-09-05 is the plan it followed.** Draft 1 kept PuePy's shape. Draft 2 was written from Leptos.
 Draft 3 added [Solid](https://github.com/solidjs/solid) (1.x, `dom-expressions`, the store,
 `solid-router`, the 2.0 release candidate), the JavaScript origin of the model and the size
 reference. This draft adds the three Python-first frameworks, [Streamlit](https://github.com/streamlit/streamlit),
