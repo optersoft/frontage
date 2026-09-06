@@ -237,20 +237,13 @@ is the exit if it ever outgrows this.
       then put `VSCE_PAT` and `OVSX_PAT` in the repo's `vscode` environment. Neither marketplace
       speaks OIDC, so these are the first stored secrets in this repo's release path — PyPI needs
       none. Nothing ships until they exist.
-- [ ] Docs: the extension is user-visible, so a section in the tooling chapter on
-      academy.optersoft.com before `editor-v0.1.0` is tagged. It is tooling, not an app, so it
-      needs no `frontage-<chapter>` repo of its own.
-- [ ] Try the extension in a real VS Code (`mk vscode.install`) before tagging. Everything so far
-      is verified through the protocol, which is the server's whole surface — but the grammar, the
-      snippets and the client's server discovery have only been checked as valid JSON and
-      `node --check`.
-- [ ] The lambda rule fires only for a *parenthesised* lambda. CPython 3.14 rejects
-      `{lambda ev: None}` in a t-string outright (the `:` is a format spec), so
-      `test_check_flags_a_lambda_in_a_template_string` has been passing on the syntax-error
-      branch, not the rule — its assertion is `"lambda" in message`, and the parse error says
-      "lambda expressions are not allowed without parentheses". The rule is still right for
-      `{(lambda: 1)}`, which parses here and fails on MicroPython. Worth deciding whether the
-      docs' advice ("name the function") needs to mention the parenthesised form at all.
+- [x] Docs: the Ship chapter has an "In your editor" section (`frontage lsp`, what it gives that
+      a Python server cannot, the 3.14 pin, `editors/` for each editor).
+- [x] Tried in a real VS Code: activates on `onLanguage:python`, resolves the server through
+      uvx, publishes `html-nesting` at the right range. `mk vscode.test` (13 tests, in CI)
+      covers the grammar through Oniguruma, the snippets, the manifest and server discovery.
+- [x] The lambda rule fires only for the parenthesised form; the bare one is a CPython parse
+      error. Two tests now, one per path, and the rule and Basic say which is which.
 
 ## 0.8.0 (2026-09-06) — the dev server, the router repo, the profiling session
 
