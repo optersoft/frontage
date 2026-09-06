@@ -531,7 +531,11 @@ def _mount_hole(parent, accessor, renderer, marker=None):
         state.current = payload
         _finish_hydration(state, target, marker, hyd)
 
-    RenderEffect(compute, apply)
+    def on_screen():
+        target = parent if parent is not None else renderer.parent(marker)
+        return target is not None and renderer.is_connected(target)
+
+    RenderEffect(compute, apply, target=on_screen)
 
     def cleanup():
         _floating.pop(id(marker), None)
@@ -653,13 +657,19 @@ def _apply_attr(node, raw_name, value, renderer):
         _bind(node, name, value, renderer)
     elif kind == "class-dict":
         if callable(value):
-            RenderEffect(value, lambda classes, prev: _apply_class_dict(node, classes, prev, renderer))
+            RenderEffect(
+                value,
+                lambda classes, prev: _apply_class_dict(node, classes, prev, renderer),
+                target=lambda: renderer.is_connected(node),
+            )
         elif isinstance(value, dict):
             _apply_class_dict(node, value, None, renderer)
         else:
             renderer.set_property(node, "class", value)
     elif callable(value):
-        RenderEffect(value, lambda v, prev: _set(node, kind, name, v, renderer))
+        RenderEffect(
+            value, lambda v, prev: _set(node, kind, name, v, renderer), target=lambda: renderer.is_connected(node)
+        )
     else:
         _set(node, kind, name, value, renderer)
 
@@ -760,15 +770,25 @@ def _bind(node, what, signal, renderer):
     """Two-way binding between a form control and a `Signal`."""
     if not isinstance(signal, Signal):
         raise TypeError(f"bind:{what} needs a Signal")
+
+    def on_screen():
+        return renderer.is_connected(node)
+
     if what == "value":
-        RenderEffect(signal, lambda v, prev: renderer.set_property(node, "value", "" if v is None else v))
+        RenderEffect(
+            signal, lambda v, prev: renderer.set_property(node, "value", "" if v is None else v), target=on_screen
+        )
         _listen(node, "input", lambda ev: signal.set(ev.target.value), renderer)
     elif what == "checked":
-        RenderEffect(signal, lambda v, prev: renderer.set_property(node, "checked", bool(v)))
+        RenderEffect(signal, lambda v, prev: renderer.set_property(node, "checked", bool(v)), target=on_screen)
         _listen(node, "change", lambda ev: signal.set(bool(ev.target.checked)), renderer)
     elif what == "group":
         # A radio: checked when the signal equals this input's value.
-        RenderEffect(signal, lambda v, prev: renderer.set_property(node, "checked", str(v) == str(_value_of(node))))
+        RenderEffect(
+            signal,
+            lambda v, prev: renderer.set_property(node, "checked", str(v) == str(_value_of(node))),
+            target=on_screen,
+        )
         _listen(node, "change", lambda ev: signal.set(_value_of(ev.target)), renderer)
     else:
         raise TypeError(f"unknown binding bind:{what}")
@@ -850,6 +870,7 @@ def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hy
     if clear:
         while (child := renderer.first_child(parent)) is not None:
             renderer.remove_node(parent, child)
+    renderer.mark_root(parent)  # what hangs from here is on screen: a transition waits for it
     owner = Owner(parent=None)
 
     def page(exc, reset):

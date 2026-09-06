@@ -51,7 +51,7 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - C17 Any other exception inside a compute propagates to the nearest `Errored` boundary, else to the mount root. [M2]
 - C18 `interval(seconds)` is an accessor that changes every `seconds`; `poll(fn, seconds)` is a `Resource` re-run on that interval; both stop when their owner is disposed. [M5]
 - C19 A `Memo` whose function returns a coroutine is an async memo: the reads made while calling the function (before the coroutine runs) are its dependencies; the coroutine runs as a task owned by the memo; reading it raises `NotReady` until the first value and returns the previous value while a later run is in flight; `loading()` says which; an exception in the coroutine is raised to readers; a re-run cancels the coroutine in flight. [M7]
-- C20 `transition(fn)`: the render effects the writes in `fn` dirty do not run until every `Resource` refetch and async memo run those writes started has settled; then they run in one batch. No `Loading` fallback appears for data that is refreshing. `is_pending()` is true meanwhile; the returned `Transition` has `pending`, `wait()` and `on_commit`; a transition with no async work commits at once. What the new state would *create* is built at the commit. [M7]
+- C20 `transition(fn)`: the render effects the writes in `fn` dirty compute at once, so the new state is built off screen (a branch or component the writes create is built under its own owners and its resources start loading), but their effect phase, which would put it on the page, waits until every `Resource` load and async memo run the transition started has settled; then they apply in one batch, recomputing whatever changed meanwhile. No `Loading` fallback appears on the page. `is_pending()` is true meanwhile; the returned `Transition` has `pending`, `wait()` and `on_commit`; a transition with no async work commits at once. An effect whose target is already off screen applies at once. [M7, off-screen build M8]
 - C21 `Optimistic` is a `Signal` whose write inside a transition renders at once (the effects downstream of it run despite the transition) and is undone when the transition commits. [M7]
 - C22 `is_pending(x)` for a `Resource`, an async `Memo`, an `Action` or a `Transition`; `use_transition()` returns `(pending, start)` where `pending()` covers the transitions started with `start`. [M7]
 
@@ -107,6 +107,7 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - U9 Memory mode drives the router with no browser; the whole router suite runs on CPython. [M3]
 - U10 `use_before_leave()` can cancel a navigation; scroll position is restored on back, once the page navigated back to is on screen (the router sets `history.scrollRestoration` to manual). [M3, browser test M7]
 - U11 `is_routing` stays true from a navigation until the preloads it started *and* the first loads of the `Resource`s the new route created have settled. [M7]
+- U12 `Router(transition=True)`, or `navigate(path, transition=True)` for one call, runs the navigation as a transition (C20): the new route is built off screen, its resources load, and the page changes when they are ready; the scroll to the top (or the restored position on back) happens at the commit. [M8]
 
 ## 9. Errors and development mode
 

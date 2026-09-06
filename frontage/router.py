@@ -300,11 +300,16 @@ class HashMode:
 
 
 class Router:
-    def __init__(self, *routes, mode="history", root=None, fallback=None, initial="/", base=""):
+    def __init__(self, *routes, mode="history", root=None, fallback=None, initial="/", base="", transition=False):
         self.routes = list(routes)
         self.root = root
         self.fallback = fallback
         self.base = base.rstrip("/")
+        # `transition=True`: every navigation (a link, `navigate`, back and forward) runs as a
+        # `transition()`: the new route is built off screen, its resources load, and the page
+        # changes when they are ready, with no fallback in between. `navigate(…,
+        # transition=…)` decides for one call.
+        self.transition = transition
         if mode == "memory" or not in_browser:
             # Without a browser (tests, `python -m frontage prerender`) every mode is the
             # memory one; the prerenderer says which path is being rendered.
@@ -410,9 +415,10 @@ class Router:
 
     # -- navigation ------------------------------------------------------------------------------
 
-    def navigate(self, path, replace=False, scroll=True):
+    def navigate(self, path, replace=False, scroll=True, transition=None):
         """Go to `path` (absolute, or relative to the current route level when called from a
-        component). Guards from `use_before_leave` may cancel. Returns True if it happened."""
+        component). Guards from `use_before_leave` may cancel. Returns True if it happened.
+        `transition` (default: the router's) holds the page until the new route's data is in."""
         target = self._full(self.resolve(path))
         current = self.url.peek()
         if target == current:
@@ -425,10 +431,23 @@ class Router:
             self.mode.replace(target)
         else:
             self.mode.push(target)
-        self._set_url(target)
-        if scroll:
-            self._scroll_to(0)
+        self._change(target, (lambda: self._scroll_to(0)) if scroll else None, transition)
         return True
+
+    def _change(self, url, after, transition):
+        """Apply a URL change, as a transition when asked; `after` runs once the page shows it."""
+        from .reactive import on_mount
+        from .reactive import transition as run_transition
+
+        use = self.transition if transition is None else transition
+        if use:
+            t = run_transition(self._set_url, url)
+            if after is not None:
+                t.on_commit(after)
+        else:
+            self._set_url(url)
+            if after is not None:
+                on_mount(after)
 
     def _deferred_navigate(self, path, replace):
         # A Redirect during a render: apply once the current update has settled.
@@ -437,34 +456,31 @@ class Router:
         on_mount(lambda: self.navigate(path, replace=replace))
 
     def _on_history(self, url):
-        from .reactive import on_mount
-
         current = self.url.peek()
         for guard in list(self._guards):
             if guard(url, current) is False:
                 self.mode.replace(current) if self.mode_name != "memory" else None
                 return
         self._remember_scroll(current)
-        self._set_url(url)
         y = self._scroll.get(url, 0)
-        on_mount(lambda: self._scroll_to(y))  # once the page that was left is back on screen
+        self._change(url, lambda: self._scroll_to(y), None)  # once the page is back on screen
 
     def _set_url(self, url):
         from .reactive import on_mount
 
-        aio._navigation = self  # ty: ignore[invalid-assignment]  # the new route's Resources count toward is_routing
-        try:
-            with batch():
-                self.is_routing.set(True)
-                self.url.set(url)
-                # The route effects this update runs start the preloads and create the new
-                # route's resources; the navigation is over once the update has settled and
-                # they have finished.
-                on_mount(self._settle_routing)
-        finally:
-            aio._navigation = None
+        # The route effects this update runs start the preloads and create the new route's
+        # resources, which count toward `is_routing` (`aio._navigation`) until the update has
+        # settled: `_settle_routing` runs after the render effects of whichever batch flushes
+        # this (the caller's transition, or this one) and closes the window.
+        aio._navigation = self  # ty: ignore[invalid-assignment]
+        with batch():
+            self.is_routing.set(True)
+            self.url.set(url)
+            on_mount(self._settle_routing)
 
     def _settle_routing(self):
+        if aio._navigation is self:
+            aio._navigation = None
         if self._inflight == 0 and self.is_routing.peek():
             self.is_routing.set(False)
 

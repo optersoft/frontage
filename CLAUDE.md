@@ -2,7 +2,7 @@
 
 Frontage: a fine-grained reactive UI framework for Python in the browser (PyScript; Pyodide
 and MicroPython), published to PyPI as `frontage`, Apache 2.0, copyright Optersoft. Rewritten
-clean-room from `SPEC.md` per `DESIGN.md`; `main` is past milestone **M7** (0.5.0: the plan, the command line, prerendering with hydration, transitions). `origin` is
+clean-room from `SPEC.md` per `DESIGN.md`; `main` is past milestone **M8** (0.6.0: the plan, the command line, prerendering with hydration, transitions that build the new state off screen). `origin` is
 `github.com/optersoft/frontage` (GitHub, because PyPI publishing needs Actions); the PuePy fork is
 on branch `puepy-reference`.
 
@@ -54,12 +54,20 @@ on branch `puepy-reference`.
   changes during a tracked read. User-facing writes keep `set`. Tasks that should have read
   their inputs before their first await are spawned with `spawn(…, name=…)`; that name is
   what the read-after-await warning prints.
-- **A transition defers render effects, nothing else.** `_flush` parks a render effect in the
-  open `Transition` instead of running it; `_queued` stays set so it is not queued twice;
-  `Resource._load` and an async `Memo._start` register with the transition and `_release`/
-  `_settle` count them down; the commit re-queues the parked effects in one batch. Effects
-  downstream of an `Optimistic` write are flagged `_urgent` and run anyway. A branch the new
-  state would create is built at the commit: there is no off-screen rendering.
+- **A transition parks the effect phase of on-screen render effects, nothing else.** While a
+  `Transition` is open, `Effect._run` still computes (that is what builds the new state: a
+  `Show` branch, a route level, a `For` row, under their own owners, off screen) and then, if
+  the effect's `_target` says its output is on the page, keeps the result in `_parked` and
+  lists itself in the transition; `_queued` stays set so a mark meanwhile only makes it
+  DIRTY. An effect whose target is off screen (inside the new branch) applies at once, so the
+  branch assembles itself and its `Loading` boundaries resolve there. `Resource._load` and an
+  async `Memo._start` register with the transition and `_release`/`_settle` count them down;
+  the commit calls `_commit_parked` on each parked effect: apply the parked result, or
+  recompute if it was marked meanwhile. Effects downstream of an `Optimistic` write are
+  `_urgent` and never park. "On screen" is `renderer.is_connected(node)`: `isConnected` in
+  the DOM, a `_root` flag `mount` sets (`mark_root`) on the HtmlRenderer's target and a
+  parent walk otherwise. The view layer passes `target=` to every `RenderEffect` it creates;
+  a user `RenderEffect` without one is assumed on screen and parks.
 - **Count bridge crossings.** Every DOM call from Python crosses to JavaScript. The
   `RecordingRenderer` exists so tests assert how few operations an update costs. A change that
   adds operations to a hot path needs a number, not an argument.

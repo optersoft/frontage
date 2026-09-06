@@ -61,6 +61,15 @@ class Renderer:
     def parent(self, node):
         raise NotImplementedError
 
+    def mark_root(self, node):
+        """`node` is a mount target: what hangs from it is on screen (`is_connected`)."""
+
+    def is_connected(self, node):
+        """True when `node` is on the page (under a mount target, or in the document). A
+        transition applies effects on such nodes at its commit and builds the rest at once.
+        Unknown counts as on screen."""
+        return True
+
     def first_child(self, node):
         raise NotImplementedError
 
@@ -263,6 +272,16 @@ class HtmlRenderer(Renderer):
     def parent(self, node):
         return node.parent
 
+    def mark_root(self, node):
+        node._root = True  # a plain attribute: MicroPython has no writable instance __dict__
+
+    def is_connected(self, node):
+        while node is not None:
+            if getattr(node, "_root", False):
+                return True
+            node = node.parent
+        return False
+
     def first_child(self, node):
         return node.children[0] if node.children else None
 
@@ -428,6 +447,12 @@ class RecordingRenderer(Renderer):
 
     def parent(self, node):
         return self.inner.parent(node)
+
+    def mark_root(self, node):
+        self.inner.mark_root(node)
+
+    def is_connected(self, node):
+        return self.inner.is_connected(node)
 
     def first_child(self, node):
         return self.inner.first_child(node)

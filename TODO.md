@@ -176,8 +176,10 @@ constraint holds).
       (0.5.0, Solid 2.0's model on a synchronous graph). A live server rendering mode is not planned.
 - [x] The `frontage` console script (0.5.0); docs say `uvx frontage …`.
 - [ ] Docs: `.ca`/`.es` variants once a programme places the pages.
-- [ ] Concurrent rendering, if a transition ever needs to build the new state off-screen (DESIGN
-      §16 "later"); the router navigating inside a transition by option.
+- [x] 0.6.0: a transition builds the new state off screen (render effects compute at once; only
+      the effect phase of what is on screen waits; `renderer.is_connected` decides), and
+      `Router(transition=True)` / `navigate(…, transition=True)` change the page when the new
+      route's data is in, with no fallback.
 
 ## Outward-facing, for David
 

@@ -325,11 +325,6 @@ def _flush():
         while _render_queue or _effect_queue:
             queue = _render_queue if _render_queue else _effect_queue
             effect = queue.pop(0)
-            if _transition is not None and effect._render and not effect._urgent:
-                # The page keeps its previous state: this runs when the transition commits.
-                # `_queued` stays set so a later mark does not queue it a second time.
-                _transition._deferred.append(effect)
-                continue
             effect._queued = False
             if not effect._disposed:
                 effect._update_if_necessary()
@@ -449,6 +444,7 @@ class _Computation(Owner):
     _pure = False
     _render = False
     _urgent = False  # a render effect downstream of an Optimistic write: runs during a transition
+    _target = None  # a render effect's "is my output on screen?"; None means assume it is
 
     def __init__(self, fn):
         Owner.__init__(self)
@@ -678,11 +674,13 @@ class Effect(_Computation):
     Creating one outside a batch runs it before the constructor returns.
     """
 
-    def __init__(self, compute, effect=None):
+    def __init__(self, compute, effect=None, target=None):
         _Computation.__init__(self, compute)
         self._effect = effect
         self._value = _UNSET
         self._cleanup = None
+        self._parked = _UNSET
+        self._target = target
         self._state = CLEAN  # so the mark below is a transition and enqueues the first run
         _begin_batch()
         try:
@@ -695,6 +693,22 @@ class Effect(_Computation):
         value = self._compute()
         if value is _SKIPPED:
             return
+        if _transition is not None and self._render and not self._urgent and self._on_screen():
+            # A transition: the compute has built the new state (off screen, under its own
+            # owners); what waits for the commit is the effect phase, which would put it on
+            # the page. `_queued` stays set so a later mark does not queue us a second time;
+            # the mark still makes us DIRTY, and the commit recomputes us in that case.
+            self._parked = value
+            self._queued = True
+            _transition._deferred.append(self)
+            return
+        self._apply(value)
+
+    def _on_screen(self):
+        target = self._target
+        return True if target is None else bool(target())
+
+    def _apply(self, value):
         if self._effect is not None:
             self._run_cleanup()
             prev = None if self._value is _UNSET else self._value
@@ -702,6 +716,21 @@ class Effect(_Computation):
             if callable(result):
                 self._cleanup = result
         self._value = value
+
+    def _commit_parked(self):
+        """At a transition's commit: apply what the compute built, or recompute if something
+        changed meanwhile (a refetch that settled marks its readers)."""
+        parked, self._parked = self._parked, _UNSET
+        self._queued = False
+        if self._disposed:
+            return
+        if self._state != CLEAN or parked is _UNSET:
+            _mark(self, DIRTY) if self._state == CLEAN else None
+            if not self._queued:
+                self._queued = True
+                _render_queue.append(self)
+            return
+        self._apply(parked)
 
     def _run_cleanup(self):
         cleanup, self._cleanup = self._cleanup, None
@@ -828,10 +857,7 @@ class Transition:
             self._reverts = []
             deferred, self._deferred = self._deferred, []
             for effect in deferred:
-                if effect._disposed:
-                    effect._queued = False
-                    continue
-                _render_queue.append(effect)
+                effect._commit_parked()
             self.pending._write(False)
             if not _open_transitions:
                 _is_pending._write(False)
@@ -868,9 +894,10 @@ def transition(fn, *args):
     No `Loading` fallback appears for data that is merely refreshing. `is_pending()` is True
     meanwhile. Returns the `Transition` (its `pending` accessor, `wait()`, `on_commit`).
 
-    What a transition holds back is the rendering of what already exists: a branch or a
-    component the new state would *create* is built when the transition commits, and its own
-    first loads show their `Loading` fallback as usual.
+    The new state is built off screen while the transition is open: a branch or a component
+    the writes create is computed at once, under its own owners, so its resources start
+    loading immediately and count toward the commit; only the step that would put it on the
+    page waits. What is on screen keeps its previous nodes until then.
     """
     global _transition
     t = Transition()

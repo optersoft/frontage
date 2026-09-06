@@ -341,6 +341,9 @@ class DomRenderer(Renderer):
         parent = node.parentNode
         return parent if is_node(parent) else None
 
+    def is_connected(self, node):
+        return bool(getattr(node, "isConnected", True))
+
     def first_child(self, node):
         child = node.firstChild
         return child if is_node(child) else None

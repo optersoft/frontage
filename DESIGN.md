@@ -135,9 +135,8 @@ it is measured.
 ## 4. Non-goals for 0.x
 
 A live rendering server (prerendering as a build step shipped in 0.4.0, and is the only server
-rendering planned); concurrent rendering (a transition, since 0.5.0, holds back the rendering
-of what exists rather than rendering the new state off-screen); a component library; PuePy
-import compatibility; PyScript releases older than the pinned one.
+rendering planned); a component library; PuePy import compatibility; PyScript releases older
+than the pinned one.
 
 ## 5. Clean-room rules
 
@@ -457,7 +456,8 @@ keeps its own notice; the rewrite carries Optersoft's from the first commit.
 | M5 ✅ | `frontage.widgets`; `State` sugar; `interval` / `poll`; `reconcile`; the playground page; Firefox + WebKit nightly in CI; performance pass (numbers in TODO.md; no JS shim: MicroPython is bound by Python execution, not the bridge) | **0.2.0**, 2026-09-06 |
 | M6 ✅ | prerendering through `HtmlRenderer` + hydration, as a static build step (`python -m frontage prerender`) | **0.4.0**, 2026-09-06 |
 | M7 ✅ | the E2 debug warnings; `is_routing` across a route's resources and the scroll-restoration browser test; the `frontage` console script; `prerender --crawl`, `frontage.debug` with per-node hydration mismatches, ids per mount; async memos, `transition()` with `is_pending`, `use_transition` and `Optimistic` (Solid 2.0's model, on a synchronous graph: deferred render effects rather than concurrent rendering) | **0.5.0**, 2026-09-06 |
-| later | concurrent rendering, if a transition ever needs to build the new state off-screen; async memos as the router's data primitive | 1.0 |
+| M8 ✅ | concurrent rendering the way a synchronous graph can have it: during a transition every render effect computes at once, so the new state is built off screen and its resources start, and only the effect phase of what is on screen waits for the commit; `Router(transition=True)` / `navigate(…, transition=True)` | **0.6.0**, 2026-09-06 |
+| later | async memos as the router's data primitive | 1.0 |
 
 ## 17. Open decisions
 

@@ -18,6 +18,7 @@ from frontage import (
     Optimistic,
     RecordingRenderer,
     Resource,
+    Show,
     Signal,
     component,
     h,
@@ -335,6 +336,81 @@ def test_use_transition_and_is_pending_on_targets():
         action = Action(save)
         assert is_pending(action) is False
         assert is_pending(object()) is False
+
+    asyncio.run(scenario())
+
+
+def test_transition_builds_the_new_branch_off_screen_and_shows_it_ready():
+    async def scenario():
+        gate = asyncio.Event()
+        calls = []
+
+        async def load():
+            calls.append(1)
+            await gate.wait()
+            return "profile data"
+
+        @component
+        def profile():
+            data = Resource(load)
+            return h.section(Loading(h.i("…"), lambda: h.b(data)))
+
+        show = Signal(False)
+        root, r, _ = mounted(h.div(Show(show, profile, fallback=h.p("home"))))
+        assert html(root) == "<div><p>home</p></div>"
+        t = transition(lambda: show.set(True))
+        await settle()
+        # The new branch was built and its load started, but the page still shows the old one.
+        assert calls == [1] and t.pending() is True
+        assert html(root) == "<div><p>home</p></div>"
+        removed_before = sum(1 for op in r.log if op[0] == "remove_node")
+        gate.set()
+        await settle()
+        assert html(root) == "<div><section><b>profile data</b></section></div>"
+        assert t.pending() is False and sum(1 for op in r.log if op[0] == "remove_node") > removed_before
+
+    asyncio.run(scenario())
+
+
+def test_router_navigates_inside_a_transition_when_asked():
+    async def scenario():
+        gates = [asyncio.Event()]
+
+        async def load():
+            await gates[-1].wait()
+            return "data"
+
+        def page():
+            data = Resource(load)
+            return h.p(Loading(h.i("…"), lambda: h.b(data)))
+
+        router = Router(Route("/", lambda: h.p("home")), Route("/page", page), mode="memory", transition=True)
+        root, _, _ = mounted(router)
+        router.navigate("/page")
+        await settle()
+        assert router.location().pathname == "/page"
+        assert html(root) == "<p>home</p>" and router.is_routing() is True and is_pending() is True
+        gates[-1].set()
+        await settle()
+        assert html(root) == "<p><b>data</b></p>" and router.is_routing() is False and is_pending() is False
+        router.navigate("/", transition=False)
+        assert html(root) == "<p>home</p>"
+        plain = Router(Route("/", lambda: h.p("home")), Route("/page", page), mode="memory")
+        root2, _, _ = mounted(plain)
+        gates.append(asyncio.Event())
+        plain.navigate("/page")
+        await settle()
+        assert html(root2) == "<p><i>…</i></p>"  # no transition: the fallback shows
+        gates[-1].set()
+        await settle()
+        plain.navigate("/")
+        gates.append(asyncio.Event())
+        plain.navigate("/page", transition=True)
+        await settle()
+        assert html(root2) == "<p>home</p>"  # one call opted in
+        gates[-1].set()
+        await settle()
+        assert html(root2) == "<p><b>data</b></p>"
 
     asyncio.run(scenario())
 
