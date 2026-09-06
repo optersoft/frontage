@@ -146,7 +146,8 @@ def test_not_ready_ends_a_computation_quietly():
         return data()
 
     m = Memo(compute)
-    assert m() is None
+    with pytest.raises(NotReady):  # the reader waits too (0.8.2; it used to read None)
+        m()
     data.set("x")
     ready.set(True)
     assert m() == "x"

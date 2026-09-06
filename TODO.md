@@ -279,10 +279,15 @@ is the exit if it ever outgrows this.
       withdrawn the same evening.
 - [x] Call-count pass on the core: 332 → 266 Python calls per row; a 1,000-row create on
       MicroPython 124 → 108 ms (null renderer), 163 → 151 ms (DOM, templates).
-- [ ] `[auto]` The demo app (an issue tracker exercising router + memo data + transitions +
-      Optimistic + Store/For + widgets/State + Portal + prerender) was started and set aside
-      for the move. Do: `examples/tracker/` + `tests/browser/test_tracker.py` + a prerender test;
-      then `mk docs.examples`. Done: browser suite green on both interpreters with it.
+- [x] 0.8.2: the demo app, `examples/tracker/` (routes + query string, a store kept by `reconcile`,
+      memo-loaded details over a preloaded `query`, a transactional done toggle with `Optimistic`
+      inside a `transition`, a Portal modal, `ActionForm` + `State` + widgets, boundaries, an
+      interval), driven end to end by `tests/browser/test_tracker.py` on both interpreters,
+      prerendered in `test_prerender.py` and hydrated in `test_hydrate.py`. It found five
+      framework bugs, all fixed: a memo whose compute hit `NotReady` read as None (C16), a
+      preload failure took the app down (U14), `query` hid the real error from waiters, the
+      prerenderer ignored async memos started during a render and waited on disposed resources,
+      and on MicroPython a task that disposed its own owner cancelled itself (C24).
 
 ## Outward-facing, for David
 

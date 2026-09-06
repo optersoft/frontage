@@ -85,6 +85,9 @@ _navigation = None
 # Prerendering: every Memo created while the prerenderer renders a mount, in creation order,
 # so it can wait for the async ones and write their values into the page by ordinal.
 _memo_registry = None
+# Prerendering too: every async memo whose run starts while a mount renders, wherever it was
+# created (a module-level memo the page reads counts), so the prerenderer waits for it.
+_memo_started = None
 # Hydration: a `_MemoHydration` while a hydrating mount runs; a Memo created then takes its
 # ordinal, and an async one settles with the page's value instead of running.
 _memo_hydration = None
@@ -103,14 +106,16 @@ class _MemoHydration:
 
 
 def _begin_prerender():
-    global _memo_registry
+    global _memo_registry, _memo_started
     _memo_registry = []
+    _memo_started = []
     return _memo_registry
 
 
 def _end_prerender():
-    global _memo_registry
+    global _memo_registry, _memo_started
     _memo_registry = None
+    _memo_started = None
 
 
 def _set_memo_hydration(pairs):
@@ -341,7 +346,15 @@ def spawn(coro, owner=None, name=None):
 
     task = asyncio.create_task(run())
     if owner is not None:
-        owner.on_cleanup(task.cancel)
+
+        def cancel():
+            # Not from inside the task itself: a handler that disposes its own owner (an
+            # action that navigates away) keeps running to its end. CPython would deliver
+            # the cancellation at the next await; MicroPython raises "can't cancel self".
+            if task is not _current_task():
+                task.cancel()
+
+        owner.on_cleanup(cancel)
     return task
 
 
@@ -502,6 +515,7 @@ class _Computation(Owner):
     def __init__(self, fn):
         Owner.__init__(self)
         self._fn = fn
+        self._not_ready = False  # the last run ended in NotReady: a Memo re-raises it to readers
         self._sources = []
         self._source_ids = (
             None  # a set once tracking starts: membership in O(1) (a For over 1,000 rows tracks 1,000+ nodes)
@@ -544,9 +558,11 @@ class _Computation(Owner):
             self._clear_sources()
         saved_owner, saved_listener = _owner, _listener
         _owner = _listener = self
+        self._not_ready = False
         try:
             return self._fn()
         except NotReady:
+            self._not_ready = True
             return _SKIPPED
         except Exception as exc:
             _owner, _listener = saved_owner, saved_listener
@@ -617,6 +633,15 @@ class Memo(_Computation):
             _listener._track(self)
         if self._state != CLEAN:
             self._update_if_necessary()
+        if self._not_ready:
+            # The compute read something not ready (a Resource, an async memo): the reader
+            # waits too, under *its* Loading boundary (the memo may live above it), instead
+            # of seeing a stale value or None. The run repeats when the source settles.
+            scope = lookup(_current_owner(), LOADING)
+            if scope is not None and scope not in self._scopes:
+                self._scopes.append(scope)
+                scope.add(self, self._value is not _UNSET)
+            raise NotReady
         if self._loading is not None:
             return self._read_async()
         return self._value
@@ -658,17 +683,21 @@ class Memo(_Computation):
         self._state = CLEAN  # before the run: a write during it must be able to mark us again
         new = self._compute()
         if new is _SKIPPED:
-            if old is _UNSET and self._loading is None:
-                self._value = None  # never computed: read as None rather than a sentinel
-            return
+            return  # NotReady: readers get it too (see __call__); an error went to Errored
+        if self._scopes and self._loading is None:
+            scopes, self._scopes = self._scopes, []  # the boundaries that waited for this run
+            for scope in scopes:
+                scope.remove(self)
         if hasattr(new, "send") and hasattr(new, "throw"):
             self._start(new)
             return
         if old is _UNSET or not _same(self._equal, old, new):
             self._value = new
-            if old is not _UNSET:
-                for observer in list(self._observers):
-                    _mark(observer, DIRTY)
+            reader = _listener  # whoever's read triggered this first run already has the value
+            for observer in list(self._observers):
+                if old is _UNSET and observer is reader:
+                    continue
+                _mark(observer, DIRTY)  # includes the readers that waited through NotReady
 
     # -- async ------------------------------------------------------------------------------
 
@@ -687,6 +716,8 @@ class Memo(_Computation):
             coro.close()
             return
         loading._write(True)
+        if _memo_started is not None and self not in _memo_started:
+            _memo_started.append(self)
         if _transition is not None and self._transition is None:
             self._transition = _transition
             _transition._track()
@@ -1013,9 +1044,11 @@ def transition(fn, *args):
         try:
             _end_batch()
         finally:
+            # Closed even when `fn` raised: a transition left open would keep every effect
+            # it parked from ever reaching the page.
             _transition = saved
-    t._open = False
-    t._maybe_commit()
+            t._open = False
+            t._maybe_commit()
     return t
 
 

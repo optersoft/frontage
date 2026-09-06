@@ -47,12 +47,13 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - C13 A computation that re-runs disposes what it owned during its previous run before running again. [M1]
 - C14 `provide(ctx, value)` / `use(ctx)` resolve through the owner tree; `use` outside any provider returns the context's default. [M1]
 - C15 `selector(source)` returns `is_selected(key)` such that only the rows whose key equals the old or new value are notified when `source` changes. [M1]
-- C16 Raising `NotReady` inside a compute ends it quietly; the nearest `Loading` boundary shows its fallback; no `Errored` boundary sees it. [M2]
+- C16 Raising `NotReady` inside a compute ends it quietly; the nearest `Loading` boundary shows its fallback; no `Errored` boundary sees it. A `Memo` whose compute ended so raises `NotReady` to its readers and registers with the reader's `Loading` boundary (the memo may live above it), so a hole never sees `None` in its place. [M2; the memo half 0.8.2]
 - C17 Any other exception inside a compute propagates to the nearest `Errored` boundary, else to the mount root. [M2]
 - C18 `interval(seconds)` is an accessor that changes every `seconds`; `poll(fn, seconds)` is a `Resource` re-run on that interval; both stop when their owner is disposed. [M5]
 - C19 A `Memo` whose function returns a coroutine is an async memo: the reads made while calling the function (before the coroutine runs) are its dependencies; the coroutine runs as a task owned by the memo; reading it raises `NotReady` until the first value and returns the previous value while a later run is in flight; `loading()` says which; an exception in the coroutine is raised to readers; a re-run cancels the coroutine in flight. [M7]
 - C20 `transition(fn)`: the render effects the writes in `fn` dirty compute at once, so the new state is built off screen (a branch or component the writes create is built under its own owners and its resources start loading), but their effect phase, which would put it on the page, waits until every `Resource` load and async memo run the transition started has settled; then they apply in one batch, recomputing whatever changed meanwhile. No `Loading` fallback appears on the page. `is_pending()` is true meanwhile; the returned `Transition` has `pending`, `wait()` and `on_commit`; a transition with no async work commits at once. An effect whose target is already off screen applies at once. [M7, off-screen build M8]
 - C21 `Optimistic` is a `Signal` whose write inside a transition renders at once (the effects downstream of it run despite the transition) and is undone when the transition commits. [M7]
+- C24 A task disposed by its own owner (`spawn`; an action that navigates away disposes the component that owns it) is not cancelled from inside itself: it runs to its end (MicroPython refuses a self-cancel). A `transition()` whose function raises still closes, so nothing it parked is lost. [0.8.2]
 - C22 `is_pending(x)` for a `Resource`, an async `Memo`, an `Action` or a `Transition`; `use_transition()` returns `(pending, start)` where `pending()` covers the transitions started with `start`. [M7]
 
 ## 5. Stores
@@ -108,6 +109,7 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - U10 `use_before_leave()` can cancel a navigation; scroll position is restored on back, once the page navigated back to is on screen (the router sets `history.scrollRestoration` to manual). [M3, browser test M7]
 - U11 `is_routing` stays true from a navigation until the preloads it started *and* the first loads of the `Resource`s the new route created have settled. [M7]
 - U12 `Router(transition=True)`, or `navigate(path, transition=True)` for one call, runs the navigation as a transition (C20): the new route is built off screen, its resources load, and the page changes when they are ready; the scroll to the top (or the restored position on back) happens at the commit. [M8]
+- U14 A route's `preload` that fails is a warning, never an error page: the component's own load surfaces the error in its boundary. `query` re-raises the failure to callers that waited on the same key. [0.8.2]
 - U13 An async `Memo` created while a route renders counts toward `is_routing` like a `Resource` (U11), so `Memo(lambda: get_contact(params()["id"]))` is a route's data primitive: the id is tracked, a `preload` warms the same `query`, and the route's transition (U12) and the prerenderer (L9) wait for it as for a Resource. [M9]
 
 ## 9. Errors and development mode

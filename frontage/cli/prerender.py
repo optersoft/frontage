@@ -89,11 +89,15 @@ async def render_mount(view, debug, fallback, timeout, selector="#app"):
     try:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
-        while any(r.state() in (PENDING, REFRESHING) for r in registry) or any(m.loading() for m in memos):
+        while (
+            any(r.state() in (PENDING, REFRESHING) and not _gone(r) for r in registry)
+            or any(m.loading() for m in memos)
+            or any(m.loading() for m in reactive._memo_started or [])
+        ):
             if loop.time() > deadline:
                 raise TimeoutError(f"resources still loading after {timeout}s")
             await asyncio.sleep(0.005)
-        failed = [r for r in registry if r.state() == ERRORED]
+        failed = [r for r in registry if r.state() == ERRORED and not _gone(r)]
         if failed:
             raise RuntimeError(f"resource #{registry.index(failed[0])} failed: {failed[0].error()!r}")
         for ordinal, memo in enumerate(memos):
@@ -115,6 +119,12 @@ async def render_mount(view, debug, fallback, timeout, selector="#app"):
         handle.dispose()
         aio._end_prerender()
         reactive._end_prerender()
+
+
+def _gone(resource):
+    """A resource whose owner was disposed mid-render (a branch that went away) never settles."""
+    owner = getattr(resource, "_owner", None)
+    return owner is not None and getattr(owner, "_disposed", False)
 
 
 def _error_text(html):

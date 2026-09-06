@@ -144,3 +144,17 @@ def test_check_flags_html_the_browser_rewrites():
     assert any("<tbody>" in f[2] for f in found)
     assert check.check_source('x = html(t"<table><tbody><tr><td>{v}</td></tr></tbody></table>")\n') == []
     assert check.check_source('x = html(t"<p><span>{v}</span></p>")\n') == []
+
+
+def test_prerender_tracker_routes_and_the_memo_loaded_detail(tmp_path):
+    out = tmp_path / "tracker"
+    results = prerender(ROOT / "examples" / "tracker", out, routes=("/", "/issues", "/issues/1"), bundle_pyscript=False)
+    assert [r.path for r in results] == ["/", "/issues", "/issues/1"]
+    dashboard = (out / "index.html").read_text()
+    assert 'id="open"' in dashboard and "loading" not in dashboard.lower()
+    issues = (out / "issues" / "index.html").read_text()
+    assert issues.count("<li") - issues.count("<link") == 5 and 'id="pick"' in issues
+    detail = (out / "issues" / "1" / "index.html").read_text()
+    assert "Signals lose a subscriber after dispose" in detail and 'id="error"' not in detail
+    _, _, values = results[2].mounts[0]
+    assert isinstance(values, dict) and values["memos"]  # the detail's async memo, by ordinal

@@ -24,7 +24,7 @@ def prerendered():
     bundle = _bundle()
     if bundle is None:
         pytest.skip("no local PyScript: run `mk pyscript.fetch`")
-    for name in ("counter", "fetch"):
+    for name in ("counter", "fetch", "tracker"):
         out = BUILD / f"hydrate-{name}"
         if out.exists():
             shutil.rmtree(out)
@@ -144,3 +144,16 @@ def test_fetch_hydrates_without_refetching(server, page: Page, interpreter, prer
     expect(page.locator("#name")).to_have_text("Grace Hopper", timeout=10_000)
     expect(page.locator("#posts")).to_have_text("posts: 6")
     assert states == []
+
+
+@pytest.mark.parametrize("interpreter", ["mpy", "py"])
+def test_tracker_dashboard_hydrates_and_navigates(server, page: Page, interpreter, prerendered):
+    warnings = []
+    page.on("console", lambda m: warnings.append(m.text) if "hydration" in m.text else None)
+    page.goto(f"{server}{prerendered}/hydrate-tracker/index.html?type={interpreter}")
+    expect(page.locator("#open")).to_have_text("3", timeout=2_000)  # from the HTML, before Python
+    expect(page.locator("#high")).to_have_text("high: 2")
+    page.wait_for_function("!document.querySelector('#app').hasAttribute('data-fr-hydrate')", timeout=90_000)
+    page.click("#to-issues")  # the router took over the prerendered page
+    expect(page.locator("#list li")).to_have_count(5, timeout=10_000)
+    assert warnings == []

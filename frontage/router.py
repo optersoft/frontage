@@ -298,6 +298,17 @@ class HashMode:
         return lambda: window.removeEventListener("hashchange", proxy)
 
 
+async def _quiet(coro, route):
+    """A preload is a warm-up: when it fails, the component's own load will surface the error
+    in its boundary, so the failure is a warning here and never an error page."""
+    try:
+        await coro
+    except Exception as exc:
+        from .runtime import warn
+
+        warn(f"preload of {route.path!r} failed: {exc!r}")
+
+
 # --- the router ------------------------------------------------------------------------------------------
 
 
@@ -556,7 +567,7 @@ class Router:
             if intent == "navigate":
                 self._inflight += 1
                 result = self._tracked(result)
-            spawn(result, None)
+            spawn(_quiet(result, route), None)
 
     # -- links -----------------------------------------------------------------------------------
 
@@ -789,6 +800,7 @@ class _Query:
         self.name = name or getattr(fn, "__name__", "query")
         self.cache = {}
         self._running = {}
+        self._errors = {}  # key -> the exception of the last run, for the callers that waited on it
 
     async def __call__(self, *args):
         import asyncio
@@ -800,13 +812,18 @@ class _Query:
             await self._running[key].wait()
             if key in self.cache:
                 return self.cache[key]
-            raise RuntimeError(f"query {self.name}{key!r} failed")
+            error = self._errors.get(key)
+            raise error if error is not None else RuntimeError(f"query {self.name}{key!r} failed")
         event = asyncio.Event()
         self._running[key] = event
+        self._errors.pop(key, None)
         try:
             value = await self.fn(*args)
             self.cache[key] = value
             return value
+        except Exception as exc:
+            self._errors[key] = exc
+            raise
         finally:
             self._running.pop(key, None)
             event.set()

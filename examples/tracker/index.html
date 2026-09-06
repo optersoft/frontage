@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Frontage tracker</title>
+  <link rel="stylesheet" href="/pyscript/core.css">
+  <script type="module" src="/pyscript/core.js" offline></script>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; margin: 1rem 2rem; }
+    header { display: flex; gap: 1rem; align-items: baseline; border-bottom: 1px solid #ddd; position: relative; }
+    header nav a { margin-right: .75rem; }
+    a.active { font-weight: bold; }
+    .bar { position: absolute; left: 0; right: 0; bottom: -2px; height: 3px; background: transparent; }
+    .bar.busy { background: #2563eb; }
+    .filters { display: flex; gap: 1rem; margin: .5rem 0; }
+    ul#list { list-style: none; padding: 0; }
+    ul#list li { padding: .25rem 0; }
+    ul#list li.done a { text-decoration: line-through; color: #777; }
+    .tag { font-size: .8em; padding: 0 .4em; border-radius: .4em; background: #eee; }
+    .tag.high { background: #fecaca; }
+    .tag.done { background: #bbf7d0; }
+    .dialog { position: fixed; inset: 30% 30%; background: white; border: 1px solid #999; padding: 1rem; box-shadow: 0 8px 30px #0003; }
+    #detail { margin-top: 1rem; padding-top: .5rem; border-top: 1px dashed #ddd; }
+  </style>
+</head>
+<body>
+<div id="app">Loading…</div>
+<script>
+  const type = new URLSearchParams(location.search).get("type") || "mpy";
+  const s = document.createElement("script");
+  s.type = type; s.src = "./tracker.py"; s.setAttribute("config", "../pyscript.json");
+  document.body.appendChild(s);
+</script>
+</body>
+</html>

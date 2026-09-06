@@ -5,7 +5,7 @@ settles without running. No browser."""
 
 import asyncio
 
-from frontage import Loading, Memo, RecordingRenderer, Resource, Signal, component, h, mount, reactive
+from frontage import Loading, Memo, RecordingRenderer, Resource, Signal, component, h, mount, reactive, transition
 from frontage.cli.prerender import inject, render_mount
 from frontage.dom import Hydration
 from frontage.router import Route, Router, query
@@ -169,3 +169,63 @@ def test_hydration_reads_both_data_block_shapes():
     new = Hydration({"resources": [], "memos": [[2, "x"]]})
     assert new.data is None and new.memos == [[2, "x"]]
     assert Hydration(None).data is None and Hydration(None).memos is None
+
+
+# --- a memo over something not ready waits too --------------------------------------------------
+
+
+def test_a_memo_whose_compute_hit_not_ready_raises_it_to_readers():
+    async def scenario():
+        gate = asyncio.Event()
+
+        async def load():
+            await gate.wait()
+            return {"name": "Ann"}
+
+        def view():
+            user = Resource(load)
+            name = Memo(lambda: user()["name"].upper())  # a plain memo over a pending resource
+            return h.p(Loading(h.i("…"), lambda: h.b(name)))
+
+        root, _, _ = mounted(view)
+        await settle()
+        assert html(root) == "<p><i>…</i></p>"  # not a crash on None, not an empty hole
+        gate.set()
+        await settle()
+        assert html(root) == "<p><b>ANN</b></p>"
+
+    asyncio.run(scenario())
+
+
+# --- a task that disposes its own owner is not cancelled ------------------------------------------
+
+
+def test_a_task_disposing_its_own_owner_runs_to_the_end():
+    async def scenario():
+        from frontage import Owner, spawn
+
+        owner = Owner(parent=None)
+        steps = []
+
+        async def work():
+            steps.append("before")
+            owner.dispose()  # an action that navigates away disposes the component that owns it
+            await asyncio.sleep(0)  # CPython would deliver a self-cancel here; MicroPython refuses one
+            steps.append("after")
+
+        spawn(work(), owner)
+        await settle()
+        assert steps == ["before", "after"]
+
+    asyncio.run(scenario())
+
+
+def test_a_transition_whose_function_raises_still_closes():
+    import pytest
+
+    def boom():
+        raise ValueError("no")
+
+    with pytest.raises(ValueError):
+        transition(boom)
+    assert reactive._open_transitions == [] and reactive.is_pending() is False
