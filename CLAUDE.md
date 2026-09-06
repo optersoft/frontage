@@ -62,6 +62,10 @@ on branch `puepy-reference`.
   `python/frontage/*.md` (it found three lambdas the browser suite could not, and it is not
   in `mk lint` because the pages are another repo). Any new page directory on the site also
   needs a line in `web/_redirects` (PyScript resolves its interpreters relative to the page).
+  **Each chapter's app is a repository** at `gitlab.com/optersoft/python/frontage-<chapter>`
+  (checkout `~/xtec/python-frontage-<chapter>`), exported to GitLab Pages by its pipeline with
+  the `frontage` on PyPI; the page's code blocks must match its `app/app.py`, and a wheel bump
+  is a commit in nine repos too (`app/pyscript.json` names the wheel by URL).
 - **Pages that load Tailwind's browser build import `theme.css` + `utilities.css` only**: the
   full import brings preflight, which restyles the page around the app.
 - **Hydration is fences, not ids.** Prerendered HTML wraps every hole's content in

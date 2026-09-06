@@ -38,16 +38,28 @@ def export(app, out=None, bundle_pyscript=True, pyscript_dir=None, quiet=False):
     config = out / "pyscript.json"
     existing = json.loads(config.read_text()) if config.exists() else {}
     existing["files"] = {**existing.get("files", {}), **{f"./frontage/{p.name}": f"frontage/{p.name}" for p in modules}}
+    # The modules above are the package; a `frontage` wheel in `packages` (how an app installs
+    # it while developing) would install it a second time.
+    packages = [p for p in existing.get("packages", []) if not _is_frontage_wheel(p)]
+    if packages:
+        existing["packages"] = packages
+    else:
+        existing.pop("packages", None)
     config.write_text(json.dumps(existing, indent=2) + "\n")
     html = (out / "index.html").read_text()
+    release = f"https://pyscript.net/releases/{pyscript.VERSION}"
     if bundle_pyscript:
         bundle = Path(pyscript_dir) if pyscript_dir else pyscript.fetch(quiet=quiet)
         if not (bundle / "core.js").exists():
             raise FileNotFoundError(f"{bundle} holds no PyScript bundle (no core.js)")
         shutil.copytree(bundle, out / "pyscript", ignore=shutil.ignore_patterns("*.map"))
         html = html.replace('"/pyscript/', '"./pyscript/')
+        # A page that links PyScript from its CDN (the three-file layout) now loads the bundle
+        # beside it; `offline` makes PyScript resolve the interpreters there too.
+        html = html.replace(f'src="{release}/core.js"', 'src="./pyscript/core.js" offline').replace(
+            f'"{release}/core.css"', '"./pyscript/core.css"'
+        )
     else:
-        release = f"https://pyscript.net/releases/{pyscript.VERSION}"
         html = (
             html.replace("/pyscript/core.js", f"{release}/core.js")
             .replace("/pyscript/core.css", f"{release}/core.css")
@@ -56,6 +68,11 @@ def export(app, out=None, bundle_pyscript=True, pyscript_dir=None, quiet=False):
     html = html.replace('"../pyscript.json"', '"./pyscript.json"')
     (out / "index.html").write_text(html)
     return out
+
+
+def _is_frontage_wheel(entry):
+    """`frontage-0.4.0-py3-none-any.whl`, by path or URL."""
+    return entry.rsplit("/", 1)[-1].startswith("frontage-") and entry.endswith(".whl")
 
 
 def main(argv=None):

@@ -134,8 +134,9 @@ it is measured.
 
 ## 4. Non-goals for 0.x
 
-Server rendering and hydration as shipped features; transitions and optimistic updates; a
-component library; PuePy import compatibility; PyScript releases older than the pinned one.
+A live rendering server (prerendering as a build step shipped in 0.4.0, and is the only server
+rendering planned); transitions and optimistic updates; a component library; PuePy import
+compatibility; PyScript releases older than the pinned one.
 
 ## 5. Clean-room rules
 
@@ -425,8 +426,12 @@ M5, with the numbers in `TODO.md`.
 
 ## 14. Documentation and distribution
 
-Docs on `academy.optersoft.com/tool/frontage`, one chapter per concept in the order of this
-document, each with its live example on `frontage.optersoft.com/examples/…`. Distribution:
+Docs on `academy.optersoft.com/tool/frontage`, one chapter per concept, in the order things
+are needed rather than the order of this document: shipping comes second (Basic, Ship,
+Template, Style, Flow, Async, Router, State, Prerender), so every project after the first
+ends on a public URL. Each chapter has a repository at
+`gitlab.com/optersoft/python/frontage-<chapter>` published on GitLab Pages by its own
+pipeline, and links its live example on `frontage.optersoft.com/examples/…`. Distribution:
 the wheel on PyPI and mirrored on the site; a `pyscript.json` of a few lines is the whole
 install. Reference generated from docstrings.
 
@@ -449,7 +454,8 @@ keeps its own notice; the rewrite carries Optersoft's from the first commit.
 | M3 ✅ | router (nested, params, `preload`, `query`, `action`, `A`, three modes); contacts example; debug error page | full example suite green on Chromium, both runtimes |
 | M4 ✅ | docs on academy (`python/frontage`, six chapters); landing page with the measured size; wheel on the site; `mk export` | **0.1.0** on PyPI, 2026-09-05 |
 | M5 ✅ | `frontage.widgets`; `State` sugar; `interval` / `poll`; `reconcile`; the playground page; Firefox + WebKit nightly in CI; performance pass (numbers in TODO.md; no JS shim: MicroPython is bound by Python execution, not the bridge) | **0.2.0**, 2026-09-06 |
-| later | server rendering through `HtmlRenderer`; hydration; async memos, `is_pending`, transactions and optimistic writes (Solid 2.0's model) | 1.0 |
+| M6 ✅ | prerendering through `HtmlRenderer` + hydration, as a static build step (`python -m frontage prerender`) | **0.4.0**, 2026-09-06 |
+| later | async memos, `is_pending`, transactions and optimistic writes (Solid 2.0's model) | 1.0 |
 
 ## 17. Open decisions
 

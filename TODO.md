@@ -148,6 +148,22 @@ constraint holds).
       import with mismatch details per node; `unique_id` collisions when a page has two
       mounts (the counter is per page, not per mount).
 
+## Docs (2026-09-06, after 0.4.0)
+
+- [x] Nine chapters in the order things are needed: Basic, **Ship**, Template, Style, Flow, Async,
+      Router, State, **Prerender**. Ship is the first half of the old Export chapter plus GitLab
+      Pages and GitHub Pages walk-throughs; Prerender is the second half. Every project ends
+      "ship it". `/python/frontage/export` redirects to `/ship`.
+- [x] One repository per chapter at `gitlab.com/optersoft/python/frontage-<chapter>` (flat, the
+      academy's convention; checkout `~/xtec/python-frontage-<chapter>`): `app/` with the
+      chapter's code, `.gitlab-ci.yml` and `.github/workflows/pages.yml` exporting it to Pages.
+      All nine pipelines green and the sites smoke-tested in Chromium. ⚠ A new project's Pages
+      defaults to members-only even when public: `PUT /projects/:id pages_access_level=enabled`
+      (`public` is refused for a public project).
+- [ ] The chapter repos install `frontage` from PyPI, so they export with 0.4.0, which keeps the
+      wheel in `packages` beside the module files (double install, harmless). Fixed in `export`
+      after 0.4.0; the next release makes the pipelines' output lean.
+
 ## After 0.4.0 (the plan's "later", not scheduled)
 
 - [ ] Async memos, `is_pending`, transactions and optimistic writes (Solid 2.0's model) —

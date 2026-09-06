@@ -46,11 +46,11 @@ does not accept a `lambda` inside a template's braces.
 
 **Try it** at [frontage.optersoft.com/playground](https://frontage.optersoft.com/playground/),
 which runs your code on MicroPython and keeps it in the link. **Learn it** at
-[academy.optersoft.com/python/frontage](https://academy.optersoft.com/python/frontage), eight
-chapters with exercises. **Install it** with a `pyscript.json`:
+[academy.optersoft.com/python/frontage](https://academy.optersoft.com/python/frontage), nine
+chapters with exercises, each with its app published on GitLab Pages. **Install it** with a `pyscript.json`:
 
 ```json
-{ "packages": ["https://frontage.optersoft.com/dist/frontage-0.3.0-py3-none-any.whl"] }
+{ "packages": ["https://frontage.optersoft.com/dist/frontage-0.4.0-py3-none-any.whl"] }
 ```
 
 | The counter above, as downloaded | MicroPython | Pyodide |
@@ -76,8 +76,9 @@ replays the clicks made before Python was ready. Static hosting only, no server:
 async rendering mode as a build step.
 
 Tailwind with no build at all: the playground loads Tailwind's browser build, so utility
-classes work as you type. The [Style](https://academy.optersoft.com/python/frontage/style)
-and [Export](https://academy.optersoft.com/python/frontage/export) chapters cover both.
+classes work as you type. The [Style](https://academy.optersoft.com/python/frontage/style),
+[Ship](https://academy.optersoft.com/python/frontage/ship) and
+[Prerender](https://academy.optersoft.com/python/frontage/prerender) chapters cover all of it.
 
 ## Why
 
