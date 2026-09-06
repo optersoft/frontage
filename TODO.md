@@ -111,7 +111,6 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
 - [ ] E2 debug warnings; the scroll-restoration browser test; `use_is_routing`.
 - [ ] Docs: `.ca`/`.es` variants once a programme places the pages; a chapter on deploying
       (`mk export`, history mode needs the host to serve the page for every path).
-      should.
 
 ## Outward-facing, for David
 
