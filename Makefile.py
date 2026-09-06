@@ -11,13 +11,15 @@
     mk dist.build           sdist + wheel into ./dist, then import the wheel once
     mk export APP [--out D] a self-contained static directory for one app (examples/counter, …)
     mk site.build           frontage.optersoft.com into ./www: web/ + the live examples
-    mk site.deploy          build, then publish ./www to Cloudflare Pages (project `frontage`)
+    mk site.deploy          build, then publish ./www to Cloudflare Pages by hand (fallback)
 
 PyPI gets the package from CI on a `vX.Y.Z` tag (.github/workflows/ci.yml);
-nothing here publishes a package. The site is the exception: `mk site.deploy`
-pushes ./www to the Cloudflare Pages project `frontage` from this machine with
-wrangler, because the project is not git-connected (2026-09-05). Documentation
-lives on academy.optersoft.com, not here. `mk` with no arguments lists everything.
+nothing here publishes a package. The site ships the same way: the Cloudflare
+Pages project `frontage` is connected to github.com/optersoft/frontage
+(2026-09-06), so a push to `main` builds and deploys frontage.optersoft.com.
+`mk site.deploy` is the hand deploy from before that, kept as a fallback when
+the Pages build is broken. Documentation lives on academy.optersoft.com, not
+here. `mk` with no arguments lists everything.
 """
 
 # /// script

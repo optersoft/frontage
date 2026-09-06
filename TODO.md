@@ -159,6 +159,7 @@ constraint holds).
 ## Outward-facing, for David
 
 - [x] DNS: frontage.optersoft.com is live (2026-09-06).
-- [ ] Connect the Pages project to the GitHub repo and retire the hand deploy.
+- [x] Connect the Pages project to the GitHub repo (2026-09-06; `mk site.deploy` stays as the
+      fallback).
 - [x] Email PuePy's author about the fork and the rewrite (courtesy; nothing is owed).
 - [x] Check `frontage.dev`.
