@@ -3,7 +3,7 @@
 
 import asyncio
 
-from frontage import Errored, Loading, Resource, Signal, component, h, mount
+from frontage import Errored, Loading, Memo, Resource, Signal, component, h, mount
 
 USERS = {1: "Ada Lovelace", 2: "Grace Hopper", 3: "Margaret Hamilton"}
 
@@ -15,10 +15,17 @@ async def load(user_id):
     return {"id": user_id, "name": USERS.get(user_id, f"user {user_id}")}
 
 
+async def count_posts(user_id):
+    await asyncio.sleep(0.2)
+    return user_id * 3
+
+
 @component
 def app():
     user_id = Signal(1)
     user = Resource(load, source=user_id)
+    # The other spelling: an async memo tracks `user_id` itself, no `source=` to declare.
+    posts = Memo(lambda: count_posts(user_id()))
 
     def pick(uid):
         return lambda ev: user_id.set(uid)
@@ -39,7 +46,14 @@ def app():
                 h.button("retry", on_click=lambda ev: (user_id.set(1), reset()), id="retry"),
                 id="error",
             ),
-            lambda: h.div(Loading(h.p("loading…", id="loading"), lambda: h.h2(lambda: user()["name"], id="name"))),
+            lambda: h.div(
+                Loading(
+                    h.p("loading…", id="loading"),
+                    lambda: h.div(
+                        h.h2(lambda: user()["name"], id="name"), h.p(lambda: f"posts: {posts()}", id="posts")
+                    ),
+                )
+            ),
         ),
     )
 

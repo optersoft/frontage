@@ -180,6 +180,24 @@ constraint holds).
       the effect phase of what is on screen waits; `renderer.is_connected` decides), and
       `Router(transition=True)` / `navigate(…, transition=True)` change the page when the new
       route's data is in, with no fallback.
+- [x] 0.7.0: async memos as the router's data primitive (M9 below). DESIGN §16 has no dated
+      milestone left; 1.0 is an API freeze once 0.x has users.
+
+## M9 — async memos as the router's data primitive (0.7.0, 2026-09-06)
+
+- [x] `Memo(lambda: get_contact(params()["id"]))` counts toward `is_routing` like a Resource
+      (SPEC U13; `reactive._navigation`, the Router's `_track_load`/`_load_done`); the contacts
+      example and the Router chapter use it, `Resource(source=…)` stays the declared spelling.
+- [x] `prerender` waits for async memos and writes them by ordinal (SPEC L9; the data block is a
+      dict, a list still hydrates); a hydrated memo settles without running. Fetch example +
+      browser test cover it on both interpreters.
+- [x] Docs polish after the three same-day releases: the audit found no version drift and a
+      clean `frontage check`; fixed `use_router`/`use_is_routing` imports, the `missing` route
+      matching its repo, "accessor" and "boundary" defined where first used, the lambda rule
+      explained once (Basic), stale metas, `number_input` import, the `_index` helper.
+- [ ] `[human]` The nine chapter pipelines `pip install frontage` unpinned, so a rebuilt site runs
+      whatever PyPI has that day while its page names one wheel. Pin, or accept (it is what keeps
+      the sites current without nine commits).
 
 ## Outward-facing, for David
 

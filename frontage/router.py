@@ -23,7 +23,7 @@ reads a param updates in place. Three modes: `history` (pushState), `hash` (the 
 case, and what static hosting wants), `memory` (no browser; the test suite runs on it).
 """
 
-from . import aio
+from . import reactive
 from .aio import Action
 from .flow import _Branch
 from .reactive import Context, Memo, Owner, Signal, batch, get_owner, on_cleanup, provide, run_with_owner, untrack, use
@@ -469,25 +469,26 @@ class Router:
         from .reactive import on_mount
 
         # The route effects this update runs start the preloads and create the new route's
-        # resources, which count toward `is_routing` (`aio._navigation`) until the update has
-        # settled: `_settle_routing` runs after the render effects of whichever batch flushes
-        # this (the caller's transition, or this one) and closes the window.
-        aio._navigation = self  # ty: ignore[invalid-assignment]
+        # resources and async memos, which count toward `is_routing` (`reactive._navigation`)
+        # until the update has settled: `_settle_routing` runs after the render effects of
+        # whichever batch flushes this (the caller's transition, or this one) and closes the window.
+        reactive._navigation = self  # ty: ignore[invalid-assignment]
         with batch():
             self.is_routing.set(True)
             self.url.set(url)
             on_mount(self._settle_routing)
 
     def _settle_routing(self):
-        if aio._navigation is self:
-            aio._navigation = None
+        if reactive._navigation is self:
+            reactive._navigation = None
         if self._inflight == 0 and self.is_routing.peek():
             self.is_routing.set(False)
 
-    def _track_resource(self, resource):
+    def _track_load(self, node):
+        """A Resource or an async Memo the new route created: its first load counts."""
         self._inflight += 1
 
-    def _resource_done(self, resource):
+    def _load_done(self, node):
         self._inflight -= 1
         self._settle_routing()
 

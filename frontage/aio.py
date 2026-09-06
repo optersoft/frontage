@@ -31,9 +31,8 @@ _hydration = None
 # Prerendering: every Resource created, so the prerenderer can wait for them and write their
 # values into the page.
 _registry = None
-# A navigation in progress (the Router): every Resource created while the new route renders
-# counts toward `is_routing` until its first load settles.
-_navigation = None
+# A navigation in progress (the Router, `reactive._navigation`): every Resource created while
+# the new route renders counts toward `is_routing` until its first load settles.
 
 
 def _set_hydration_values(values):
@@ -74,9 +73,10 @@ class Resource:
         self._navigation = None
         if _registry is not None:
             _registry.append(self)
-        if _navigation is not None and not hydrated and initial is None:
-            self._navigation = _navigation
-            _navigation._track_resource(self)
+        navigation = reactive._navigation
+        if navigation is not None and not hydrated and initial is None:
+            self._navigation = navigation
+            navigation._track_load(self)
         on_cleanup(self._cancel)
 
         def start(value, prev):
@@ -154,7 +154,7 @@ class Resource:
             transition._done()
         navigation, self._navigation = self._navigation, None
         if navigation is not None:
-            navigation._resource_done(self)
+            navigation._load_done(self)
 
     def _load(self, argument):
         self._cancel_task()  # a superseded load never settles; the new one will, for both waiters

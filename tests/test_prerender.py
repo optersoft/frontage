@@ -55,8 +55,9 @@ def test_prerender_waits_for_resources_and_writes_their_values(tmp_path):
     results = prerender(ROOT / "examples" / "fetch", out, bundle_pyscript=False)
     selector, inner, values = results[0].mounts[0]
     assert selector == "#app"
-    assert values == [{"id": 1, "name": "Ada Lovelace"}]
-    assert "Ada Lovelace" in inner and "loading" not in inner.lower()
+    assert values["resources"] == [{"id": 1, "name": "Ada Lovelace"}]
+    assert [v for _, v in values["memos"]] == [3]  # the async memo, by its ordinal among the mount's memos
+    assert "Ada Lovelace" in inner and "<!--[-->posts: 3<!--h-->" in inner and "loading" not in inner.lower()
     page = (out / "index.html").read_text()
     block = '<script type="application/json" data-fr-data="app">'
     assert block in page

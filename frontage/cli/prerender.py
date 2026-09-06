@@ -1,15 +1,15 @@
 """`python -m frontage prerender APP`: the app's pages as finished HTML, hydrated on load.
 
 Exports the app (see `export`), then imports it on this CPython for each route, renders every
-`mount` with the HTML renderer, waits for its resources, and writes the result into the page's
-target element with the fences hydration reads, the resources' values as JSON, and a script
-that queues clicks and input until Python is ready. In the browser, `mount` finds the
+`mount` with the HTML renderer, waits for its resources and async memos, and writes the result into
+the page's target element with the fences hydration reads, the settled values as JSON, and a
+script that queues clicks and input until Python is ready. In the browser, `mount` finds the
 `data-fr-hydrate` target and adopts the HTML instead of building it.
 
 The app is imported with `frontage.runtime.prerender.active`: `mount(view, "#app")` registers,
 the router starts at the route being rendered, `Portal` renders nothing. What the app touches
 at import must exist on CPython (no `window`, no `pyscript`; those belong in effects and
-handlers). Resource values must be JSON, and a failed load fails the build."""
+handlers). Resource and async memo values must be JSON, and a failed load fails the build."""
 
 import argparse
 import asyncio
@@ -41,7 +41,9 @@ class Prerendered:
     def __init__(self, path, html, mounts):
         self.path = path
         self.html = html
-        self.mounts = mounts  # [(selector, inner html, resource values)]
+        # [(selector, inner html, values)]: the values are the resources' as a list, or a
+        # dict {"resources": […], "memos": [[ordinal, value], …]} when async memos settled too.
+        self.mounts = mounts
 
 
 def import_app(entry, path="/"):
@@ -71,13 +73,15 @@ def import_app(entry, path="/"):
 
 
 async def render_mount(view, debug, fallback, timeout, selector="#app"):
-    """Render one registered mount to `(html, resource values)`, resources settled."""
-    from frontage import aio
+    """Render one registered mount to `(html, values)`, resources and async memos settled.
+    The values are the resources' as a list, or a dict with the memos' too (see `Prerendered`)."""
+    from frontage import aio, reactive
     from frontage.aio import ERRORED, PENDING, REFRESHING
     from frontage.renderer import HtmlRenderer
     from frontage.view import mount
 
     registry = aio._begin_prerender()
+    memos = reactive._begin_prerender()
     renderer = HtmlRenderer(hydration_markers=True)
     root = renderer.create_element("div")
     # `scope`: `unique_id` counts per mount, named after the target, exactly as the browser will.
@@ -85,25 +89,32 @@ async def render_mount(view, debug, fallback, timeout, selector="#app"):
     try:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
-        while any(r.state() in (PENDING, REFRESHING) for r in registry):
+        while any(r.state() in (PENDING, REFRESHING) for r in registry) or any(m.loading() for m in memos):
             if loop.time() > deadline:
                 raise TimeoutError(f"resources still loading after {timeout}s")
             await asyncio.sleep(0.005)
         failed = [r for r in registry if r.state() == ERRORED]
         if failed:
             raise RuntimeError(f"resource #{registry.index(failed[0])} failed: {failed[0].error()!r}")
+        for ordinal, memo in enumerate(memos):
+            if memo.is_async() and memo.error() is not None:
+                raise RuntimeError(f"async memo #{ordinal} failed: {memo.error()!r}")
         html = "".join(child.to_html(comments=True) for child in root.children)
         if 'class="frontage-error"' in html:
             raise RuntimeError("the view raised while rendering:\n" + _error_text(html))
         values = [r.peek() for r in registry]
+        settled = [[ordinal, memo.peek()] for ordinal, memo in enumerate(memos) if memo.is_async()]
+        if settled:
+            values = {"resources": values, "memos": settled}
         try:
             json.dumps(values)
         except TypeError as exc:
-            raise RuntimeError(f"a resource's value is not JSON ({exc}); hydration needs JSON values") from None
+            raise RuntimeError(f"a settled value is not JSON ({exc}); hydration needs JSON values") from None
         return html, values
     finally:
         handle.dispose()
         aio._end_prerender()
+        reactive._end_prerender()
 
 
 def _error_text(html):
@@ -122,7 +133,7 @@ def find_entry(page_html):
 
 def inject(page_html, selector, inner, values):
     """`page_html` with the element `selector` (an id) holding `inner`, marked for
-    hydration, followed by the resources' values when there are any."""
+    hydration, followed by the settled values (resources, async memos) when there are any."""
     if not selector.startswith("#") or not re.fullmatch(r"#[\w-]+", selector):
         raise ValueError(f"prerender mounts into an element by id (`#app`), not {selector!r}")
     element_id = selector[1:]
@@ -290,6 +301,12 @@ def prerender(
     return results
 
 
+def _count(values):
+    if isinstance(values, dict):
+        return len(values.get("resources") or []) + len(values.get("memos") or [])
+    return len(values)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog=f"{PROG} prerender", description=__doc__)
     parser.add_argument("app", help="a directory with an index.html and the app's .py files")
@@ -322,8 +339,8 @@ def main(argv=None):
         return 2
     out = Path(args.out).resolve() if args.out else Path.cwd() / "build" / Path(args.app).resolve().name
     for result in results:
-        resources = sum(len(values) for _, _, values in result.mounts)
-        print(f"prerendered {result.path}: {len(result.mounts)} mount(s), {resources} resource value(s)")
+        settled = sum(_count(values) for _, _, values in result.mounts)
+        print(f"prerendered {result.path}: {len(result.mounts)} mount(s), {settled} settled value(s)")
     print(f"written to {out}; serve it with any static file server")
     return 0
 

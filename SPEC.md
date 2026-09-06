@@ -108,6 +108,7 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - U10 `use_before_leave()` can cancel a navigation; scroll position is restored on back, once the page navigated back to is on screen (the router sets `history.scrollRestoration` to manual). [M3, browser test M7]
 - U11 `is_routing` stays true from a navigation until the preloads it started *and* the first loads of the `Resource`s the new route created have settled. [M7]
 - U12 `Router(transition=True)`, or `navigate(path, transition=True)` for one call, runs the navigation as a transition (C20): the new route is built off screen, its resources load, and the page changes when they are ready; the scroll to the top (or the restored position on back) happens at the commit. [M8]
+- U13 An async `Memo` created while a route renders counts toward `is_routing` like a `Resource` (U11), so `Memo(lambda: get_contact(params()["id"]))` is a route's data primitive: the id is tracked, a `preload` warms the same `query`, and the route's transition (U12) and the prerenderer (L9) wait for it as for a Resource. [M9]
 
 ## 9. Errors and development mode
 
@@ -125,3 +126,4 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - L6 The playground runs code from the URL fragment against the site's package under MicroPython. [M5]
 - L7 `frontage prerender --crawl` also renders every route the rendered pages link to (an `A`, a plain `<a href>`), filtered to the mounted `Router`'s routes. [M7]
 - L8 `pip install frontage` puts a `frontage` console script on PATH with the same commands as `python -m frontage`; usage lines name whichever was invoked. [M7]
+- L9 `frontage prerender` waits for every async `Memo` a mount created, as it does for resources, and writes their values into the page by the memo's ordinal among the mount's memos; a hydrating mount hands each value back and the memo settles with it, its coroutine never run. Pages written before 0.7.0 (a list of resource values) still hydrate. [M9]

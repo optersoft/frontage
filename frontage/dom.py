@@ -87,7 +87,14 @@ class Hydration:
     """
 
     def __init__(self, data=None):
-        self.data = data  # the resources' values, in creation order
+        # The page's data block: a list is the resources' values in creation order (pages
+        # prerendered before 0.7.0); a dict also carries the async memos' values by ordinal.
+        if isinstance(data, dict):
+            self.data = data.get("resources") or None
+            self.memos = data.get("memos") or None
+        else:
+            self.data = data
+            self.memos = None
         self.cursor = None
         self.active = False
         self.claimed = []

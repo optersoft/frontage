@@ -79,6 +79,46 @@ _warned = set()
 # Transitions: while one is open, render effects it dirtied wait in it instead of running,
 # and the page keeps showing the previous state until the async work it started settles.
 _transition = None  # the Transition whose synchronous part (or whose settle) is running
+# The Router's navigation in progress: an async memo created while the new route renders
+# counts toward `is_routing` until its first run settles (`aio.Resource` does the same).
+_navigation = None
+# Prerendering: every Memo created while the prerenderer renders a mount, in creation order,
+# so it can wait for the async ones and write their values into the page by ordinal.
+_memo_registry = None
+# Hydration: a `_MemoHydration` while a hydrating mount runs; a Memo created then takes its
+# ordinal, and an async one settles with the page's value instead of running.
+_memo_hydration = None
+
+
+class _MemoHydration:
+    def __init__(self, pairs):
+        self.values = {int(k): v for k, v in pairs}
+        self.next = 0
+
+    def take(self):
+        """The page's value for the next memo created, or `_UNSET`."""
+        ordinal = self.next
+        self.next = ordinal + 1
+        return self.values.pop(ordinal, _UNSET)
+
+
+def _begin_prerender():
+    global _memo_registry
+    _memo_registry = []
+    return _memo_registry
+
+
+def _end_prerender():
+    global _memo_registry
+    _memo_registry = None
+
+
+def _set_memo_hydration(pairs):
+    """`pairs`: `[[ordinal, value], …]` from the prerendered page, or None when the mount ends."""
+    global _memo_hydration
+    _memo_hydration = _MemoHydration(pairs) if pairs else None
+
+
 _open_transitions = []
 
 
@@ -542,6 +582,12 @@ class Memo(_Computation):
         self._generation = 0
         self._scopes = []
         self._transition = None
+        self._navigation = None
+        self._hydrated = _UNSET  # the prerendered page's value, taken by the first async run
+        if _memo_registry is not None:
+            _memo_registry.append(self)
+        elif _memo_hydration is not None:
+            self._hydrated = _memo_hydration.take()
 
     def __call__(self):
         if _listener is not None:
@@ -610,11 +656,20 @@ class Memo(_Computation):
             failed = self._error = Signal(None, equal=lambda a, b: a is b)
         self._generation += 1
         generation = self._generation
-        loading._write(True)
         failed._write(None)
+        if self._value is _UNSET and self._hydrated is not _UNSET:
+            # The page already shows this value: settle with it, no run on boot.
+            self._value, self._hydrated = self._hydrated, _UNSET
+            loading._write(False)
+            coro.close()
+            return
+        loading._write(True)
         if _transition is not None and self._transition is None:
             self._transition = _transition
             _transition._track()
+        if _navigation is not None and self._navigation is None and self._value is _UNSET:
+            self._navigation = _navigation
+            _navigation._track_load(self)
         memo = self
 
         async def run():
@@ -644,18 +699,27 @@ class Memo(_Computation):
             scopes, self._scopes = self._scopes, []
             for scope in scopes:
                 scope.remove(self)
-            transition, self._transition = self._transition, None
-            if transition is not None:
-                transition._done()
+            self._release()
         finally:
             _end_batch()
+
+    def _release(self):
+        """The transition and the navigation waiting on this run, if any, stop waiting."""
+        transition, self._transition = self._transition, None
+        if transition is not None:
+            transition._done()
+        navigation, self._navigation = self._navigation, None
+        if navigation is not None:
+            navigation._load_done(self)
+
+    def is_async(self):
+        """True once the memo's function has returned a coroutine."""
+        return self._loading is not None
 
     def dispose(self):
         if self._disposed:
             return
-        transition, self._transition = self._transition, None
-        if transition is not None:
-            transition._done()
+        self._release()
         _Computation.dispose(self)
 
     def __repr__(self):

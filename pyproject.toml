@@ -33,7 +33,7 @@ frontage = "frontage.cli:script"
 
 [project.urls]
 Homepage = "https://frontage.optersoft.com"
-Documentation = "https://academy.optersoft.com/tool/frontage"
+Documentation = "https://academy.optersoft.com/python/frontage"
 Repository = "https://github.com/optersoft/frontage"
 Issues = "https://github.com/optersoft/frontage/issues"
 

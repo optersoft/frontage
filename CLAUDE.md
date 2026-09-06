@@ -2,7 +2,7 @@
 
 Frontage: a fine-grained reactive UI framework for Python in the browser (PyScript; Pyodide
 and MicroPython), published to PyPI as `frontage`, Apache 2.0, copyright Optersoft. Rewritten
-clean-room from `SPEC.md` per `DESIGN.md`; `main` is past milestone **M8** (0.6.0: the plan, the command line, prerendering with hydration, transitions that build the new state off screen). `origin` is
+clean-room from `SPEC.md` per `DESIGN.md`; `main` is past milestone **M9** (0.7.0: the plan, the command line, prerendering with hydration, transitions that build the new state off screen, async memos as the router's data primitive). `origin` is
 `github.com/optersoft/frontage` (GitHub, because PyPI publishing needs Actions); the PuePy fork is
 on branch `puepy-reference`.
 
@@ -19,7 +19,7 @@ on branch `puepy-reference`.
 | Path | What |
 |---|---|
 | `frontage/runtime.py` | which interpreter; the only module that imports `pyscript`; server stand-ins that raise a sentence |
-| `frontage/reactive.py` | Signal, Memo (async when its function returns a coroutine), Effect/RenderEffect, Owner, context, batch, `spawn`, error routing, the two boundary contexts; `transition`/`Transition`/`use_transition`/`is_pending`/`Optimistic`; the `DEBUG` warnings |
+| `frontage/reactive.py` | Signal, Memo (async when its function returns a coroutine; counts toward the Router's `is_routing` through `_navigation`, and prerenders/hydrates by ordinal), Effect/RenderEffect, Owner, context, batch, `spawn`, error routing, the two boundary contexts; `transition`/`Transition`/`use_transition`/`is_pending`/`Optimistic`; the `DEBUG` warnings |
 | `frontage/debug.py` | import it in an app for the per-node hydration mismatch report (`last_hydration`, `hydration_report()`); nothing else imports it |
 | `frontage/store.py` | `Store` over dicts and lists, `reconcile` |
 | `frontage/renderer.py` | the `Renderer` seam, `HtmlRenderer` (nodes → HTML, parses templates on CPython), `RecordingRenderer` |
@@ -96,9 +96,13 @@ on branch `puepy-reference`.
   markers and `data-fr-h` of the templates built *inside* the hole's content, and every index
   shifts (that was the first hydration bug). Compare DOM nodes with `isSameNode`, never `is`:
   Pyodide hands out a new proxy per access.
-- **Resources hydrate by creation order.** The prerenderer writes their values in the order
-  they were created; the browser hands them back in the same order and skips the first load.
-  Same code, same order; a Resource the server never created just fetches.
+- **Resources hydrate by creation order; async memos by ordinal.** The prerenderer writes the
+  resources' values in the order they were created; the browser hands them back in the same
+  order and skips the first load. Every `Memo` created during a prerendered mount gets an
+  ordinal (`reactive._memo_registry` / `_memo_hydration`), and the async ones are written as
+  `[ordinal, value]` pairs, so a plain memo between them costs nothing and a memo the server
+  never started just runs. Same code, same order; a Resource the server never created just
+  fetches. The data block is a dict since 0.7.0; a list (an older page) still hydrates.
 - **The version** is `frontage/version.py`; hatchling reads it; the browser reads it as code.
 - **`frontage` on PATH and `python -m frontage` are the same `cli.main`**; `cli.PROG` says which
   was invoked and every sub-parser's `prog` reads it, so `--help` names the right one. Docs say

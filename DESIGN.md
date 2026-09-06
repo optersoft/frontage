@@ -457,7 +457,8 @@ keeps its own notice; the rewrite carries Optersoft's from the first commit.
 | M6 ✅ | prerendering through `HtmlRenderer` + hydration, as a static build step (`python -m frontage prerender`) | **0.4.0**, 2026-09-06 |
 | M7 ✅ | the E2 debug warnings; `is_routing` across a route's resources and the scroll-restoration browser test; the `frontage` console script; `prerender --crawl`, `frontage.debug` with per-node hydration mismatches, ids per mount; async memos, `transition()` with `is_pending`, `use_transition` and `Optimistic` (Solid 2.0's model, on a synchronous graph: deferred render effects rather than concurrent rendering) | **0.5.0**, 2026-09-06 |
 | M8 ✅ | concurrent rendering the way a synchronous graph can have it: during a transition every render effect computes at once, so the new state is built off screen and its resources start, and only the effect phase of what is on screen waits for the commit; `Router(transition=True)` / `navigate(…, transition=True)` | **0.6.0**, 2026-09-06 |
-| later | async memos as the router's data primitive | 1.0 |
+| M9 ✅ | async memos as the router's data primitive: `Memo(lambda: get_contact(params()["id"]))` counts toward `is_routing`, the route's transition and the prerenderer like a `Resource`, and hydrates by ordinal; `Resource` stays as the declared-source spelling | **0.7.0**, 2026-09-06 |
+| 1.0 | freeze the API after 0.x has users; nothing scheduled | — |
 
 ## 17. Open decisions
 

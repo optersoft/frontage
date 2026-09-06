@@ -133,11 +133,14 @@ def test_fetch_hydrates_without_refetching(server, page: Page, interpreter, prer
     page.on("console", lambda m: states.append(m.text) if "hydration" in m.text else None)
     page.goto(f"{server}{prerendered}/hydrate-fetch/index.html?type={interpreter}")
     expect(page.locator("#name")).to_have_text("Ada Lovelace", timeout=2_000)  # from the HTML
+    expect(page.locator("#posts")).to_have_text("posts: 3")  # the async memo's value, settled on the server
     expect(page.locator("#state")).to_have_text("state: ready")
     assert page.evaluate("!!document.querySelector('script[data-fr-data]')") is True
+    assert '"memos":[[' in page.evaluate("document.querySelector('script[data-fr-data]').textContent")
     # Once Python mounts it consumes the data block; the state never leaves ready.
     page.wait_for_function("!document.querySelector('script[data-fr-data]')", timeout=60_000)
     expect(page.locator("#state")).to_have_text("state: ready")
     page.click("#u2")
     expect(page.locator("#name")).to_have_text("Grace Hopper", timeout=10_000)
+    expect(page.locator("#posts")).to_have_text("posts: 6")
     assert states == []

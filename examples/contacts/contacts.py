@@ -5,7 +5,7 @@ import asyncio
 
 from pyscript import window
 
-from frontage import A, Loading, Navigate, Resource, Route, Router, Signal, component, h, mount, use_params
+from frontage import A, Loading, Memo, Navigate, Route, Router, Signal, component, h, mount, use_params
 from frontage.router import query
 
 CONTACTS = {
@@ -51,7 +51,9 @@ def contacts(children):
 @component
 def contact():
     params = use_params()
-    data = Resource(lambda cid: get_contact(cid), source=lambda: params()["id"])
+    # The route's data: an async memo over the same query the preload warmed. Reading
+    # `params()["id"]` before the coroutine runs makes the id its dependency.
+    data = Memo(lambda: get_contact(params()["id"]))
     return Loading(
         h.p("loading…", id="loading"),
         lambda: h.div(

@@ -88,6 +88,7 @@ def test_fetch(server, page: Page, interpreter):
     page.click("#u2")
     expect(page.locator("#state")).to_have_text("state: refreshing")
     expect(page.locator("#name")).to_have_text("Grace Hopper")
+    expect(page.locator("#posts")).to_have_text("posts: 6")  # the async memo followed user_id
     page.click("#u99")
     expect(page.locator("#error")).to_contain_text("no such user: 99")
     page.click("#retry")

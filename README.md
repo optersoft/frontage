@@ -7,14 +7,15 @@ effects; templates that clone once and bind only their holes; a keyed `For`; a n
 router; running on [PyScript](https://pyscript.net) over WebAssembly, on Pyodide or
 MicroPython. No JavaScript, no Node, no bundler: you write Python and the browser runs it.
 
-> **Status: 0.6.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete through
+> **Status: 0.7.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete through
 > its M5 milestone: reactive core, store, templates (`h` and `html(t"…")`), control flow and
 > boundaries, `Resource`/`Action`, a nested router, widgets, `State`, timers, the playground;
 > 0.3.0 added the command line (`export`, `tailwind`, `check`); 0.4.0 added **prerendering
 > with hydration** (M6): pages that show before Python loads; 0.5.0 adds **transitions**
 > (`transition`, `is_pending`, `Optimistic`), async memos, the debug warnings, the `frontage`
 > console script and `prerender --crawl` (M7); 0.6.0 builds the new state off screen during a
-> transition and lets the router navigate inside one (M8). The API is young and will move; the [browser suite](tests/browser/) runs every example under
+> transition and lets the router navigate inside one (M8); 0.7.0 makes async memos the router's
+> data primitive: they count toward `is_routing`, and `prerender` settles and hydrates them (M9). The API is young and will move; the [browser suite](tests/browser/) runs every example under
 > MicroPython and Pyodide on Chromium each push and on Firefox and WebKit nightly.
 
 ```python
@@ -53,7 +54,7 @@ which runs your code on MicroPython and keeps it in the link. **Learn it** at
 chapters with exercises, each with its app published on GitLab Pages. **Install it** with a `pyscript.json`:
 
 ```json
-{ "packages": ["https://frontage.optersoft.com/dist/frontage-0.6.0-py3-none-any.whl"] }
+{ "packages": ["https://frontage.optersoft.com/dist/frontage-0.7.0-py3-none-any.whl"] }
 ```
 
 | The counter above, as downloaded | MicroPython | Pyodide |
@@ -75,7 +76,7 @@ uvx frontage prerender . --out build --crawl   # every route the pages link to, 
 (`uvx` runs the `frontage` script straight from PyPI; `pip install frontage` puts the same
 `frontage` command on PATH, and `python -m frontage` is the same thing.)
 
-`prerender` runs the app on your machine, waits for its resources, and writes each route as
+`prerender` runs the app on your machine, waits for its resources and async memos, and writes each route as
 finished HTML with the values embedded. In the browser `mount` hydrates: it adopts the HTML
 already on screen instead of building it, skips the fetches the page already holds, and
 replays the clicks made before Python was ready. Static hosting only, no server: Leptos's

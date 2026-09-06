@@ -864,8 +864,10 @@ def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hy
         clear = False
         hyd = renderer.begin_hydration(parent)
         from .aio import _set_hydration_values
+        from .reactive import _set_memo_hydration
 
         _set_hydration_values(hyd.data)
+        _set_memo_hydration(hyd.memos)
         root_marker = hyd.root_marker(parent)
     if clear:
         while (child := renderer.first_child(parent)) is not None:
@@ -894,8 +896,10 @@ def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hy
     finally:
         if hydrate:
             from .aio import _set_hydration_values
+            from .reactive import _set_memo_hydration
 
             _set_hydration_values(None)
+            _set_memo_hydration(None)
             renderer.end_hydration()
     return _Root(owner, [])
 
