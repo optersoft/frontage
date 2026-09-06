@@ -6,6 +6,7 @@ never in the browser (the package's browser files are the top-level modules only
     python -m frontage tailwind [--input tailwind.css] [--output tailwind.out.css] [--watch] [--minify]
     python -m frontage check PATH...
     python -m frontage pyscript [--dest DIR]
+    python -m frontage serve [DIR] [--port 8000] [--watch DIR] [--open]
 """
 
 import sys
@@ -21,6 +22,7 @@ commands:
   prerender  export, then write each route as finished HTML that the browser hydrates
   tailwind   run the Tailwind CSS standalone CLI over the project (downloaded once)
   check      flag code MicroPython or a template will reject (lambda in a t-string, html(f"…"))
+  serve      serve a directory and reload the page whenever a file changes
   pyscript   fetch PyScript's offline bundle
   version    print the package version
 
@@ -59,6 +61,8 @@ def main(argv=None):
         from .check import main as run
     elif command == "pyscript":
         from .pyscript import main as run
+    elif command == "serve":
+        from .serve import main as run
     else:
         print(f"error: unknown command {command!r}\n\n{usage()}", file=sys.stderr)
         return 2

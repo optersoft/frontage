@@ -31,7 +31,7 @@ on branch `puepy-reference`.
 | `frontage/state.py` (+ `.pyi`) | `State` with `field`/`computed`; the stub types fields as their values |
 | `frontage/widgets.py` | form controls bound to signals |
 | `frontage/dom.py` | the `Renderer` over the real DOM, delegated events, template cloning; `Hydration`, the cursor `mount(hydrate=True)` walks over prerendered HTML |
-| `frontage/cli/` + `__main__.py` | `python -m frontage`: `export`, `prerender` (imports the app with `runtime.prerender.active`, renders each route with `HtmlRenderer(hydration_markers=True)`, awaits resources, injects HTML + JSON + the replay script), `tailwind` (standalone CLI fetched into `~/.cache/frontage`), `check` (lambda in a t-string, `html(f"…")`, HTML the parser rewrites), `pyscript` (the pinned bundle version lives here). CPython only; never listed in a `pyscript.json` |
+| `frontage/cli/` + `__main__.py` | `python -m frontage`: `export`, `prerender` (imports the app with `runtime.prerender.active`, renders each route with `HtmlRenderer(hydration_markers=True)`, awaits resources, injects HTML + JSON + the replay script), `tailwind` (standalone CLI fetched into `~/.cache/frontage`), `check` (lambda in a t-string, `html(f"…")`, HTML the parser rewrites), `pyscript` (the pinned bundle version lives here), `serve` (a static server with live reload: the reload script is injected into HTML, an SSE stream at `/__frontage/reload`, a polling `Watcher`; `tools/serve.py` subclasses its handler so `mk serve` and the browser tests reload too). CPython only; never listed in a `pyscript.json` |
 | `frontage/errors.py` | `FrontageError`, `RenderError`, `NotReady`, `format_exception` |
 | `tests/` | unit tests, CPython, no browser; `tests/browser/` is Playwright over `examples/` and starts its own server |
 | `examples/` | one page per example; `pyscript.json` lists the package files by path so edits show live |
@@ -85,7 +85,8 @@ on branch `puepy-reference`.
   **Each chapter's app is a repository** at `gitlab.com/optersoft/python/frontage-<chapter>`
   (checkout `~/xtec/python-frontage-<chapter>`), exported to GitLab Pages by its pipeline with
   the `frontage` on PyPI; the page's code blocks must match its `app/app.py`, and a wheel bump
-  is a commit in nine repos too (`app/pyscript.json` names the wheel by URL).
+  is a commit in nine repos too (`app/pyscript.json` names the wheel by URL, and since 0.8.0 the
+  two pipeline files pin `pip install frontage==X.Y.Z`; Ship's copies of them say the same).
 - **Pages that load Tailwind's browser build import `theme.css` + `utilities.css` only**: the
   full import brings preflight, which restyles the page around the app.
 - **Hydration is fences, not ids.** Prerendered HTML wraps every hole's content in

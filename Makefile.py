@@ -92,7 +92,7 @@ def check() -> None:
 
 @task(requires=["uv"], needs=[pyscript_fetch])
 def serve(*, port: int = 8000) -> None:
-    """Serve the examples and the local PyScript, reading ./frontage live so an edit shows on reload.
+    """Serve the examples and the local PyScript, reading ./frontage live; the page reloads when a file changes.
 
     Args:
         port: TCP port to listen on
