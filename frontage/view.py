@@ -27,7 +27,7 @@ and whatever nothing adopted.
 
 from . import reactive
 from .errors import format_exception
-from .reactive import Context, Owner, RenderEffect, Signal, get_owner, on_cleanup, provide, spawn, use
+from .reactive import Context, Owner, RenderEffect, Signal, on_cleanup, provide, spawn, use
 from .renderer import HtmlRenderer, escape
 
 __all__ = [
@@ -148,7 +148,7 @@ class _TagFactory:
         self.tag = tag
 
     def __call__(self, *children, **attrs):
-        element = Element(self.tag, attrs, _children(children))
+        element = Element(self.tag, attrs, _children(children) if children else [])
         if _stack:
             _stack[-1].children.append(element)
         return element
@@ -465,15 +465,18 @@ def _build_template(element, renderer, cache=None):
 
 
 class _HoleState:
-    def __init__(self):
-        self.current = []  # the nodes currently placed before the marker
-        self.text = None  # the single text node, when the value is text
-        self.pending = None  # a result waiting for the marker to be inserted (floating holes)
-        self.hydrated = False  # the first compute under hydration has happened
-        self.start = None  # the `<!--[-->` fence, from compute to the apply that removes it
-        self.adopted = None  # the prerendered text node a text value adopted
-        self.claimed = None  # what that compute adopted, for the leftover sweep
-        self.fenced = False  # prerendering: the fence has been written
+    """One hole's placement. Every field is a class attribute, so creating one costs no
+    `__init__` call and no stores: a hole that stays text (the common one) writes two of
+    them, and the five hydration and floating-hole fields are never touched at all."""
+
+    current: "list | tuple" = ()  # the nodes placed before the marker; replaced, never mutated
+    text = None  # the single text node, when the value is text
+    pending = None  # a result waiting for the marker to be inserted (floating holes)
+    hydrated = False  # the first compute under hydration has happened
+    start = None  # the `<!--[-->` fence, from compute to the apply that removes it
+    adopted = None  # the prerendered text node a text value adopted
+    claimed = None  # what that compute adopted, for the leftover sweep
+    fenced = False  # prerendering: the fence has been written
 
     def take_pending(self):
         result, self.pending = self.pending, None
@@ -573,7 +576,7 @@ def _mount_hole(parent, accessor, renderer, marker=None):
             if target is not None:
                 for node in state.current:
                     renderer.remove_node(target, node)
-                state.current = []
+                state.current = ()
                 state.text = None
 
         on_cleanup(cleanup)
@@ -774,7 +777,7 @@ def _apply_class_dict(node, classes, prev, renderer):
 
 
 def _listen(node, event, handler, renderer, capture=False):
-    owner = get_owner()
+    owner = reactive._owner  # the module, not `get_owner()`: a row registers one per handler
 
     def call(ev):
         result = handler(ev)
@@ -784,7 +787,8 @@ def _listen(node, event, handler, renderer, capture=False):
             spawn(result, owner)
 
     remove = renderer.add_listener(node, event, call, capture)
-    on_cleanup(remove)
+    if owner is not None:
+        owner._cleanups.append(remove)
 
 
 def emit(node, name, detail=None):

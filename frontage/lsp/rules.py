@@ -9,7 +9,9 @@ and `SPEC.md` is meant to have exactly one reading.
 Three rules today:
 
 - A `lambda` inside a template string's braces is a SyntaxError on MicroPython: name the
-  function. Fatal, and invisible until the page loads.
+  function. Fatal, and invisible until the page loads. Only the *parenthesised* form reaches
+  this rule: CPython 3.14 rejects a bare `{lambda ev: None}` itself (the `:` opens a format
+  spec), and that is reported as the parse error it is, which also names the lambda.
 - `html(f"…")` builds a string, not a template: it wants a t-string.
 - HTML the browser's parser rewrites (a block element inside `<p>`, `<tr>` straight under
   `<table>`, `<a>` inside `<a>`). The rendered page then differs from the template, and a

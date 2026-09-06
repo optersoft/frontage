@@ -424,6 +424,21 @@ skip three calls, child insertion is inlined) gained 5%. The lever left is struc
 calls per hole and per row, and it is an open item in `TODO.md`. Templates stay the default
 on both: equal on MicroPython, a third faster on Pyodide.
 
+**Third measurement (2026-09-06, 0.8.3).** The structural pass the second one asked for.
+The one algorithmic find: **unsubscribing was O(observers)**, a scan of the source's list per
+source, so disposing many computations that share a node was quadratic — 1,000 effects over
+one signal took 78 ms to dispose against 10 ms to create. Both sides now record where the
+other keeps them and a removal is a swap with the last entry: **78 ms → 3.3 ms**. The rows
+benchmark does not show it (its rows share nothing), but any list whose rows read one signal
+did. Trimming the rest gave create 1,000 rows **188 → 171 ms** on MicroPython and 89 → 85 on
+Pyodide: a flatter `Effect` constructor, a hole's state as class attributes, cleanup
+registration inlined, no normalising pass for a childless element. Two negative results worth
+not repeating: **moving an owner's defaults to class attributes made it twice as slow**
+(MicroPython walks the class chain for an attribute the instance does not have, and `_state`,
+`_queued` and `_disposed` are read on every mark and flush), and a linear scan instead of the
+dependency set measured no better. `clear` stays at 45 ms, and a 1,000-row create is bound by
+element construction rather than by any one thing worth cutting.
+
 ## 13. Testing
 
 - `SPEC.md` first: behaviours, one line each, grouped by chapter, in our words.

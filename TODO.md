@@ -261,13 +261,12 @@ is the exit if it ever outgrows this.
       (phase by phase, three renderers, a per-primitive calibration). Findings in DESIGN §12;
       tuple `isinstance` gone from the hot paths, calls trimmed (−5%). Bench after, medians of 3:
       create 1,000 = 188 ms MicroPython / 89 ms Pyodide, clear = 44 / 8.4, swap = 17 / 2.5.
-- [ ] `[auto]` A hole costs ~21 µs on MicroPython (≈80 calls: `RenderEffect` + `Owner` + `_HoleState`
-      + three closures + marker + reconcile) and a `For` row ~55 µs before its holes; `clear`
-      (disposal) is 44 µs per row. Structural, not trimming: a lighter text-hole path (no owner
-      when the accessor creates nothing), cheaper `Owner`/`_Computation` construction, a
-      disposal that skips empty lists.
-      Do: `uv run python tools/profile_rows.py --interpreters mpy` before and after.
-      Done: "For, null renderer" under 100 ms; the browser suite green on both interpreters.
+- [x] 0.8.3 structural pass (DESIGN §12, third measurement). Unsubscribing was O(observers):
+      1,000 effects over one signal took 78 ms to dispose, now 3.3 ms. Create 1,000 rows
+      188 → 171 ms (mpy), 89 → 85 (py). The "For, null renderer under 100 ms" target was NOT
+      met (≈108 ms): what is left is element construction, spread thin. Two negative results
+      are in DESIGN §12 so nobody repeats them (class-attribute defaults on `Owner` are 2×
+      slower; a scan instead of the dependency set measures the same).
 
 ## 0.8.1 (2026-09-06) — the examples move to the academy
 

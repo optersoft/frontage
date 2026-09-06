@@ -12,11 +12,21 @@ from frontage.cli import check, export, main, tailwind
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_check_flags_a_lambda_in_a_template_string():
+def test_check_flags_a_parenthesised_lambda_in_a_template_string():
+    # The rule's real subject: CPython accepts this and MicroPython does not.
+    src = 'from frontage import html\nx = html(t"<b on:click={(lambda ev: None)}>hi</b>")\n'
+    found = check.check_source(src, "app.py")
+    assert [(p, line) for p, line, _ in found] == [("app.py", 2)]
+    assert "lambda" in found[0][2] and "name the function" in found[0][2]
+
+
+def test_a_bare_lambda_in_a_template_string_is_a_parse_error_here_too():
+    # CPython 3.14 rejects `{lambda ev: None}` outright (the `:` opens a format spec), so this
+    # never reaches the rule; the message still says "lambda", which is what the reader needs.
     src = 'from frontage import html\nx = html(t"<b on:click={lambda ev: None}>hi</b>")\n'
     found = check.check_source(src, "app.py")
     assert [(p, line) for p, line, _ in found] == [("app.py", 2)]
-    assert "lambda" in found[0][2]
+    assert "cannot parse" in found[0][2] and "lambda" in found[0][2]
 
 
 def test_check_flags_html_of_an_f_string():

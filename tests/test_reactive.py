@@ -397,3 +397,45 @@ def test_exceptions_in_a_compute_propagate_and_leave_the_system_usable():
     Effect(lambda: log.append(s()))
     s.set(2)
     assert log[-1] == 2
+
+
+# --- unsubscribing is O(1), and the two sides stay consistent ---------------------------------
+
+
+def test_clear_sources_keeps_every_observer_reachable():
+    """The swap-remove in `_clear_sources` must leave both sides' indices correct: after any
+    computation goes, every survivor still gets notified and still knows where it sits."""
+    source = Signal(0)
+    seen = {}
+    effects = []
+    for i in range(6):
+        effects.append(Effect(source, (lambda n: lambda value, prev: seen.__setitem__(n, value))(i)))
+    source.set(1)
+    assert seen == {i: 1 for i in range(6)}
+    # Dispose out of order: the middle, the last, then the first.
+    for index in (2, 5, 0):
+        effects[index].dispose()
+        seen.clear()
+        source.update(lambda n: n + 1)
+        alive = {i for i in range(6) if i not in (2, 5, 0)[: (2, 5, 0).index(index) + 1]}
+        assert set(seen) == alive
+        observers = source._observers
+        assert len(observers) == len(source._observer_slots) == len(alive)
+        for slot, observer in enumerate(observers):
+            assert observer._sources[source._observer_slots[slot]] is source
+            assert observer._slots[source._observer_slots[slot]] == slot
+
+
+def test_a_computation_that_re_reads_the_same_sources_stays_consistent():
+    a, b = Signal(1), Signal(2)
+    which = Signal(True)
+    seen = []
+    Effect(lambda: a() if which() else b(), lambda v, prev: seen.append(v))
+    assert seen == [1]
+    which.set(False)  # drops `a`, keeps `which`, adds `b`
+    assert seen == [1, 2]
+    a.set(99)  # no longer a dependency
+    assert seen == [1, 2]
+    b.set(3)
+    assert seen == [1, 2, 3]
+    assert len(a._observers) == len(a._observer_slots) == 0

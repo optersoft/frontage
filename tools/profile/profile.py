@@ -8,6 +8,8 @@ subscribed), then a `For` over the store mounted with three renderers: the DOM n
 a renderer that does nothing (the Python side alone: view + reactive + store), and the DOM
 through templates (what the example does). Then swap and update on the DOM mount."""
 
+import gc
+
 from pyscript import document, window
 
 from frontage import Signal, Store, h, mount, selector
@@ -118,6 +120,7 @@ def now():
 def median3(fn):
     ts = []
     for _ in range(3):
+        gc.collect()  # each phase starts on a swept heap: otherwise an earlier one pays here
         t0 = now()
         fn()
         ts.append(now() - t0)
@@ -315,6 +318,52 @@ def calibrate():
 
 
 calibrate()
+
+
+def phase_effects():
+    """1,000 bare RenderEffects over one signal: the construction and first run, nothing else."""
+    from frontage import RenderEffect, Signal
+    from frontage.reactive import Owner, run_with_owner
+
+    sig = Signal(1)
+    seen = []
+
+    def build():
+        owner = Owner(parent=None)
+
+        def make():
+            for _ in range(1000):
+                RenderEffect(sig, lambda v, prev: seen.append(v))
+
+        run_with_owner(owner, make)
+        return owner
+
+    def create():
+        build().dispose()
+
+    def dispose_only():
+        owner = build()
+        t0 = now()
+        owner.dispose()
+        return now() - t0
+
+    return create, dispose_only
+
+
+def phase_holes():
+    """1,000 text holes in one element: an effect each, plus marker, state and the insert rules."""
+    renderer = NullRenderer()
+    sig = Signal("x")
+    # 1,000 arguments overflow MicroPython's stack in one call, so the children go in as a list.
+    view = h.div([sig for _ in range(1000)])
+
+    def build():
+        root = renderer.create_element("root")
+        mount(lambda: view, root, renderer).dispose()
+
+    return build
+
+
 report("data: make_rows(1000)", median3(phase_data))
 report("elements: 1,000 row() trees, no renderer", median3(phase_elements()))
 report("store: write 1,000 rows, no subscriber", median3(phase_store()))
@@ -326,4 +375,10 @@ report("  same, handlers but no holes", phase_mount(NullRenderer, False, row_han
 report("For, DOM, node by node", phase_mount(DomRenderer, False))
 report("For, DOM, templates", phase_mount(DomRenderer, True))
 phase_ops_on_dom()
+# Last on purpose: these two keep a few thousand nodes alive, and on MicroPython's small heap
+# that shows up as GC work in whatever runs after them.
+_create, _dispose = phase_effects()
+report("effects: create+dispose 1,000 over one signal", median3(_create))
+report("  of which disposing them", sorted(_dispose() for _ in range(3))[1])
+report("holes: 1,000 text holes, null renderer", median3(phase_holes()))
 document.getElementById("done").hidden = False

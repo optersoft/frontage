@@ -189,7 +189,14 @@ def _check_tracked_write(listener):
 
 
 class Owner:
-    """A node of the ownership tree. Owns computations and cleanups; carries context."""
+    """A node of the ownership tree. Owns computations and cleanups; carries context.
+
+    ⚠ **Every field is set in `__init__`, even the ones that start at a default.** Moving
+    them to class attributes looks like a saving (fewer stores per owner) and measured
+    **twice as slow** on MicroPython: an attribute that is not in the instance is looked up
+    by walking the class chain, and `_state`, `_queued` and `_disposed` are read on every
+    mark, flush and dispose. `_HoleState` does the opposite because it is a flat class whose
+    fields are written once and read rarely (2026-09-06, tools/profile_rows.py)."""
 
     def __init__(self, parent: "Owner | None | _Unset" = _UNSET):
         if isinstance(parent, _Unset):  # one class: cheap on MicroPython, and ty narrows it
@@ -268,7 +275,7 @@ def run_with_owner(owner, fn, *args, **kwargs):
 def on_cleanup(fn):
     """Register `fn` on the current owner. Outside any owner it is not registered."""
     if _owner is not None:
-        _owner.on_cleanup(fn)
+        _owner._cleanups.append(fn)  # `Owner.on_cleanup` inlined: a For row registers five
     return fn
 
 
@@ -393,7 +400,9 @@ def _flush():
                 break
             effect._queued = False
             if not effect._disposed:
-                effect._update_if_necessary()
+                # DIRTY is what a freshly queued effect is; `_update_if_necessary` would only
+                # re-test that. CHECK (something upstream may have changed) needs the walk.
+                effect._run() if effect._state == DIRTY else effect._update_if_necessary()
             runs += 1
             if runs > FLUSH_LIMIT:
                 raise RuntimeError(
@@ -460,6 +469,9 @@ class Signal:
     def __init__(self, value, equal=None):
         self._value = value
         self._observers = []
+        # Parallel to `_observers`: where this source sits in that observer's `_sources`.
+        # It is what makes unsubscribing O(1) — see `_Computation._clear_sources`.
+        self._observer_slots = []
         self._equal = equal
 
     def __call__(self):
@@ -517,9 +529,8 @@ class _Computation(Owner):
         self._fn = fn
         self._not_ready = False  # the last run ended in NotReady: a Memo re-raises it to readers
         self._sources = []
-        self._source_ids = (
-            None  # a set once tracking starts: membership in O(1) (a For over 1,000 rows tracks 1,000+ nodes)
-        )
+        self._slots = []  # parallel to `_sources`: where we sit in that source's `_observers`
+        self._source_ids = None  # a set once tracking starts: O(1) membership (a For tracks 1,000+)
         self._state = DIRTY
         self._queued = False
 
@@ -530,19 +541,36 @@ class _Computation(Owner):
             ids = self._source_ids = set()
         if key not in ids:
             ids.add(key)
+            observers = source._observers
+            self._slots.append(len(observers))
             self._sources.append(source)
-            source._observers.append(self)
+            observers.append(self)
+            source._observer_slots.append(len(self._sources) - 1)
 
     def _clear_sources(self):
-        if not self._sources:
+        """Unsubscribe from every source in O(1) each.
+
+        Each side remembers where the other keeps it, so a removal is a swap with the last
+        entry rather than a search: scanning was quadratic wherever many computations read
+        one node, which is every list (disposing 1,000 rows that share a store's shape node
+        was 78 ms of the 88 it took to create and dispose them — tools/profile_rows.py)."""
+        sources = self._sources
+        if not sources:
             return
-        for source in self._sources:
+        slots = self._slots
+        for i in range(len(sources)):
+            source = sources[i]
+            index = slots[i]
             observers = source._observers
-            for i in range(len(observers)):
-                if observers[i] is self:
-                    del observers[i]
-                    break
+            source_slots = source._observer_slots
+            last = observers.pop()
+            last_slot = source_slots.pop()
+            if index < len(observers):  # something else was last: move it into the hole
+                observers[index] = last
+                source_slots[index] = last_slot
+                last._slots[last_slot] = index
         self._sources = []
+        self._slots = []
         self._source_ids = None
 
     def _compute(self):
@@ -614,6 +642,7 @@ class Memo(_Computation):
     def __init__(self, fn, equal=None):
         _Computation.__init__(self, fn)
         self._observers = []
+        self._observer_slots = []  # see `Signal`
         self._equal = equal
         self._value = _UNSET
         self._loading = None  # a Signal once the memo has turned out to be async
@@ -793,21 +822,35 @@ class Effect(_Computation):
     """
 
     def __init__(self, compute, effect=None, target=None):
-        _Computation.__init__(self, compute)
+        # `Owner.__init__` and `_Computation.__init__` inlined: an effect is created for every
+        # hole and every bound attribute, and the three nested calls cost more on MicroPython
+        # than the assignments do (tools/profile_rows.py).
+        parent = _owner
+        self._parent = parent
+        self._owned = []
+        self._cleanups = []
+        self._context = None
+        self._disposed = False
+        self.name = None
+        if parent is not None:
+            parent._owned.append(self)
+        self._fn = compute
+        self._not_ready = False
+        self._sources = []
+        self._slots = []
+        self._source_ids = None
         self._effect = effect
         self._value = _UNSET
         self._cleanup = None
         self._parked = _UNSET
         self._target = target
-        self._state = CLEAN  # so the mark below is a transition and enqueues the first run
-        if _batch_depth or _flushing:
-            _mark(self, DIRTY)  # the open batch, or the running flush, picks it up
-        else:
-            _begin_batch()
-            try:
-                _mark(self, DIRTY)
-            finally:
-                _end_batch()
+        # A fresh effect is DIRTY and queued: `_mark` would only work that out again.
+        self._state = DIRTY
+        self._queued = True
+        (_render_queue if self._render else _effect_queue).append(self)
+        if not (_batch_depth or _flushing):
+            _begin_batch()  # no batch open: run it before the constructor returns
+            _end_batch()
 
     def _run(self):
         self._state = CLEAN  # before the run, so a write during it re-marks and re-queues us
@@ -939,7 +982,7 @@ def selector(source, equal=None):
             node = Signal(_same(equal, key, source.peek() if hasattr(source, "peek") else untrack(source)))
             subscribers[key] = node
             if _owner is not None:
-                _owner.on_cleanup(lambda: subscribers.pop(key, None))
+                _owner._cleanups.append(lambda: subscribers.pop(key, None))
         return node()
 
     return is_selected
