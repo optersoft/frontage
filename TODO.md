@@ -203,9 +203,6 @@ constraint holds).
       after Links, 2026-09-06 15:00). `index.md` has `public: true`; the academy commit that
       honours it (4e1b5042) is not deployed, and the academy tree has uncommitted work.
       Do: deploy academy. Done: `curl -s academy.optersoft.com/python/frontage/router | grep -c Exercises` is 1.
-- [ ] `[human]` The nine chapter pipelines `pip install frontage` unpinned, so a rebuilt site runs
-      whatever PyPI has that day while its page names one wheel. Pin, or accept (it is what keeps
-      the sites current without nine commits).
 
 ## M10 — the language server (in progress, 2026-09-06)
 
