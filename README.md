@@ -7,7 +7,7 @@ effects; templates that clone once and bind only their holes; a keyed `For`; a n
 router; running on [PyScript](https://pyscript.net) over WebAssembly, on Pyodide or
 MicroPython. No JavaScript, no Node, no bundler: you write Python and the browser runs it.
 
-> **Status: 0.4.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete through
+> **Status: 0.4.1, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete through
 > its M5 milestone: reactive core, store, templates (`h` and `html(t"…")`), control flow and
 > boundaries, `Resource`/`Action`, a nested router, widgets, `State`, timers, the playground;
 > 0.3.0 added the command line (`export`, `tailwind`, `check`); 0.4.0 adds **prerendering
@@ -50,7 +50,7 @@ which runs your code on MicroPython and keeps it in the link. **Learn it** at
 chapters with exercises, each with its app published on GitLab Pages. **Install it** with a `pyscript.json`:
 
 ```json
-{ "packages": ["https://frontage.optersoft.com/dist/frontage-0.4.0-py3-none-any.whl"] }
+{ "packages": ["https://frontage.optersoft.com/dist/frontage-0.4.1-py3-none-any.whl"] }
 ```
 
 | The counter above, as downloaded | MicroPython | Pyodide |

@@ -153,11 +153,29 @@ def site_build() -> None:
     if not bundles:
         raise MakeError("no local PyScript bundle: run `mk pyscript.fetch` first")
     shutil.copytree(bundles[-1], WWW / "pyscript", ignore=shutil.ignore_patterns("*.map"))
-    # The wheel, so a pyscript.json can name it by URL with no PyPI hop.
+    # The wheel, so a pyscript.json can name it by URL with no PyPI hop. Every wheel ever
+    # released stays at its URL: the academy chapters and their repos pin one by version, and
+    # a deploy must not break them.
     sh("uv", "build", "--wheel", "--out-dir", str(WWW / "dist"))
+    _released_wheels(WWW / "dist")
     files = sum(1 for f in WWW.rglob("*") if f.is_file())
     size = sum(f.stat().st_size for f in WWW.rglob("*") if f.is_file()) // (1024 * 1024)
     note(f"www/ assembled: {files} files, {size} MB")
+
+
+def _released_wheels(dest: Path) -> None:
+    """Download the wheel of every frontage release on PyPI into `dest` (skipping those present)."""
+    import json
+    import urllib.request
+
+    with urllib.request.urlopen("https://pypi.org/pypi/frontage/json", timeout=30) as r:
+        releases = json.load(r)["releases"]
+    for version, files in sorted(releases.items()):
+        for f in files:
+            if f["packagetype"] != "bdist_wheel" or (dest / f["filename"]).exists():
+                continue
+            urllib.request.urlretrieve(f["url"], dest / f["filename"])
+            note(f"dist/{f['filename']} (PyPI, {version})")
 
 
 @task(name="site.deploy", needs=[site_build], requires=["wrangler"], dangerous=True)
