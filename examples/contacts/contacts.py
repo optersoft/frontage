@@ -44,6 +44,7 @@ def contacts(children):
         h.nav(*[A(cid, CONTACTS[cid][0], id=f"link-{cid}") for cid in CONTACTS], id="list"),
         h.section(children, id="detail"),
         h.p(lambda: f"loads: {loads()}", id="loads"),
+        h.div(id="spacer", style="height: 1500px"),  # tall on purpose: scroll restoration on back
     )
 
 

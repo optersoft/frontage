@@ -12,6 +12,7 @@ One rule: read every reactive input before the first `await`. After an `await` t
 context is gone, so a signal read there is not a dependency.
 """
 
+from . import reactive
 from .errors import NotReady
 from .reactive import LOADING, Effect, Signal, batch, get_owner, on_cleanup, spawn, untrack, use
 
@@ -30,6 +31,9 @@ _hydration = None
 # Prerendering: every Resource created, so the prerenderer can wait for them and write their
 # values into the page.
 _registry = None
+# A navigation in progress (the Router): every Resource created while the new route renders
+# counts toward `is_routing` until its first load settles.
+_navigation = None
 
 
 def _set_hydration_values(values):
@@ -66,8 +70,13 @@ class Resource:
         self._scopes = []
         self._skip_load = hydrated
         self._owner = get_owner()
+        self._transition = None
+        self._navigation = None
         if _registry is not None:
             _registry.append(self)
+        if _navigation is not None and not hydrated and initial is None:
+            self._navigation = _navigation
+            _navigation._track_resource(self)
         on_cleanup(self._cancel)
 
         def start(value, prev):
@@ -91,7 +100,7 @@ class Resource:
         if scope is not None and state in (PENDING, REFRESHING):
             if scope not in self._scopes:
                 self._scopes.append(scope)
-                scope.add(self, state == REFRESHING)
+                untrack(scope.add, self, state == REFRESHING)
         error = self._error()
         if state == ERRORED and error is not None:
             raise error
@@ -128,17 +137,34 @@ class Resource:
             self._state.set(READY)
 
     def _cancel(self):
+        """Disposal: stop the load in flight and let whoever waits for it stop waiting."""
+        self._cancel_task()
+        self._release()
+
+    def _cancel_task(self):
         self._generation += 1
         task, self._task = self._task, None
         if task is not None:
             task.cancel()
 
+    def _release(self):
+        """The transition and the navigation waiting on this load, if any, stop waiting."""
+        transition, self._transition = self._transition, None
+        if transition is not None:
+            transition._done()
+        navigation, self._navigation = self._navigation, None
+        if navigation is not None:
+            navigation._resource_done(self)
+
     def _load(self, argument):
-        self._cancel()
+        self._cancel_task()  # a superseded load never settles; the new one will, for both waiters
         generation = self._generation
         with batch():
             self._state.set(REFRESHING if self._state.peek() == READY else PENDING)
             self._error.set(None)
+        if reactive._transition is not None and self._transition is None:
+            self._transition = reactive._transition
+            reactive._transition._track()
 
         async def run():
             try:
@@ -153,7 +179,7 @@ class Resource:
             if generation == self._generation:
                 self._settle(value, None)
 
-        self._task = spawn(run(), self._owner)
+        self._task = spawn(run(), self._owner, name=f"Resource({getattr(self._fetcher, '__name__', 'fetcher')})")
 
     def _settle(self, value, error):
         with batch():
@@ -166,6 +192,7 @@ class Resource:
             scopes, self._scopes = self._scopes, []
             for scope in scopes:
                 scope.remove(self)
+            self._release()
 
 
 class Action:

@@ -10,7 +10,11 @@ never in the browser (the package's browser files are the top-level modules only
 
 import sys
 
-USAGE = """usage: python -m frontage <command> [options]
+# How the command line was invoked, for usage lines: `frontage` (the console script that a
+# `pip install frontage` puts on PATH) or `python -m frontage`.
+PROG = "python -m frontage"
+
+USAGE = """usage: {prog} <command> [options]
 
 commands:
   export     copy an app, the package and PyScript into a directory that runs anywhere
@@ -20,13 +24,24 @@ commands:
   pyscript   fetch PyScript's offline bundle
   version    print the package version
 
-`python -m frontage <command> --help` for each command's options."""
+`{prog} <command> --help` for each command's options."""
+
+
+def usage():
+    return USAGE.format(prog=PROG)
+
+
+def script():
+    """The `frontage` console script (pyproject `[project.scripts]`)."""
+    global PROG
+    PROG = "frontage"
+    return main()
 
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0] in ("-h", "--help", "help"):
-        print(USAGE)
+        print(usage())
         return 0
     command, rest = argv[0], argv[1:]
     if command in ("version", "--version"):
@@ -45,6 +60,6 @@ def main(argv=None):
     elif command == "pyscript":
         from .pyscript import main as run
     else:
-        print(f"error: unknown command {command!r}\n\n{USAGE}", file=sys.stderr)
+        print(f"error: unknown command {command!r}\n\n{usage()}", file=sys.stderr)
         return 2
     return run(rest)

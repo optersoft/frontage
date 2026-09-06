@@ -25,8 +25,9 @@ nodes it finds inside those fences, in order, instead of creating them, then dro
 and whatever nothing adopted.
 """
 
+from . import reactive
 from .errors import format_exception
-from .reactive import Owner, RenderEffect, Signal, get_owner, on_cleanup, spawn
+from .reactive import Context, Owner, RenderEffect, Signal, get_owner, on_cleanup, provide, spawn, use
 from .renderer import HtmlRenderer, escape
 
 __all__ = [
@@ -168,11 +169,28 @@ def text(value):
 
 
 _ids = [0]
+_mounts = [0]
+_ID_SCOPE = Context(None, internal=True)
+
+
+class _IdScope:
+    """Where `unique_id` counts from inside a mount: the mount's name (its target's id) and a
+    counter of its own, so two mounts on one page, or two interpreters, never hand out the
+    same id, and a prerendered mount and its hydration count alike."""
+
+    def __init__(self, name):
+        self.name = name
+        self.n = 0
 
 
 def unique_id(prefix="fr"):
-    """An id unique in this page, `fr-1`, `fr-2`, …: for `label for=`, `aria-describedby` and
-    whatever else must name an element. The `widgets` give their controls one."""
+    """An id unique in this page, `fr-app-1`, `fr-app-2`, … inside a mount into `#app` (and
+    `fr-1`, `fr-2`, … outside any mount): for `label for=`, `aria-describedby` and whatever
+    else must name an element. The `widgets` give their controls one."""
+    scope = use(_ID_SCOPE)
+    if scope is not None:
+        scope.n += 1
+        return f"{prefix}-{scope.name}-{scope.n}"
     _ids[0] += 1
     return f"{prefix}-{_ids[0]}"
 
@@ -778,7 +796,7 @@ class _Root:
         self.owner.dispose()
 
 
-def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hydrate=None):
+def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hydrate=None, scope=None):
     """Build `view` under `parent` with its own root `Owner`; returns a handle with `dispose()`.
 
     `parent` is emptied first — a "Loading…" placeholder in the HTML is the usual reason it
@@ -797,8 +815,13 @@ def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hy
     `parent` is a renderer node. With no renderer, the browser's `DomRenderer` is used and
     `parent` may be a CSS selector. An error nothing caught renders, in debug mode, the
     traceback in a `<pre class="frontage-error">`; otherwise `fallback` (a view, or a
-    function of the error), or a one-line notice.
+    function of the error), or a one-line notice. `debug` also switches the development
+    warnings (a read after an await, a write inside a tracked computation, a `For` that
+    rebuilds every row). `scope` names the mount for `unique_id` (default: the target's id).
     """
+    reactive.DEBUG = bool(debug)
+    if scope is None and isinstance(parent, str) and parent.startswith("#"):
+        scope = parent[1:]
     if renderer is None or isinstance(parent, str):
         from .runtime import in_browser, prerender
 
@@ -839,6 +862,8 @@ def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hy
     def root():
         from .flow import Errored
 
+        _mounts[0] += 1
+        provide(_ID_SCOPE, _IdScope(scope if scope is not None else str(_mounts[0])))
         # The root is a hole holding an Errored boundary, so nothing wraps the user's view;
         # a factory runs inside that boundary's owner and is disposed with the mount.
         _mount_hole(parent, Errored(page, view), renderer, root_marker)

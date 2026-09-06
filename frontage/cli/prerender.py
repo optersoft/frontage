@@ -19,6 +19,7 @@ import re
 import sys
 from pathlib import Path
 
+from . import PROG
 from . import export as export_cli
 
 # Queued until `mount` hydrates, then replayed on the same targets (see DomRenderer.end_hydration).
@@ -69,7 +70,7 @@ def import_app(entry, path="/"):
     return list(prerender.mounts)
 
 
-async def render_mount(view, debug, fallback, timeout):
+async def render_mount(view, debug, fallback, timeout, selector="#app"):
     """Render one registered mount to `(html, resource values)`, resources settled."""
     from frontage import aio
     from frontage.aio import ERRORED, PENDING, REFRESHING
@@ -79,7 +80,8 @@ async def render_mount(view, debug, fallback, timeout):
     registry = aio._begin_prerender()
     renderer = HtmlRenderer(hydration_markers=True)
     root = renderer.create_element("div")
-    handle = mount(view, root, renderer, debug=debug, fallback=fallback)
+    # `scope`: `unique_id` counts per mount, named after the target, exactly as the browser will.
+    handle = mount(view, root, renderer, debug=debug, fallback=fallback, scope=selector.lstrip("#"))
     try:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
@@ -194,6 +196,42 @@ def add_replay(page_html):
     return REPLAY + page_html
 
 
+_HREF = re.compile(r"""href\s*=\s*["']([^"']*)["']""")
+
+
+def links_in(inner_html, view):
+    """The app paths the rendered HTML links to, for `--crawl`: same-app hrefs, a route of
+    the mounted `Router` when the view is one (in hash mode, the part after `#`)."""
+    from frontage.router import Router, match_routes
+
+    router = view if isinstance(view, Router) else None
+    found = []
+    for href in _HREF.findall(inner_html):
+        href = href.strip()
+        if not href or href.startswith(("http:", "https:", "//", "mailto:", "tel:", "javascript:", "data:")):
+            continue
+        if router is not None and router.mode_name == "hash":
+            if not href.startswith("#/"):
+                continue
+            path = href[1:]
+        else:
+            if href.startswith("#"):
+                continue
+            path = href
+        path = path.split("?", 1)[0].split("#", 1)[0]
+        if not path.startswith("/"):
+            continue
+        if router is not None:
+            path = router._strip_base(path)
+            if match_routes(router.routes, path) is None:
+                continue
+        if len(path) > 1 and path.endswith("/"):
+            path = path[:-1]
+        if path not in found:
+            found.append(path)
+    return found
+
+
 def relocate(page_html, depth):
     """Relative `./` references in a page written `depth` directories below the app."""
     if depth == 0:
@@ -202,9 +240,20 @@ def relocate(page_html, depth):
 
 
 def prerender(
-    app, out=None, routes=("/",), entry=None, timeout=30.0, bundle_pyscript=True, pyscript_dir=None, quiet=True
+    app,
+    out=None,
+    routes=("/",),
+    entry=None,
+    timeout=30.0,
+    bundle_pyscript=True,
+    pyscript_dir=None,
+    quiet=True,
+    crawl=False,
+    limit=1000,
 ):
-    """Export `app` into `out` and write its prerendered pages there; returns the outputs."""
+    """Export `app` into `out` and write its prerendered pages there; returns the outputs.
+    With `crawl`, every route a rendered page links to (an `A`, a plain `<a href>`) is rendered
+    too, until no new one turns up or `limit` pages are written."""
     out = export_cli.export(app, out, bundle_pyscript=bundle_pyscript, pyscript_dir=pyscript_dir, quiet=quiet)
     page = (out / "index.html").read_text()
     entry = entry or find_entry(page)
@@ -214,16 +263,24 @@ def prerender(
     if not entry_path.exists():
         raise FileNotFoundError(f"{entry_path} does not exist")
     results = []
-    for route in routes:
+    queue = list(routes)
+    seen = set(queue)
+    while queue:
+        route = queue.pop(0)
         mounts = import_app(entry_path, route)
         if not mounts:
             raise RuntimeError(f"{entry} never called mount(view, '#id') while importing for {route}")
         html = page
         rendered = []
         for selector, view, debug, fallback in mounts:
-            inner, values = asyncio.run(render_mount(view, debug, fallback, timeout))
+            inner, values = asyncio.run(render_mount(view, debug, fallback, timeout, selector))
             html = inject(html, selector, inner, values)
             rendered.append((selector, inner, values))
+            if crawl:
+                for path in links_in(inner, view):
+                    if path not in seen and len(seen) < limit:
+                        seen.add(path)
+                        queue.append(path)
         html = add_replay(html)
         parts = [p for p in route.strip("/").split("/") if p]
         target = out.joinpath(*parts) / "index.html" if parts else out / "index.html"
@@ -234,11 +291,14 @@ def prerender(
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="python -m frontage prerender", description=__doc__)
+    parser = argparse.ArgumentParser(prog=f"{PROG} prerender", description=__doc__)
     parser.add_argument("app", help="a directory with an index.html and the app's .py files")
     parser.add_argument("--out", default=None, help="destination (default: ./build/<app name>)")
     parser.add_argument("--route", action="append", default=None, help="a path to render (repeatable; default /)")
     parser.add_argument("--entry", default=None, help="the app's .py file (default: the one the page names)")
+    parser.add_argument(
+        "--crawl", action="store_true", help="also render every route a rendered page links to (A, <a href>)"
+    )
     parser.add_argument("--timeout", type=float, default=30.0, help="seconds to wait for resources per route")
     parser.add_argument(
         "--no-pyscript", action="store_true", help="link PyScript from pyscript.net instead of bundling it"
@@ -255,6 +315,7 @@ def main(argv=None):
             bundle_pyscript=not args.no_pyscript,
             pyscript_dir=args.pyscript,
             quiet=False,
+            crawl=args.crawl,
         )
     except (FileNotFoundError, ValueError, RuntimeError, TimeoutError) as exc:
         print(f"error: {exc}", file=sys.stderr)

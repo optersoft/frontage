@@ -34,6 +34,71 @@ def prerendered():
     return "/build"
 
 
+MISMATCH_APP = """import frontage.debug  # the per-node report, in the console
+from frontage import Signal, h, mount
+
+count = Signal(0)
+mount(lambda: h.div(h.p("n=", count, id="n"), lambda: h.b("hole content", id="hole")), "#app")
+"""
+
+MISMATCH_PAGE = """<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<link rel="stylesheet" href="/pyscript/core.css">
+<script type="module" src="/pyscript/core.js" offline></script>
+</head><body><div id="app">Loading…</div>
+<script>
+  const type = new URLSearchParams(location.search).get("type") || "mpy";
+  const s = document.createElement("script");
+  s.type = type; s.src = "./app.py"; s.setAttribute("config", "./pyscript.json");
+  document.body.appendChild(s);
+</script></body></html>
+"""
+
+
+@pytest.fixture(scope="module")
+def mismatched():
+    """`build/hydrate-mismatch/`: a prerendered page whose HTML was edited afterwards, so the
+    view finds an `<i>` where it wrote a `<b>`."""
+    bundle = _bundle()
+    if bundle is None:
+        pytest.skip("no local PyScript: run `mk pyscript.fetch`")
+    src = BUILD / "src-mismatch"
+    out = BUILD / "hydrate-mismatch"
+    for d in (src, out):
+        if d.exists():
+            shutil.rmtree(d)
+    src.mkdir(parents=True)
+    (src / "index.html").write_text(MISMATCH_PAGE)
+    (src / "app.py").write_text(MISMATCH_APP)
+    (src / "pyscript.json").write_text("{}")
+    command = [sys.executable, "-m", "frontage", "prerender", str(src), "--out", str(out), "--pyscript", str(bundle)]
+    subprocess.run(command, check=True, cwd=ROOT, capture_output=True)
+    page_html = (out / "index.html").read_text()
+    assert '<b id="hole">hole content<!--h--></b>' in page_html
+    (out / "index.html").write_text(
+        page_html.replace('<b id="hole">hole content<!--h--></b>', "<i>hole content<!--h--></i>")
+    )
+    return "/build"
+
+
+@pytest.mark.parametrize("interpreter", ["mpy", "py"])
+def test_debug_import_reports_each_hydration_mismatch(server, page: Page, interpreter, mismatched):
+    warnings = []
+    page.on("console", lambda m: warnings.append(m.text) if m.type in ("warning", "error") else None)
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{server}{mismatched}/hydrate-mismatch/index.html?type={interpreter}")
+    expect(page.locator("#n")).to_have_text("n=0", timeout=2_000)
+    page.wait_for_function("!document.querySelector('#app').hasAttribute('data-fr-hydrate')", timeout=60_000)
+    expect(page.locator("#hole")).to_have_text("hole content")  # rebuilt as the view says
+    expect(page.locator("#app i")).to_have_count(0)  # the server's <i> was dropped
+    report = [w for w in warnings if w.startswith("hydration:")]
+    assert any("2 node(s) differed" in w for w in report), report
+    assert any("expected <b>, found <i>" in w for w in report), report
+    assert any("dropped <i>" in w for w in report), report
+    assert errors == []
+
+
 @pytest.mark.parametrize("interpreter", ["mpy", "py"])
 def test_counter_hydrates_and_replays_early_clicks(server, page: Page, interpreter, prerendered):
     warnings = []

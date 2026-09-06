@@ -8,6 +8,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+from . import PROG
 from ._cache import cache_dir
 
 VERSION = "2026.7.3"
@@ -41,7 +42,7 @@ def fetch(dest=None, quiet=False):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="python -m frontage pyscript", description=__doc__)
+    parser = argparse.ArgumentParser(prog=f"{PROG} pyscript", description=__doc__)
     parser.add_argument("--dest", default=None, help="directory to unpack into (default: the frontage cache)")
     args = parser.parse_args(argv)
     bundle = fetch(args.dest)

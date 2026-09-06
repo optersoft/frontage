@@ -50,6 +50,10 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - C16 Raising `NotReady` inside a compute ends it quietly; the nearest `Loading` boundary shows its fallback; no `Errored` boundary sees it. [M2]
 - C17 Any other exception inside a compute propagates to the nearest `Errored` boundary, else to the mount root. [M2]
 - C18 `interval(seconds)` is an accessor that changes every `seconds`; `poll(fn, seconds)` is a `Resource` re-run on that interval; both stop when their owner is disposed. [M5]
+- C19 A `Memo` whose function returns a coroutine is an async memo: the reads made while calling the function (before the coroutine runs) are its dependencies; the coroutine runs as a task owned by the memo; reading it raises `NotReady` until the first value and returns the previous value while a later run is in flight; `loading()` says which; an exception in the coroutine is raised to readers; a re-run cancels the coroutine in flight. [M7]
+- C20 `transition(fn)`: the render effects the writes in `fn` dirty do not run until every `Resource` refetch and async memo run those writes started has settled; then they run in one batch. No `Loading` fallback appears for data that is refreshing. `is_pending()` is true meanwhile; the returned `Transition` has `pending`, `wait()` and `on_commit`; a transition with no async work commits at once. What the new state would *create* is built at the commit. [M7]
+- C21 `Optimistic` is a `Signal` whose write inside a transition renders at once (the effects downstream of it run despite the transition) and is undone when the transition commits. [M7]
+- C22 `is_pending(x)` for a `Resource`, an async `Memo`, an `Action` or a `Transition`; `use_transition()` returns `(pending, start)` where `pending()` covers the transitions started with `start`. [M7]
 
 ## 5. Stores
 
@@ -80,6 +84,7 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - W15 `Event(name)` creates a custom event a child can `emit(detail)` to a parent listening with `on:name`. [M2]
 - W16 A template string `html(t"…")` parses once per call site, producing the same tree the builder would; holes in text, attribute and event positions bind as W1 and W4. [M2]
 - W17 Instantiating a template clones its skeleton in one renderer operation and then binds only its holes. [M1 builder, M2 template]
+- W18 `unique_id()` counts per mount and names the mount's target (`fr-app-1`), so two mounts on a page, or two interpreters, never hand out the same id, and a prerendered mount and its hydration count alike (`mount(scope=…)` names it explicitly; outside any mount the counter is global). [M7]
 
 ## 7. Async
 
@@ -100,12 +105,14 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - U7 `query(fn)` de-duplicates concurrent calls with equal keys and caches results until `revalidate()`. [M3]
 - U8 `action(fn)` with `use_submission()`; `redirect()` raised inside an action navigates. [M3]
 - U9 Memory mode drives the router with no browser; the whole router suite runs on CPython. [M3]
-- U10 `use_before_leave()` can cancel a navigation; scroll position is restored on back. [M3]
+- U10 `use_before_leave()` can cancel a navigation; scroll position is restored on back, once the page navigated back to is on screen (the router sets `history.scrollRestoration` to manual). [M3, browser test M7]
+- U11 `is_routing` stays true from a navigation until the preloads it started *and* the first loads of the `Resource`s the new route created have settled. [M7]
 
 ## 9. Errors and development mode
 
 - E1 In debug mode an uncaught error renders a page naming the component and the traceback; in production the configured fallback renders and the error is logged. [M2]
-- E2 Debug warnings: a read after `await` (A3), a write inside a tracked compute, a `For` whose keys are not unique. [M2]
+- E2 Debug warnings, once each, in the console (or stderr): a signal read inside a `Resource` fetcher or an async memo's coroutine after tracking ended (A3), naming the resource; a write to a signal inside a tracked computation, naming it; a `For` keyed by identity whose rows all failed to survive an update. Duplicate `For` keys stay an error. `mount(debug=False)` silences them. [M7]
+- E3 `import frontage.debug` makes a hydration that rebuilt nodes list each mismatch (`expected <b>, found <i>`, `dropped <i>: …`) and keeps the last `Hydration` in `frontage.debug.last_hydration`. [M7]
 
 ## 10. The layer above (M5)
 
@@ -115,3 +122,5 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - L4 `reconcile(store_list, data, key)` updates a list Store to equal `data` while keeping the identity of rows whose key survives, so a `For` moves nodes and only changed fields notify. [M5]
 - L5 `mk export APP` produces a static directory that runs the app with no repo, PyPI or CDN. [M4]
 - L6 The playground runs code from the URL fragment against the site's package under MicroPython. [M5]
+- L7 `frontage prerender --crawl` also renders every route the rendered pages link to (an `A`, a plain `<a href>`), filtered to the mounted `Router`'s routes. [M7]
+- L8 `pip install frontage` puts a `frontage` console script on PATH with the same commands as `python -m frontage`; usage lines name whichever was invoked. [M7]

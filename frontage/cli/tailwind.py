@@ -14,6 +14,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
+from . import PROG
 from ._cache import cache_dir
 
 VERSION = "4.3.3"
@@ -51,7 +52,7 @@ def binary(version=VERSION, quiet=False):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="python -m frontage tailwind", description=__doc__)
+    parser = argparse.ArgumentParser(prog=f"{PROG} tailwind", description=__doc__)
     parser.add_argument(
         "--input",
         default="tailwind.css",

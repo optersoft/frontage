@@ -28,6 +28,9 @@ classifiers = [
 ]
 dependencies = []
 
+[project.scripts]
+frontage = "frontage.cli:script"
+
 [project.urls]
 Homepage = "https://frontage.optersoft.com"
 Documentation = "https://academy.optersoft.com/tool/frontage"

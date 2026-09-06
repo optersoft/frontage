@@ -19,6 +19,7 @@ The module is written in the MicroPython subset: no typing, no dataclasses, no c
 """
 
 from .errors import NotReady
+from .runtime import warn
 
 __all__ = [
     "ERRORS",
@@ -26,11 +27,14 @@ __all__ = [
     "Context",
     "Effect",
     "Memo",
+    "Optimistic",
     "Owner",
     "RenderEffect",
     "Signal",
+    "Transition",
     "batch",
     "get_owner",
+    "is_pending",
     "on",
     "on_cleanup",
     "on_mount",
@@ -38,8 +42,10 @@ __all__ = [
     "run_with_owner",
     "selector",
     "spawn",
+    "transition",
     "untrack",
     "use",
+    "use_transition",
 ]
 
 
@@ -62,6 +68,19 @@ _effect_queue = []
 _flushing = False
 FLUSH_LIMIT = int(100_000)  # effect runs per batch before the flush is declared a loop
 
+# Development mode: the warnings for the three mistakes the design cannot prevent (a signal
+# read inside an async function after tracking ended, a write inside a tracked computation, a
+# `For` whose rows never survive an update). `mount(debug=False)` turns them off.
+DEBUG: bool = True
+_untracking = 0  # depth of `untrack()`: reads there are deliberate, never warned about
+_async_tasks = {}  # id(task) -> name, for the tasks whose reads should have been tracked
+_warned = set()
+
+# Transitions: while one is open, render effects it dirtied wait in it instead of running,
+# and the page keeps showing the previous state until the async work it started settles.
+_transition = None  # the Transition whose synchronous part (or whose settle) is running
+_open_transitions = []
+
 
 def _current_owner() -> "Owner | None":
     # The typed way to read the module global; string annotations are never evaluated,
@@ -73,6 +92,52 @@ def _same(equal, a, b):
     if equal is None:
         return a == b
     return equal(a, b)
+
+
+def _warn_once(key, message):
+    if key in _warned:
+        return
+    _warned.add(key)
+    warn(message)
+
+
+def _name_of(fn):
+    return getattr(fn, "__name__", None) or type(fn).__name__
+
+
+def _current_task():
+    try:
+        import asyncio
+
+        return asyncio.current_task()
+    except Exception:
+        return None
+
+
+def _check_untracked_read(signal):
+    """Debug: a read with no listener inside a task whose function should have read its inputs
+    before its first `await` (a Resource's fetcher, an async Memo's coroutine)."""
+    task = _current_task()
+    if task is None:
+        return
+    name = _async_tasks.get(id(task))
+    if name is None:
+        return
+    _warn_once(
+        ("async-read", id(task)),
+        f"{name}: a signal was read after the first await, so it is not a dependency and nothing "
+        "re-runs when it changes. Read it before the first await, pass it in as the source, or "
+        "peek() it on purpose.",
+    )
+
+
+def _check_tracked_write(listener):
+    _warn_once(
+        ("write", id(listener)),
+        f"a signal was written inside a tracked computation ({type(listener).__name__} "
+        f"{_name_of(listener._fn)}), which then depends on its own write. Write in a handler or in an "
+        "effect's second function, or wrap the write in untrack().",
+    )
 
 
 # --- ownership -----------------------------------------------------------------------------
@@ -158,10 +223,12 @@ def on_cleanup(fn):
 
 
 class Context:
-    """A key for `provide` / `use`, with the value `use` returns when nothing provided it."""
+    """A key for `provide` / `use`, with the value `use` returns when nothing provided it.
+    `internal` contexts are the package's own bookkeeping; `tree` does not list them."""
 
-    def __init__(self, default=None):
+    def __init__(self, default=None, internal=False):
         self.default = default
+        self.internal = internal
 
 
 def provide(ctx, value):
@@ -203,22 +270,29 @@ def route_error(owner, exc):
     scope.handle(exc)
 
 
-def spawn(coro, owner=None):
+def spawn(coro, owner=None, name=None):
     """Run a coroutine as a task owned by `owner` (the current owner by default): the task is
     cancelled when the owner is disposed, and an exception in it reaches the nearest
-    `Errored` above the owner (or is raised on the loop when there is none)."""
+    `Errored` above the owner (or is raised on the loop when there is none). With `name`, a
+    signal read inside the task (after tracking ended) warns in debug mode."""
     import asyncio
 
     if owner is None:
         owner = _current_owner()
 
     async def run():
+        task = _current_task() if name is not None else None
+        if task is not None:
+            _async_tasks[id(task)] = name
         try:
             await coro
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             route_error(owner, exc)
+        finally:
+            if task is not None:
+                _async_tasks.pop(id(task), None)
 
     task = asyncio.create_task(run())
     if owner is not None:
@@ -251,6 +325,11 @@ def _flush():
         while _render_queue or _effect_queue:
             queue = _render_queue if _render_queue else _effect_queue
             effect = queue.pop(0)
+            if _transition is not None and effect._render and not effect._urgent:
+                # The page keeps its previous state: this runs when the transition commits.
+                # `_queued` stays set so a later mark does not queue it a second time.
+                _transition._deferred.append(effect)
+                continue
             effect._queued = False
             if not effect._disposed:
                 effect._update_if_necessary()
@@ -325,6 +404,8 @@ class Signal:
     def __call__(self):
         if _listener is not None:
             _listener._track(self)
+        elif DEBUG and _async_tasks and _untracking == 0:
+            _check_untracked_read(self)
         return self._value
 
     @property
@@ -337,6 +418,17 @@ class Signal:
 
     def set(self, value):
         """Write; returns True if the value changed. An equal value notifies nobody."""
+        if _same(self._equal, self._value, value):
+            return False
+        if DEBUG and _listener is not None:
+            _check_tracked_write(_listener)
+        self._value = value
+        _notify(self)
+        return True
+
+    def _write(self, value):
+        """`set` for the package's own bookkeeping signals, which may legitimately change
+        during a tracked read (a Loading scope's count, a For row's index)."""
         if _same(self._equal, self._value, value):
             return False
         self._value = value
@@ -356,6 +448,7 @@ class Signal:
 class _Computation(Owner):
     _pure = False
     _render = False
+    _urgent = False  # a render effect downstream of an Optimistic write: runs during a transition
 
     def __init__(self, fn):
         Owner.__init__(self)
@@ -431,6 +524,14 @@ class Memo(_Computation):
     """A cached derived value. Read by calling it; recomputes lazily when a dependency changed.
 
     Works as a decorator: `@Memo` on a zero-argument function yields the accessor.
+
+    An async memo is a memo whose function returns a coroutine: `Memo(lambda:
+    load(user_id()))` with `load` an `async def`. The reads made while *calling* it (before
+    any await: `user_id()` here) are its dependencies; the coroutine then runs as a task owned
+    by the memo, and the value arrives when it finishes. Meanwhile reading the memo raises
+    `NotReady` on the first run (the nearest `Loading` shows its fallback) and returns the
+    previous value on later runs; `loading()` says which; an exception in the coroutine is
+    raised to readers, into the nearest `Errored`. A re-run cancels the coroutine in flight.
     """
 
     _pure = True
@@ -440,13 +541,43 @@ class Memo(_Computation):
         self._observers = []
         self._equal = equal
         self._value = _UNSET
+        self._loading = None  # a Signal once the memo has turned out to be async
+        self._error = None
+        self._generation = 0
+        self._scopes = []
+        self._transition = None
 
     def __call__(self):
         if _listener is not None:
             _listener._track(self)
         if self._state != CLEAN:
             self._update_if_necessary()
+        if self._loading is not None:
+            return self._read_async()
         return self._value
+
+    def _read_async(self):
+        loading, failed = self._loading, self._error
+        assert loading is not None and failed is not None
+        if loading():
+            scope = lookup(_current_owner(), LOADING)
+            if scope is not None and scope not in self._scopes:
+                self._scopes.append(scope)
+                scope.add(self, self._value is not _UNSET)
+            if self._value is _UNSET:
+                raise NotReady
+            return self._value
+        error = failed._value
+        if error is not None:
+            raise error
+        return None if self._value is _UNSET else self._value
+
+    def loading(self):
+        """True while the coroutine of an async memo is running (False for a plain memo)."""
+        return bool(self._loading()) if self._loading is not None else False
+
+    def error(self):
+        return self._error() if self._error is not None else None
 
     @property
     def value(self):
@@ -455,21 +586,81 @@ class Memo(_Computation):
     def peek(self):
         if self._state != CLEAN:
             self._update_if_necessary()
-        return self._value
+        return None if self._value is _UNSET else self._value
 
     def _run(self):
         old = self._value
         self._state = CLEAN  # before the run: a write during it must be able to mark us again
         new = self._compute()
         if new is _SKIPPED:
-            if old is _UNSET:
+            if old is _UNSET and self._loading is None:
                 self._value = None  # never computed: read as None rather than a sentinel
+            return
+        if hasattr(new, "send") and hasattr(new, "throw"):
+            self._start(new)
             return
         if old is _UNSET or not _same(self._equal, old, new):
             self._value = new
             if old is not _UNSET:
                 for observer in list(self._observers):
                     _mark(observer, DIRTY)
+
+    # -- async ------------------------------------------------------------------------------
+
+    def _start(self, coro):
+        loading, failed = self._loading, self._error
+        if loading is None or failed is None:
+            loading = self._loading = Signal(False)
+            failed = self._error = Signal(None, equal=lambda a, b: a is b)
+        self._generation += 1
+        generation = self._generation
+        loading._write(True)
+        failed._write(None)
+        if _transition is not None and self._transition is None:
+            self._transition = _transition
+            _transition._track()
+        memo = self
+
+        async def run():
+            try:
+                value = await coro
+            except Exception as exc:
+                if generation == memo._generation:
+                    memo._settle(_UNSET, exc)
+                return
+            if generation == memo._generation:
+                memo._settle(value, None)
+
+        spawn(run(), self, name=f"Memo({_name_of(self._fn)})")  # cancelled before a re-run, and on dispose
+
+    def _settle(self, value, error):
+        loading, failed = self._loading, self._error
+        assert loading is not None and failed is not None
+        _begin_batch()
+        try:
+            if error is None:
+                self._value = value
+            else:
+                failed._write(error)
+            loading._write(False)
+            for observer in list(self._observers):
+                _mark(observer, DIRTY)
+            scopes, self._scopes = self._scopes, []
+            for scope in scopes:
+                scope.remove(self)
+            transition, self._transition = self._transition, None
+            if transition is not None:
+                transition._done()
+        finally:
+            _end_batch()
+
+    def dispose(self):
+        if self._disposed:
+            return
+        transition, self._transition = self._transition, None
+        if transition is not None:
+            transition._done()
+        _Computation.dispose(self)
 
     def __repr__(self):
         return f"Memo({self._value!r})" if self._value is not _UNSET else "Memo(<unread>)"
@@ -536,11 +727,14 @@ class RenderEffect(Effect):
 
 def untrack(fn, *args):
     """Run `fn` without recording dependencies."""
+    global _untracking
     saved = (_owner, _listener)
     _set_scope(_owner, None)
+    _untracking += 1
     try:
         return fn(*args)
     finally:
+        _untracking -= 1
         _set_scope(*saved)
 
 
@@ -590,6 +784,189 @@ def selector(source, equal=None):
     return is_selected
 
 
+# --- transitions ----------------------------------------------------------------------------
+
+
+_is_pending = Signal(False)
+
+
+class Transition:
+    """One `transition()`: the render effects it deferred, the async work it waits for, and
+    `pending`, an accessor that is True until it commits. `await t.wait()` for the commit."""
+
+    def __init__(self):
+        self._deferred = []
+        self._inflight = 0
+        self._open = True
+        self._committed = False
+        self._callbacks = []
+        self._reverts = []
+        self.pending = Signal(True)
+
+    def _track(self):
+        self._inflight += 1
+
+    def _done(self):
+        self._inflight -= 1
+        self._maybe_commit()
+
+    def _maybe_commit(self):
+        if self._open or self._committed or self._inflight > 0:
+            return
+        self._commit()
+
+    def _commit(self):
+        global _transition
+        self._committed = True
+        _open_transitions.remove(self)
+        saved = _transition
+        _transition = None  # the deferred effects run now, whatever transition is nested around us
+        _begin_batch()
+        try:
+            for revert in self._reverts:
+                revert()
+            self._reverts = []
+            deferred, self._deferred = self._deferred, []
+            for effect in deferred:
+                if effect._disposed:
+                    effect._queued = False
+                    continue
+                _render_queue.append(effect)
+            self.pending._write(False)
+            if not _open_transitions:
+                _is_pending._write(False)
+        finally:
+            _end_batch()
+            _transition = saved
+        callbacks, self._callbacks = self._callbacks, []
+        for fn in callbacks:
+            fn()
+
+    def on_commit(self, fn):
+        """Call `fn()` when the transition has committed (at once, if it already has)."""
+        if self._committed:
+            fn()
+        else:
+            self._callbacks.append(fn)
+        return fn
+
+    async def wait(self):
+        """Await the commit."""
+        import asyncio
+
+        while not self._committed:
+            await asyncio.sleep(0)
+
+    def __repr__(self):
+        return f"Transition({'pending' if not self._committed else 'committed'})"
+
+
+def transition(fn, *args):
+    """Run `fn(*args)` (writes, typically) as a transition: the page keeps showing its
+    previous state while the async work those writes started, Resources refetching and async
+    memos recomputing, is in flight, and shows the new state all at once when it has settled.
+    No `Loading` fallback appears for data that is merely refreshing. `is_pending()` is True
+    meanwhile. Returns the `Transition` (its `pending` accessor, `wait()`, `on_commit`).
+
+    What a transition holds back is the rendering of what already exists: a branch or a
+    component the new state would *create* is built when the transition commits, and its own
+    first loads show their `Loading` fallback as usual.
+    """
+    global _transition
+    t = Transition()
+    _open_transitions.append(t)
+    _is_pending._write(True)
+    saved = _transition
+    _transition = t
+    _begin_batch()
+    try:
+        fn(*args)
+    finally:
+        try:
+            _end_batch()
+        finally:
+            _transition = saved
+    t._open = False
+    t._maybe_commit()
+    return t
+
+
+def use_transition():
+    """`(pending, start)`: `start(fn)` runs `fn` as a transition and `pending()` is True while
+    any transition started here is in flight."""
+    count = Signal(0)
+
+    def start(fn, *args):
+        count._write(count._value + 1)
+        t = transition(fn, *args)
+        t.on_commit(lambda: count._write(count._value - 1))
+        return t
+
+    return (lambda: count() > 0), start
+
+
+def is_pending(target=None):
+    """With no argument: True while any transition is in flight. With a Resource, an async
+    Memo, an Action or a Transition: whether that one is loading or pending. A reactive read."""
+    if target is None:
+        return _is_pending()
+    loading = getattr(target, "loading", None)
+    if loading is not None:
+        return bool(loading())
+    pending = getattr(target, "pending", None)
+    if pending is not None:
+        return bool(pending())
+    return False
+
+
+class Optimistic(Signal):
+    """A signal whose writes inside a transition show at once and are undone when it commits.
+
+    Outside a transition it is a plain signal. Inside one, `set(v)` renders `v` immediately
+    (the effects that read it run despite the transition), and when the transition commits
+    the value returns to what it was before, so the committed state is what the page shows:
+    the real data, or the previous value if the work failed."""
+
+    def set(self, value):
+        if _transition is None or _transition._committed:
+            return Signal.set(self, value)
+        t = _transition
+        if self not in [r.__self__ for r in t._reverts if hasattr(r, "__self__")]:
+            base = self._value
+            t._reverts.append(_Revert(self, base))
+        for observer in list(self._observers):
+            _flag_urgent(observer)
+        return Signal.set(self, value)
+
+
+class _Revert:
+    def __init__(self, signal, value):
+        self.__self__ = signal
+        self.value = value
+
+    def __call__(self):
+        signal = self.__self__
+        for observer in list(signal._observers):
+            _unflag_urgent(observer)
+        Signal.set(signal, self.value)
+
+
+def _flag_urgent(node):
+    if node._pure:
+        for observer in node._observers:
+            _flag_urgent(observer)
+    else:
+        node._urgent = True
+
+
+def _unflag_urgent(node):
+    if node._pure:
+        for observer in node._observers:
+            _unflag_urgent(observer)
+    else:
+        node._urgent = False
+
+
 def tree(owner, depth=None):
     """The ownership tree under `owner` as text, one line per owner, for the console.
 
@@ -606,7 +983,7 @@ def _tree_lines(owner, level, lines, depth):
     fn = getattr(owner, "_fn", None) or getattr(owner, "_compute", None)
     if owner.name is None and fn is not None:
         label += f" {getattr(fn, '__name__', '')}".rstrip()
-    context = owner._context
+    context = [k for k in (owner._context or {}) if not getattr(k, "internal", False)]
     if context:
         label += " [" + ", ".join(sorted(str(getattr(k, "name", None) or type(k).__name__) for k in context)) + "]"
     if owner._disposed:

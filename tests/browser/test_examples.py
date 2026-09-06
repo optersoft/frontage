@@ -143,6 +143,19 @@ def test_contacts_router(server, page: Page, interpreter, mode):
         assert page.url.endswith("#/contacts")
     else:
         assert page.url.endswith("/contacts")
+    # U10: scroll restoration. Scroll down the (tall) list, navigate: the new page starts at
+    # the top; go back: the list is where it was; forward again: the top.
+    page.evaluate("window.scrollTo(0, 600)")
+    page.wait_for_function("window.scrollY >= 500")
+    page.evaluate("document.querySelector('#link-ann').click()")  # no scrolling into view first
+    expect(page.locator("#name")).to_have_text("Ann Moore")
+    page.wait_for_function("window.scrollY === 0")
+    page.go_back()
+    expect(page.locator("#pick")).to_be_visible()
+    page.wait_for_function("window.scrollY >= 500")
+    page.go_forward()
+    expect(page.locator("#name")).to_have_text("Ann Moore")
+    page.wait_for_function("window.scrollY === 0")
     page.click("#link-ann")
     expect(page.locator("#name")).to_have_text("Ann Moore")
     expect(page.locator("#link-ann")).to_have_class("active")

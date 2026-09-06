@@ -76,13 +76,17 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
 
 - [x] `Resource`, `Action`, `spawn`, `Loading`, `Errored`, `Switch`/`Match`, `Dynamic`, `Portal`,
       async handlers, `html(t"…")` on both interpreters, `mount(factory)` with a debug error page.
-- [ ] E2 debug warnings (a signal read after `await`, a write inside a tracked compute).
+- [x] E2 debug warnings (0.5.0): a read after `await` inside a Resource fetcher or an async memo,
+      a write inside a tracked compute, a `For` keyed by identity whose rows never survive.
 
 ## M3 (done 2026-09-05)
 
 - [x] The router (SPEC U1–U10; scroll restoration best-effort) and floating holes, so a component
       may return control flow directly and the router renders no wrapper.
-- [ ] Scroll restoration in a browser test; `use_is_routing` observable across async work.
+- [x] Scroll restoration in a browser test (0.5.0; `history.scrollRestoration = "manual"` in both
+      browser modes, because with `auto` the browser moves the page before the event fires and
+      the router remembers the wrong position; restore after the page is back on screen);
+      `is_routing` stays up while the new route's Resources load.
 
 ## M4 (done 2026-09-05): 0.1.0 on PyPI
 
@@ -119,8 +123,9 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
 - [x] `unique_id()`; widgets give their control an id and the label a `for`.
 - [x] `tree(handle)`: the owner tree as text; `component` names its owner.
 - [x] `For(key="id")`.
-- [ ] Not done from that list: a real `startTransition` (needs concurrent rendering; DESIGN
-      §16 "later").
+- [x] `transition()` (0.5.0): render effects the writes dirty are parked until the refetches
+      settle, then applied at once; `is_pending`, `use_transition`, `Optimistic`. Not concurrent
+      rendering: what the new state would create is built at the commit.
 
 ## M6 — prerender and hydrate (0.4.0, 2026-09-06)
 
@@ -144,9 +149,9 @@ constraint holds).
       fetch (no refetch, data block consumed), both interpreters.
 - [ ] Off the plan, on purpose: islands (Python has no tree shaking, so an `@island` saves
       boot work, not download), streaming modes and server functions (need a server).
-- [ ] Later: `--crawl` (follow `A` links to find routes, as preact-iso does); a `debug`
-      import with mismatch details per node; `unique_id` collisions when a page has two
-      mounts (the counter is per page, not per mount).
+- [x] 0.5.0: `prerender --crawl` (links filtered to the mounted Router's routes); `import
+      frontage.debug` lists each hydration mismatch; `unique_id` counts per mount, named after
+      the target (`fr-app-1`), so two mounts or two interpreters never collide.
 
 ## Docs (2026-09-06, after 0.4.0)
 
@@ -167,11 +172,12 @@ constraint holds).
 
 ## After 0.4.0 (the plan's "later", not scheduled)
 
-- [ ] Async memos, `is_pending`, transactions and optimistic writes (Solid 2.0's model) —
-      DESIGN §16 "later", for a 1.0. A live server rendering mode is not planned.
-- [ ] E2 debug warnings; the scroll-restoration browser test.
+- [x] Async memos (`Memo` returning a coroutine), `is_pending`, `transition()` and `Optimistic`
+      (0.5.0, Solid 2.0's model on a synchronous graph). A live server rendering mode is not planned.
+- [x] The `frontage` console script (0.5.0); docs say `uvx frontage …`.
 - [ ] Docs: `.ca`/`.es` variants once a programme places the pages.
-- [ ] A console script (`frontage …`) once the name is worth taking on PATH; `python -m` until then.
+- [ ] Concurrent rendering, if a transition ever needs to build the new state off-screen (DESIGN
+      §16 "later"); the router navigating inside a transition by option.
 
 ## Outward-facing, for David
 

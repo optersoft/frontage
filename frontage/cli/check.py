@@ -16,6 +16,8 @@ import re
 import sys
 from pathlib import Path
 
+from . import PROG
+
 _TemplateStr = getattr(ast, "TemplateStr", None)
 _Interpolation = getattr(ast, "Interpolation", None)
 _FENCE = re.compile(r"^```(?:py|python)\s*$")
@@ -142,7 +144,7 @@ def check_path(path):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="python -m frontage check", description=__doc__)
+    parser = argparse.ArgumentParser(prog=f"{PROG} check", description=__doc__)
     parser.add_argument("paths", nargs="+", help=".py or .md files, or directories")
     args = parser.parse_args(argv)
     found = []

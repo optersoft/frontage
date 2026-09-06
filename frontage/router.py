@@ -23,6 +23,7 @@ reads a param updates in place. Three modes: `history` (pushState), `hash` (the 
 case, and what static hosting wants), `memory` (no browser; the test suite runs on it).
 """
 
+from . import aio
 from .aio import Action
 from .flow import _Branch
 from .reactive import Context, Memo, Owner, Signal, batch, get_owner, on_cleanup, provide, run_with_owner, untrack, use
@@ -239,7 +240,20 @@ class MemoryMode:
         return lambda: setattr(self, "listener", None)
 
 
+def _manual_scroll_restoration():
+    """The router restores scroll positions itself (U10). The browser must not: with `auto` it
+    moves the page before `popstate`/`hashchange` fires, so the position the router would
+    remember for the page being left is already the other page's."""
+    try:
+        window.history.scrollRestoration = "manual"
+    except Exception:
+        pass
+
+
 class HistoryMode:
+    def __init__(self):
+        _manual_scroll_restoration()
+
     def current(self):
         loc = window.location
         return str(loc.pathname) + str(loc.search) + str(loc.hash)
@@ -260,6 +274,9 @@ class HistoryMode:
 
 
 class HashMode:
+    def __init__(self):
+        _manual_scroll_restoration()
+
     def current(self):
         raw = str(window.location.hash)
         return raw[1:] if raw.startswith("#") else "/"
@@ -420,6 +437,8 @@ class Router:
         on_mount(lambda: self.navigate(path, replace=replace))
 
     def _on_history(self, url):
+        from .reactive import on_mount
+
         current = self.url.peek()
         for guard in list(self._guards):
             if guard(url, current) is False:
@@ -427,21 +446,34 @@ class Router:
                 return
         self._remember_scroll(current)
         self._set_url(url)
-        self._scroll_to(self._scroll.get(url, 0))
+        y = self._scroll.get(url, 0)
+        on_mount(lambda: self._scroll_to(y))  # once the page that was left is back on screen
 
     def _set_url(self, url):
         from .reactive import on_mount
 
-        with batch():
-            self.is_routing.set(True)
-            self.url.set(url)
-            # The route effects this update runs start the preloads; the navigation is over
-            # once the update has settled and they have finished.
-            on_mount(self._settle_routing)
+        aio._navigation = self  # ty: ignore[invalid-assignment]  # the new route's Resources count toward is_routing
+        try:
+            with batch():
+                self.is_routing.set(True)
+                self.url.set(url)
+                # The route effects this update runs start the preloads and create the new
+                # route's resources; the navigation is over once the update has settled and
+                # they have finished.
+                on_mount(self._settle_routing)
+        finally:
+            aio._navigation = None
 
     def _settle_routing(self):
         if self._inflight == 0 and self.is_routing.peek():
             self.is_routing.set(False)
+
+    def _track_resource(self, resource):
+        self._inflight += 1
+
+    def _resource_done(self, resource):
+        self._inflight -= 1
+        self._settle_routing()
 
     async def _tracked(self, coro):
         try:

@@ -6,6 +6,7 @@ branches or rows under owners of its own, so a row that leaves disposes only its
 hole they live in moves existing nodes instead of recreating them.
 """
 
+from . import reactive
 from .reactive import ERRORS, LOADING, Memo, Owner, Signal, get_owner, on_cleanup, provide, run_with_owner, untrack
 from .view import Mounted, _build_nodes
 
@@ -99,6 +100,8 @@ def For(each, children, key=None, fallback=None):
     order = []
     home = get_owner()  # rows belong here, not to the hole's effect (see Show)
     template_cache = {}  # rows share one compiled Template when their shape matches
+    identity = [False]  # some item was keyed by id(): the case the debug warning watches
+    warned = [False]
     on_cleanup(lambda: [row["owner"].dispose() for row in rows.values()])
 
     def key_of(item, i):
@@ -109,6 +112,7 @@ def For(each, children, key=None, fallback=None):
                 hash(item)
                 return item
             except TypeError:
+                identity[0] = True
                 return id(item)
         if isinstance(key, str):
             return item[key]
@@ -119,8 +123,10 @@ def For(each, children, key=None, fallback=None):
 
         renderer = _view._current_renderer
         items = list(each() or [])
+        previous = len(rows)
         new_order = []
         seen = set()
+        survived = 0
         for i, item in enumerate(items):
             k = key_of(item, i)
             if k in seen:
@@ -132,10 +138,20 @@ def For(each, children, key=None, fallback=None):
                 row = _make_row(item, i, key is False, children, renderer, home, template_cache)
                 rows[k] = row
             else:
+                survived += 1
                 if row["index"].peek() != i:
-                    row["index"].set(i)
+                    row["index"]._write(i)
                 if key is False and row["item"].peek() is not item:
-                    row["item"].set(item)
+                    row["item"]._write(item)
+        if reactive.DEBUG and identity[0] and previous and items and survived == 0 and not warned[0]:
+            # Every row was rebuilt: the items are fresh objects each time (dicts rebuilt in a
+            # handler), so identity keys never match. The fix is a key.
+            warned[0] = True
+            reactive.warn(
+                f"For: none of the {previous} rows survived an update, so every row was rebuilt "
+                "(focus and scroll with it). The items are keyed by identity; give For a key= "
+                '(key="id", or a function) that survives a rebuilt item.'
+            )
         for k in list(rows):
             if k not in seen:
                 rows.pop(k)["owner"].dispose()
@@ -227,12 +243,12 @@ class _LoadingScope:
             return
         if resource not in self._resources:
             self._resources.append(resource)
-            self.pending.set(self.pending.peek() + 1)
+            self.pending._write(self.pending.peek() + 1)
 
     def remove(self, resource):
         if resource in self._resources:
             self._resources.remove(resource)
-            self.pending.set(self.pending.peek() - 1)
+            self.pending._write(self.pending.peek() - 1)
 
 
 def Loading(fallback, children, keep=False):

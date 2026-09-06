@@ -93,6 +93,28 @@ class Hydration:
         self.claimed = []
         self.stack = []
         self.mismatches = 0
+        self.details = []  # one line per mismatch, for `frontage.debug`
+
+    def _note(self, message):
+        self.mismatches += 1
+        self.details.append(message)
+
+    @staticmethod
+    def describe(node):
+        """A node in a few characters: `<li class="x">`, `text 'Ada'`, `<!--h-->`."""
+        if not is_node(node):
+            return "the end of the content"
+        kind = node.nodeType
+        if kind == 3:
+            text = str(node.data)
+            return f"text {text[:40]!r}" + ("…" if len(text) > 40 else "")
+        if kind == 8:
+            return f"<!--{str(node.data)[:20]}-->"
+        if kind == 1:
+            html = str(node.outerHTML)
+            end = html.find(">")
+            return html[: end + 1] if 0 < end < 80 else html[:80]
+        return f"node type {kind}"
 
     def push(self, node):
         self.stack.append((self.cursor, self.active, self.claimed))
@@ -125,7 +147,7 @@ class Hydration:
             self._advance(node)
             self.claimed.append(node)
             return node
-        self.mismatches += 1
+        self._note(f"expected <{tag}>, found {self.describe(node)}")
         return None
 
     def claim_hole(self):
@@ -181,8 +203,8 @@ class Hydration:
             if span is not None:
                 following = span[2].nextSibling
             elif not any(node.isSameNode(k) for k in keep):
+                self._note(f"dropped {self.describe(node)}: nothing in the view adopted it")
                 parent.removeChild(node)
-                self.mismatches += 1
             node = following
         parent.removeChild(start)
 
@@ -255,9 +277,19 @@ class DomRenderer(Renderer):
         return self.hydration
 
     def end_hydration(self):
+        import sys
+
         hyd, self.hydration = self.hydration, None
+        debug = sys.modules.get("frontage.debug")
+        if debug is not None:
+            debug.last_hydration = hyd  # ty: ignore[unresolved-attribute]
         if hyd is not None and hyd.mismatches:
             warn(f"hydration: {hyd.mismatches} node(s) differed from the prerendered page and were rebuilt")
+            if debug is not None:
+                for line in hyd.details:
+                    warn(f"hydration: {line}")
+            else:
+                warn("hydration: `import frontage.debug` in the app to see each mismatch")
         try:  # the prerendered page queues early clicks and input for the app to replay
             replay = getattr(window, "__frontage_replay", None)
             if replay is not None:

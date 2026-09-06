@@ -12,7 +12,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import pyscript
+from . import PROG, pyscript
 
 
 def export(app, out=None, bundle_pyscript=True, pyscript_dir=None, quiet=False):
@@ -76,7 +76,7 @@ def _is_frontage_wheel(entry):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="python -m frontage export", description=__doc__)
+    parser = argparse.ArgumentParser(prog=f"{PROG} export", description=__doc__)
     parser.add_argument("app", help="a directory with an index.html and the app's .py files")
     parser.add_argument("--out", default=None, help="destination (default: ./build/<app name>)")
     parser.add_argument(

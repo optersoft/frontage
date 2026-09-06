@@ -2,7 +2,7 @@
 
 Frontage: a fine-grained reactive UI framework for Python in the browser (PyScript; Pyodide
 and MicroPython), published to PyPI as `frontage`, Apache 2.0, copyright Optersoft. Rewritten
-clean-room from `SPEC.md` per `DESIGN.md`; `main` is past milestone **M6** (0.4.0: the plan, the command line, prerendering with hydration). `origin` is
+clean-room from `SPEC.md` per `DESIGN.md`; `main` is past milestone **M7** (0.5.0: the plan, the command line, prerendering with hydration, transitions). `origin` is
 `github.com/optersoft/frontage` (GitHub, because PyPI publishing needs Actions); the PuePy fork is
 on branch `puepy-reference`.
 
@@ -19,7 +19,8 @@ on branch `puepy-reference`.
 | Path | What |
 |---|---|
 | `frontage/runtime.py` | which interpreter; the only module that imports `pyscript`; server stand-ins that raise a sentence |
-| `frontage/reactive.py` | Signal, Memo, Effect/RenderEffect, Owner, context, batch, `spawn`, error routing, the two boundary contexts |
+| `frontage/reactive.py` | Signal, Memo (async when its function returns a coroutine), Effect/RenderEffect, Owner, context, batch, `spawn`, error routing, the two boundary contexts; `transition`/`Transition`/`use_transition`/`is_pending`/`Optimistic`; the `DEBUG` warnings |
+| `frontage/debug.py` | import it in an app for the per-node hydration mismatch report (`last_hydration`, `hydration_report()`); nothing else imports it |
 | `frontage/store.py` | `Store` over dicts and lists, `reconcile` |
 | `frontage/renderer.py` | the `Renderer` seam, `HtmlRenderer` (nodes → HTML, parses templates on CPython), `RecordingRenderer` |
 | `frontage/view.py` | `Element`/`Text`, the `h` builder, Template compile/clone, holes and the insert rules, floating holes, `mount` |
@@ -48,6 +49,17 @@ on branch `puepy-reference`.
   browser smoke test is the guard: `mk test --browser`.
 - **`runtime.py` re-exports the browser globals.** Its `__all__` is what stops ruff's
   unused-import autofix from deleting them; it happened once on the fork.
+- **The package's own signals write with `_write`, not `set`.** `Signal.set` warns (E2) when a
+  tracked computation is running, and a Loading scope's count or a For row's index legitimately
+  changes during a tracked read. User-facing writes keep `set`. Tasks that should have read
+  their inputs before their first await are spawned with `spawn(…, name=…)`; that name is
+  what the read-after-await warning prints.
+- **A transition defers render effects, nothing else.** `_flush` parks a render effect in the
+  open `Transition` instead of running it; `_queued` stays set so it is not queued twice;
+  `Resource._load` and an async `Memo._start` register with the transition and `_release`/
+  `_settle` count them down; the commit re-queues the parked effects in one batch. Effects
+  downstream of an `Optimistic` write are flagged `_urgent` and run anyway. A branch the new
+  state would create is built at the commit: there is no off-screen rendering.
 - **Count bridge crossings.** Every DOM call from Python crosses to JavaScript. The
   `RecordingRenderer` exists so tests assert how few operations an update costs. A change that
   adds operations to a hot path needs a number, not an argument.
@@ -80,6 +92,12 @@ on branch `puepy-reference`.
   they were created; the browser hands them back in the same order and skips the first load.
   Same code, same order; a Resource the server never created just fetches.
 - **The version** is `frontage/version.py`; hatchling reads it; the browser reads it as code.
+- **`frontage` on PATH and `python -m frontage` are the same `cli.main`**; `cli.PROG` says which
+  was invoked and every sub-parser's `prog` reads it, so `--help` names the right one. Docs say
+  `uvx frontage …` (the script, from PyPI, nothing installed) since 0.5.0.
+- **`unique_id` counts per mount** (`_ID_SCOPE`, an internal context the root owner provides,
+  named after the target's id). The prerenderer passes the selector as `scope=` so the server
+  and the browser hand out the same ids; a test that mounts into a node gets an ordinal.
 - **MicroPython differences met so far**, each now handled or documented: no writable
   `__name__`, no `co_argcount`, no `html.parser`, no `__getattribute__` hook, no `__mro__`, no
   writable instance `__dict__` (use `object.__setattr__`), `zip` has no `strict`, and **a
