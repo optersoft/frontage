@@ -160,9 +160,10 @@ constraint holds).
       All nine pipelines green and the sites smoke-tested in Chromium. ⚠ A new project's Pages
       defaults to members-only even when public: `PUT /projects/:id pages_access_level=enabled`
       (`public` is refused for a public project).
-- [ ] The chapter repos install `frontage` from PyPI, so they export with 0.4.0, which keeps the
-      wheel in `packages` beside the module files (double install, harmless). Fixed in `export`
-      after 0.4.0; the next release makes the pipelines' output lean.
+- [x] 0.4.1 (2026-09-06): `export` drops the wheel from `packages` and rewrites the CDN links when
+      bundling; the chapter repos and Basic name the 0.4.1 wheel; `site.build` keeps every released
+      wheel at its URL. ⚠ `git push origin main --tags` created no run for the tag on GitHub (the
+      same-commit branch push won); pushing the tag on its own did.
 
 ## After 0.4.0 (the plan's "later", not scheduled)
 
