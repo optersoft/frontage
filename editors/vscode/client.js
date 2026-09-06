@@ -110,4 +110,6 @@ function activate(context) {
   );
 }
 
-module.exports = { activate, deactivate: stop };
+// `serverCommand` and `quote` are exported for test/extension.test.js: how the server is
+// found is the only logic in this file, and it is the part a person cannot see is wrong.
+module.exports = { activate, deactivate: stop, serverCommand, quote };

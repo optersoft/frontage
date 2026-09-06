@@ -1,38 +1,84 @@
 {
   "name": "frontage",
   "displayName": "Frontage",
-  "description": "Templates, checks and completion for frontage — reactive Python UI in the browser.",
+  "description": "Templates, checks and completion for frontage \u2014 reactive Python UI in the browser.",
   "version": "0.1.0",
   "publisher": "optersoft",
   "license": "Apache-2.0",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Programming Languages", "Linters", "Snippets"],
-  "keywords": ["frontage", "pyscript", "pyodide", "micropython", "python"],
-  "repository": { "type": "git", "url": "https://github.com/optersoft/frontage.git", "directory": "editors/vscode" },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Snippets"
+  ],
+  "keywords": [
+    "frontage",
+    "pyscript",
+    "pyodide",
+    "micropython",
+    "python"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/optersoft/frontage.git",
+    "directory": "editors/vscode"
+  },
   "homepage": "https://frontage.optersoft.com",
-  "bugs": { "url": "https://github.com/optersoft/frontage/issues" },
+  "bugs": {
+    "url": "https://github.com/optersoft/frontage/issues"
+  },
   "main": "./client.js",
-  "activationEvents": ["onLanguage:python", "onLanguage:markdown"],
+  "activationEvents": [
+    "onLanguage:python",
+    "onLanguage:markdown"
+  ],
   "contributes": {
     "grammars": [
       {
         "scopeName": "frontage.template.injection",
         "path": "./syntaxes/frontage.injection.json",
-        "injectTo": ["source.python"],
+        "injectTo": [
+          "source.python"
+        ],
         "embeddedLanguages": {
           "meta.embedded.block.html": "html",
           "meta.embedded.expression.python": "python"
         }
       }
     ],
-    "snippets": [{ "language": "python", "path": "./snippets/frontage.json" }],
+    "snippets": [
+      {
+        "language": "python",
+        "path": "./snippets/frontage.json"
+      }
+    ],
     "commands": [
-      { "command": "frontage.restartServer", "title": "Frontage: Restart Language Server" },
-      { "command": "frontage.check", "title": "Frontage: Check This File" },
-      { "command": "frontage.serve", "title": "Frontage: Serve" },
-      { "command": "frontage.export", "title": "Frontage: Export" },
-      { "command": "frontage.prerender", "title": "Frontage: Prerender" },
-      { "command": "frontage.tailwind", "title": "Frontage: Tailwind" }
+      {
+        "command": "frontage.restartServer",
+        "title": "Frontage: Restart Language Server"
+      },
+      {
+        "command": "frontage.check",
+        "title": "Frontage: Check This File"
+      },
+      {
+        "command": "frontage.serve",
+        "title": "Frontage: Serve"
+      },
+      {
+        "command": "frontage.export",
+        "title": "Frontage: Export"
+      },
+      {
+        "command": "frontage.prerender",
+        "title": "Frontage: Prerender"
+      },
+      {
+        "command": "frontage.tailwind",
+        "title": "Frontage: Tailwind"
+      }
     ],
     "configuration": {
       "title": "Frontage",
@@ -44,28 +90,42 @@
         },
         "frontage.server.command": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "markdownDescription": "How to start the server. Empty means: the workspace's `.venv` if it has frontage, otherwise `uvx --python 3.14 frontage lsp`."
         },
         "frontage.python": {
           "type": "string",
           "default": "",
-          "markdownDescription": "A Python 3.14 interpreter to run the server with. Below 3.14 the template rules cannot fire — template strings do not parse."
+          "markdownDescription": "A Python 3.14 interpreter to run the server with. Below 3.14 the template rules cannot fire \u2014 template strings do not parse."
         },
         "frontage.trace.server": {
           "type": "string",
-          "enum": ["off", "messages", "verbose"],
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
           "default": "off",
           "description": "Log the traffic between the editor and the server."
         }
       }
     }
   },
-  "dependencies": { "vscode-languageclient": "^9.0.1" },
-  "devDependencies": { "@types/vscode": "^1.85.0", "@vscode/vsce": "^3.2.0" },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.0",
+    "vscode-textmate": "^9.0.0",
+    "vscode-oniguruma": "^2.0.1"
+  },
   "scripts": {
     "package": "vsce package",
-    "publish": "vsce publish"
+    "publish": "vsce publish",
+    "test": "node --test \"test/*.test.js\""
   }
 }

@@ -4,3 +4,5 @@ node_modules/.bin/**
 **/.eslintrc.json
 **/tsconfig.json
 .gitignore
+test/**
+package-lock.json

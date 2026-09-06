@@ -17,3 +17,5 @@ test-results/
 /tools/pyscript/
 .wrangler/
 /build/
+node_modules/
+*.vsix

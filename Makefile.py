@@ -10,6 +10,7 @@
     mk serve [--port N]     the examples at http://127.0.0.1:8000/examples/, package read live
     mk dist.build           sdist + wheel into ./dist, then import the wheel once
     mk export APP [--out D] a self-contained static directory for one app (examples/counter, …)
+    mk vscode.test          the extension: manifest, snippets, client, grammar (needs npm)
     mk site.build           frontage.optersoft.com into ./www: the wheels, the playground, redirects
     mk site.deploy          build, then publish ./www to Cloudflare Pages by hand (fallback)
 
@@ -194,6 +195,14 @@ def vscode_package() -> None:
     sh("npx", "--yes", "@vscode/vsce", "package", "--no-git-tag-version", cwd=VSCODE)
     built = sorted(VSCODE.glob("*.vsix"))
     note(f"built {built[-1].relative_to(ROOT)}" if built else "no .vsix produced")
+
+
+@task(name="vscode.test", requires=["npm"])
+def vscode_test() -> None:
+    """Test the VS Code extension: the manifest, the snippets, the client's server discovery,
+    and the TextMate grammar tokenised by the engine VS Code itself uses."""
+    sh("npm", "install", "--silent", cwd=VSCODE)
+    sh("npm", "test", cwd=VSCODE)
 
 
 @task(name="vscode.install", needs=[vscode_package], requires=["code"])

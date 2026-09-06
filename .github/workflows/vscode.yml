@@ -37,10 +37,12 @@ jobs:
           node-version: "22"
       - name: Install
         run: npm install
-      - name: The manifest and the grammar must be valid JSON
-        run: node -e "for (const f of ['package.json','syntaxes/frontage.injection.json','snippets/frontage.json']) JSON.parse(require('fs').readFileSync(f)); console.log('ok')"
       - name: The client must at least parse
         run: node --check client.js
+      - name: Test
+        # The manifest, the snippets, how the client finds a server, and the grammar
+        # tokenised by the same Oniguruma engine VS Code uses (test/extension.test.js).
+        run: npm test
       - name: Package
         run: npx --yes @vscode/vsce package --no-git-tag-version
       - uses: actions/upload-artifact@v4
