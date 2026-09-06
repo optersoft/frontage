@@ -289,6 +289,13 @@ is the exit if it ever outgrows this.
       prerenderer ignored async memos started during a render and waited on disposed resources,
       and on MicroPython a task that disposed its own owner cancelled itself (C24).
 
+## Do not "fix" these
+
+- A push to a chapter repo may create **no** GitLab pipeline (router, 0.8.2): the commit is on
+  `main` and no pipeline exists, so the site keeps serving the old wheel. Not a CI failure and
+  not a bad `.gitlab-ci.yml`. `glab api -X POST "projects/optersoft%2Fpython%2Ffrontage-<c>/pipeline?ref=main"`.
+  Check after a wheel bump: `curl -sL https://optersoft.gitlab.io/python/frontage-<c>/frontage/version.py`.
+
 ## Outward-facing, for David
 
 - [x] DNS: frontage.optersoft.com is live (2026-09-06).
