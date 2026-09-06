@@ -693,8 +693,11 @@ class _Root:
         self.owner.dispose()
 
 
-def mount(view, parent, renderer=None, debug=True, fallback=None):
+def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True):
     """Build `view` under `parent` with its own root `Owner`; returns a handle with `dispose()`.
+
+    `parent` is emptied first — a "Loading…" placeholder in the HTML is the usual reason it
+    is not — unless `clear=False`, which appends after whatever is already there.
 
     Pass a *function* (a component, or `lambda: app(...)`) rather than a built view: it runs
     inside the root owner, so everything it creates (components, resources, control flow)
@@ -711,6 +714,9 @@ def mount(view, parent, renderer=None, debug=True, fallback=None):
 
         renderer = renderer or DomRenderer()
         parent = resolve(parent)
+    if clear:
+        while (child := renderer.first_child(parent)) is not None:
+            renderer.remove_node(parent, child)
     owner = Owner(parent=None)
 
     def page(exc, reset):

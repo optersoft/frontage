@@ -224,3 +224,19 @@ def test_reconcile_keeps_rows_by_key_and_updates_fields():
     assert r.count("replace_text") == 1  # only bob's age changed
     reconcile(store.rows, [{"id": 1, "name": "ann", "age": 30}])
     assert html(root) == "<ul><li>ann 30</li></ul>"
+
+
+def test_mount_clears_the_placeholder():
+    r = RecordingRenderer()
+    root = r.create_element("div")
+    r.insert_node(root, r.create_text("Loading…"))
+    mount(lambda: h.b("app"), root, r)
+    assert root.to_html() == "<div><b>app</b></div>"
+
+
+def test_mount_can_append_instead():
+    r = RecordingRenderer()
+    root = r.create_element("div")
+    r.insert_node(root, r.create_text("keep"))
+    mount(lambda: h.b("app"), root, r, clear=False)
+    assert root.to_html() == "<div>keep<b>app</b></div>"
