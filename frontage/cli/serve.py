@@ -169,6 +169,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         finally:
             watcher.unsubscribe(q)
 
+    def handle(self):
+        try:
+            http.server.SimpleHTTPRequestHandler.handle(self)
+        except (ConnectionResetError, BrokenPipeError):
+            pass  # a page closed its event stream; nothing to report
+
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
         # Workers with SharedArrayBuffer need cross-origin isolation; harmless otherwise.

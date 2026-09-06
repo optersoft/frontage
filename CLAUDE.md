@@ -32,10 +32,12 @@ on branch `puepy-reference`.
 | `frontage/widgets.py` | form controls bound to signals |
 | `frontage/dom.py` | the `Renderer` over the real DOM, delegated events, template cloning; `Hydration`, the cursor `mount(hydrate=True)` walks over prerendered HTML |
 | `frontage/cli/` + `__main__.py` | `python -m frontage`: `export`, `prerender` (imports the app with `runtime.prerender.active`, renders each route with `HtmlRenderer(hydration_markers=True)`, awaits resources, injects HTML + JSON + the replay script), `tailwind` (standalone CLI fetched into `~/.cache/frontage`), `check` (lambda in a t-string, `html(f"…")`, HTML the parser rewrites), `pyscript` (the pinned bundle version lives here), `serve` (a static server with live reload: the reload script is injected into HTML, an SSE stream at `/__frontage/reload`, a polling `Watcher`; `tools/serve.py` subclasses its handler so `mk serve` and the browser tests reload too). CPython only; never listed in a `pyscript.json` |
+| `frontage/lsp/` | the language server behind `frontage lsp`: `protocol` (Content-Length framing over stdio, hand-written, no dependency), `documents` (open files, UTF-16 positions), `scanner` (the tolerant t-string lexer and the HTML state machine that answers *where is the cursor*), `rules` (the three static rules, with ranges — `cli/check.py` is the command line over these), `data` (elements, attributes, frontage's prefixes), `features` (completion, hover, definition, semantic tokens), `server`. CPython only, like `cli/`; never in a `pyscript.json` |
 | `frontage/errors.py` | `FrontageError`, `RenderError`, `NotReady`, `format_exception` |
 | `tests/` | unit tests, CPython, no browser; `tests/browser/` is Playwright over `examples/` and starts its own server |
 | `examples/` | one page per example; `pyscript.json` lists the package files by path so edits show live |
-| `tools/serve.py`, `tools/fetch_pyscript.py`, `tools/bench.py` | dev server, offline PyScript fetch into `tools/pyscript/` (gitignored; the version is `frontage.cli.pyscript.VERSION`), the rows benchmark |
+| `tools/serve.py`, `tools/fetch_pyscript.py`, `tools/bench.py`, `tools/profile/` + `tools/profile_rows.py` | dev server (live reload via `frontage.cli.serve`), offline PyScript fetch into `tools/pyscript/` (gitignored; the version is `frontage.cli.pyscript.VERSION`), the rows benchmark, the rows profile (phases + calibration, served at `/profile/`) |
+| `editors/` | the editor clients. `editors/vscode/` is the VS Code one — a thin client plus the TextMate injection grammar and the snippets, plain JavaScript so there is no build step; `editors/README.md` is the config block for Zed, Neovim, Helix and Emacs, which need no code at all |
 | `web/` | the landing page and `web/playground/` of frontage.optersoft.com; `mk site.build` assembles `www/` (with the bundle and the wheel) |
 | `typings/` | ty stubs for the browser-only modules |
 | branch `puepy-reference` | the PuePy fork, the acceptance test until 0.1.0; never merged |
@@ -68,9 +70,14 @@ on branch `puepy-reference`.
   the DOM, a `_root` flag `mount` sets (`mark_root`) on the HtmlRenderer's target and a
   parent walk otherwise. The view layer passes `target=` to every `RenderEffect` it creates;
   a user `RenderEffect` without one is assumed on screen and parks.
-- **Count bridge crossings.** Every DOM call from Python crosses to JavaScript. The
-  `RecordingRenderer` exists so tests assert how few operations an update costs. A change that
-  adds operations to a hot path needs a number, not an argument.
+- **Count bridge crossings, and on MicroPython count calls.** Every DOM call from Python
+  crosses to JavaScript. The `RecordingRenderer` exists so tests assert how few operations an
+  update costs. A change that adds operations to a hot path needs a number, not an argument.
+  On MicroPython the Python side is three quarters of a 1,000-row create (DESIGN §12):
+  a method call is 0.24 µs, and **`isinstance(x, (A, B))` that misses is 2.7 µs**, so the hot
+  paths (`_children`, `_build_nodes`, `_normalize`, a hole's compute, `Store._is_container`)
+  use `type(x) is T`; keep it that way. `tools/profile_rows.py` (the page in `tools/profile/`)
+  gives the phase-by-phase numbers and a per-primitive calibration on both interpreters.
 - **PyScript is pinned** in `frontage/cli/pyscript.py` and served locally; examples load
   `/pyscript/core.js`. Bumping the version is one line there and a browser run.
 - **The academy chapters are part of a release.** The docs live in
@@ -104,6 +111,27 @@ on branch `puepy-reference`.
   `[ordinal, value]` pairs, so a plain memo between them costs nothing and a memo the server
   never started just runs. Same code, same order; a Resource the server never created just
   fetches. The data block is a dict since 0.7.0; a list (an older page) still hydrates.
+- **The language server is Python because the rules are.** `frontage/lsp/` imports the package
+  and shares `rules.py` with `frontage check`, so the server's reading of a template is the
+  runtime's by construction rather than a second implementation of `SPEC.md` in another
+  language. That is also the answer to "shouldn't it be Rust, like ruff": ruff analyses whole
+  repositories, this analyses one open buffer, and the whole diagnostics pass measures 3.4 ms
+  on the largest file here — parse *and* walk. A rewrite would buy 3 ms nobody was waiting
+  for and cost per-platform wheels, a second parser for PEP 750, and the drift. If a profile
+  ever says otherwise the answer is a PyO3 module behind `rules.py`, not a second server.
+- **The server stays out of Python's territory.** Inside `html(t"…")` no other tool knows
+  anything, so it answers fully; outside, it answers only for frontage's own names. It never
+  reports a syntax error — Pylance says it better, and while someone types most keystrokes
+  leave the file briefly unparseable, so `server.publish` keeps the last good diagnostics
+  instead of flashing a parse error that moves around.
+- **`scanner.py` reads the same grammar twice, on purpose.** `context_at` cuts at a cursor
+  and needs the state at a boundary in half-written text; `emit_tokens` walks forwards and
+  needs every span. A test asserts they agree. Both collapse an interpolation to one
+  character before running — the trick `template.py` and `rules.py` also use — because
+  otherwise an attribute after a hole in the same tag is invisible.
+- **`editor-v*` is the extension's tag prefix, and the `v` matters.** `ci.yml` triggers on
+  `v*.*.*`, which a glob happily matches against `vscode-v0.1.0`: the leading `v` of "vscode"
+  *is* the `v`. A VS Code release under that name would run the PyPI publish job.
 - **The version** is `frontage/version.py`; hatchling reads it; the browser reads it as code.
 - **`frontage` on PATH and `python -m frontage` are the same `cli.main`**; `cli.PROG` says which
   was invoked and every sub-parser's `prog` reads it, so `--help` names the right one. Docs say
@@ -127,3 +155,10 @@ uv, ruff, ty, pytest; `uv run --frozen …` in anything a gate runs. `mk check` 
 `mk test --browser` needs `mk pyscript.fetch` and `uv run playwright install chromium` once.
 Release: bump `version.py`, commit, tag `vX.Y.Z`, push the tag; CI publishes over OIDC (the
 publisher record PyPI needs is in the header of `.github/workflows/ci.yml`).
+
+The VS Code client releases separately: bump `version` in `editors/vscode/package.json`, tag
+`editor-vX.Y.Z`, push it; `.github/workflows/vscode.yml` publishes to the Visual Studio
+Marketplace and Open VSX. Neither speaks OIDC, so unlike PyPI this one needs two stored
+secrets (`VSCE_PAT`, `OVSX_PAT`) — the first in this repository's release path. `mk
+vscode.package` builds the `.vsix` locally, `mk vscode.install` puts it in the local VS Code,
+and `mk lsp.probe FILE` prints what the server would say about a file with no editor in the way.

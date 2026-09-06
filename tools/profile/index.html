@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Frontage rows profile</title>
+  <link rel="stylesheet" href="/pyscript/core.css">
+  <script type="module" src="/pyscript/core.js" offline></script>
+</head>
+<body>
+<pre id="out">profiling…</pre>
+<div id="done" hidden></div>
+<script>
+  const type = new URLSearchParams(location.search).get("type") || "mpy";
+  const s = document.createElement("script");
+  s.type = type; s.src = "./profile.py"; s.setAttribute("config", "/examples/pyscript.json");
+  document.body.appendChild(s);
+</script>
+</body>
+</html>

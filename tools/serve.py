@@ -25,6 +25,7 @@ class Handler(LiveHandler):
         "/frontage/": ROOT / "frontage",
         "/playground/": ROOT / "web" / "playground",
         "/build/": ROOT / "build",  # `python -m frontage prerender` output, for the browser tests
+        "/profile/": ROOT / "tools" / "profile",  # the rows profile page (tools/profile_rows.py)
     }
 
     def translate_path(self, path):

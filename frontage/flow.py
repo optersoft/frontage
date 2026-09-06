@@ -166,10 +166,14 @@ def For(each, children, key=None, fallback=None):
     return accessor
 
 
+def _is(a, b):
+    return a is b
+
+
 def _make_row(item, i, index_mode, children, renderer, home, cache):
     owner = Owner(parent=home)
     index = Signal(i)
-    item_signal = Signal(item, equal=lambda a, b: a is b)
+    item_signal = Signal(item, equal=_is)
 
     def make():
         if index_mode:
@@ -178,7 +182,7 @@ def _make_row(item, i, index_mode, children, renderer, home, cache):
             view = children(item, index)
         return _build(view, renderer, cache)
 
-    nodes = run_with_owner(owner, lambda: untrack(make))
+    nodes = run_with_owner(owner, untrack, make)
     return {"owner": owner, "nodes": nodes, "index": index, "item": item_signal}
 
 

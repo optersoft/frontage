@@ -204,13 +204,17 @@ class Owner:
         return fn
 
     def _dispose_owned(self):
-        owned, self._owned = self._owned, []
-        for child in reversed(owned):
-            child._parent = None  # already being removed; skip the parent-list bookkeeping
-            child.dispose()
-        cleanups, self._cleanups = self._cleanups, []
-        for fn in reversed(cleanups):
-            fn()
+        # Guarded: a computation's first run has nothing to dispose, and the two list
+        # allocations per run were measurable on MicroPython (2,000 holes per 1,000 rows).
+        if self._owned:
+            owned, self._owned = self._owned, []
+            for child in reversed(owned):
+                child._parent = None  # already being removed; skip the parent-list bookkeeping
+                child.dispose()
+        if self._cleanups:
+            cleanups, self._cleanups = self._cleanups, []
+            for fn in reversed(cleanups):
+                fn()
 
     def dispose(self):
         if self._disposed:

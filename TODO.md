@@ -207,6 +207,71 @@ constraint holds).
       whatever PyPI has that day while its page names one wheel. Pin, or accept (it is what keeps
       the sites current without nine commits).
 
+## M10 — the language server (in progress, 2026-09-06)
+
+Decided this session: it lives in **this** repo, and it is **Python**. One repo because the
+extension's whole value derives from `SPEC.md` and the CLI, so the commit that changes a rule
+changes the editor's understanding of it in the same diff; Python because `frontage/lsp/`
+imports the package and shares `rules.py` with `frontage check`, and a Rust server would be a
+second implementation of the spec. Rust was weighed for speed and declined on a measurement:
+`ast.parse` + a full `ast.walk` — the entire diagnostics pass — is 3.4 ms on `reactive.py`,
+the largest file here, and 0.7 ms on `examples/rows`. `git subtree split` on `editors/vscode/`
+is the exit if it ever outgrows this.
+
+- [x] L0 foundations: `frontage lsp`; hand-written JSON-RPC over stdio (`protocol.py`, no
+      dependency, so the package's `dependencies = []` and `uvx frontage lsp` both survive);
+      `documents.py` with the UTF-16 arithmetic; `scanner.py`, the tolerant t-string lexer and
+      the HTML state machine, which is what every feature is a lookup on top of.
+- [x] L1 diagnostics: `rules.py` with real ranges — the old `check_source` reported one line
+      number, and `nesting_findings` reported the *enclosing template's* line for every finding.
+      `cli/check.py` is now the command line over it and its tests pass unchanged.
+- [x] L2 completion: elements, per-element and global attributes, and frontage's prefixes first;
+      events inside `on:`, the three targets inside `bind:`, CSS inside `style:`, enums inside a
+      value, `</` closing the innermost open element.
+- [x] L3 hover and go-to-definition, including a component named inside `{…}` — the position a
+      Python language server cannot reach, because to it that name is a character in a string.
+- [x] L4 semantic tokens, with the TextMate grammar kept as the fallback that works before the
+      server starts.
+- [x] L5 clients: `editors/vscode/` (thin, plain JavaScript, no build step) and `editors/README.md`
+      for Zed, Neovim, Helix and Emacs. `.github/workflows/vscode.yml` releases on `editor-v*`.
+- [x] 62 tests in `tests/test_lsp.py`, including one full session over a pipe. `mk lsp.probe FILE`
+      prints what an editor would show.
+- [ ] `[human]` Register the `optersoft` publisher on the Visual Studio Marketplace and Open VSX,
+      then put `VSCE_PAT` and `OVSX_PAT` in the repo's `vscode` environment. Neither marketplace
+      speaks OIDC, so these are the first stored secrets in this repo's release path — PyPI needs
+      none. Nothing ships until they exist.
+- [ ] Docs: the extension is user-visible, so a section in the tooling chapter on
+      academy.optersoft.com before `editor-v0.1.0` is tagged. It is tooling, not an app, so it
+      needs no `frontage-<chapter>` repo of its own.
+- [ ] Try the extension in a real VS Code (`mk vscode.install`) before tagging. Everything so far
+      is verified through the protocol, which is the server's whole surface — but the grammar, the
+      snippets and the client's server discovery have only been checked as valid JSON and
+      `node --check`.
+- [ ] The lambda rule fires only for a *parenthesised* lambda. CPython 3.14 rejects
+      `{lambda ev: None}` in a t-string outright (the `:` is a format spec), so
+      `test_check_flags_a_lambda_in_a_template_string` has been passing on the syntax-error
+      branch, not the rule — its assertion is `"lambda" in message`, and the parse error says
+      "lambda expressions are not allowed without parentheses". The rule is still right for
+      `{(lambda: 1)}`, which parses here and fails on MicroPython. Worth deciding whether the
+      docs' advice ("name the function") needs to mention the parenthesised form at all.
+
+## 0.8.0 (2026-09-06) — the dev server, the router repo, the profiling session
+
+- [x] `frontage serve [DIR]`: live reload (SPEC L10); `tools/serve.py` and `mk serve` reload too.
+- [x] The router chapter repo carries the data loading (`Memo` over a `query`), so the live site
+      demonstrates the memo form; the nine pipelines pin `pip install frontage==X.Y.Z`.
+- [x] MicroPython profiling session on the rows benchmark: `tools/profile/` + `tools/profile_rows.py`
+      (phase by phase, three renderers, a per-primitive calibration). Findings in DESIGN §12;
+      tuple `isinstance` gone from the hot paths, calls trimmed (−5%). Bench after, medians of 3:
+      create 1,000 = 188 ms MicroPython / 89 ms Pyodide, clear = 44 / 8.4, swap = 17 / 2.5.
+- [ ] `[auto]` A hole costs ~21 µs on MicroPython (≈80 calls: `RenderEffect` + `Owner` + `_HoleState`
+      + three closures + marker + reconcile) and a `For` row ~55 µs before its holes; `clear`
+      (disposal) is 44 µs per row. Structural, not trimming: a lighter text-hole path (no owner
+      when the accessor creates nothing), cheaper `Owner`/`_Computation` construction, a
+      disposal that skips empty lists.
+      Do: `uv run python tools/profile_rows.py --interpreters mpy` before and after.
+      Done: "For, null renderer" under 100 ms; the browser suite green on both interpreters.
+
 ## Outward-facing, for David
 
 - [x] DNS: frontage.optersoft.com is live (2026-09-06).

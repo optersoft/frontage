@@ -1,0 +1,99 @@
+{
+  "frontage component": {
+    "prefix": "fcomponent",
+    "body": ["@component", "def ${1:name}(${2}):", "    return html(t\"\"\"", "      <div>$0</div>", "    \"\"\")"],
+    "description": "A component: its own owner, so its effects die with it."
+  },
+  "frontage signal": {
+    "prefix": "fsignal",
+    "body": ["${1:count} = Signal(${2:0})"],
+    "description": "A value that remembers who read it."
+  },
+  "frontage memo": {
+    "prefix": "fmemo",
+    "body": ["${1:total} = Memo(lambda: ${2:items()})"],
+    "description": "A derived value, recomputed only when its inputs changed."
+  },
+  "frontage effect": {
+    "prefix": "feffect",
+    "body": ["Effect(lambda: ${1:print(count())})"],
+    "description": "Runs after render, and again when its dependencies change."
+  },
+  "frontage show": {
+    "prefix": "fshow",
+    "body": ["Show(when=${1:ready}, fallback=${2:None})(lambda: html(t\"<p>$0</p>\"))"],
+    "description": "One branch or the other, built lazily."
+  },
+  "frontage for": {
+    "prefix": "ffor",
+    "body": ["For(each=${1:items})(lambda ${2:item}, index: html(t\"<li>{${2:item}}</li>\"))"],
+    "description": "A list by identity: a reorder moves nodes instead of rebuilding them."
+  },
+  "frontage switch": {
+    "prefix": "fswitch",
+    "body": [
+      "Switch(",
+      "    Match(when=${1:first})(lambda: html(t\"<p>a</p>\")),",
+      "    Match(when=${2:second})(lambda: html(t\"<p>b</p>\")),",
+      ")"
+    ],
+    "description": "The first Match whose condition holds."
+  },
+  "frontage resource": {
+    "prefix": "fresource",
+    "body": ["${1:data} = Resource(lambda: ${2:query()}, fetch=${3:load})"],
+    "description": "An async read tied to its inputs; hydrates by creation order."
+  },
+  "frontage action": {
+    "prefix": "faction",
+    "body": ["${1:save} = Action(${2:submit})"],
+    "description": "An async write, with pending and error state you can render."
+  },
+  "frontage loading boundary": {
+    "prefix": "floading",
+    "body": ["Loading(fallback=lambda: html(t\"<p>Loading…</p>\"))(lambda: $0)"],
+    "description": "Show a fallback while the resources under it are unresolved."
+  },
+  "frontage errored boundary": {
+    "prefix": "ferrored",
+    "body": ["Errored(fallback=lambda error: html(t\"<p>{error}</p>\"))(lambda: $0)"],
+    "description": "Catch errors raised under it and render a fallback."
+  },
+  "frontage state": {
+    "prefix": "fstate",
+    "body": [
+      "class ${1:Model}(State):",
+      "    ${2:count} = field(${3:0})",
+      "",
+      "    @computed",
+      "    def ${4:doubled}(self):",
+      "        return self.${2:count} * 2"
+    ],
+    "description": "A class whose fields are signals and whose computed values are memos."
+  },
+  "frontage store": {
+    "prefix": "fstore",
+    "body": ["${1:store} = Store({\"${2:items}\": []})"],
+    "description": "A deep reactive wrapper over dicts and lists."
+  },
+  "frontage router": {
+    "prefix": "frouter",
+    "body": [
+      "Router(",
+      "    Route(path=\"/\", component=${1:home}),",
+      "    Route(path=\"/${2:about}\", component=${3:about}),",
+      ")"
+    ],
+    "description": "The routing tree."
+  },
+  "frontage mount": {
+    "prefix": "fmount",
+    "body": ["mount(${1:app}, \"${2:#app}\")"],
+    "description": "Attach a view to a DOM node."
+  },
+  "frontage template": {
+    "prefix": "fhtml",
+    "body": ["html(t\"\"\"", "  <${1:div}>$0</${1:div}>", "\"\"\")"],
+    "description": "A view from a template string."
+  }
+}

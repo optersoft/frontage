@@ -1,0 +1,77 @@
+# The VS Code client, which is the only part of this repository that is not Python.
+#
+# It releases on its own cadence, on an `editor-vX.Y.Z` tag. The prefix is not cosmetic:
+# `ci.yml` triggers on `v*.*.*`, and a glob matches `vscode-v0.1.0` too — the leading `v` of
+# "vscode" is the `v`. `editor-` cannot collide, and neither can it satisfy that workflow's
+# `startsWith(github.ref, 'refs/tags/v')` publish guard.
+#
+# Publishing needs two secrets, because unlike PyPI neither marketplace speaks OIDC:
+#
+#   VSCE_PAT   an Azure DevOps personal access token for the `optersoft` publisher
+#   OVSX_PAT   an Open VSX token, so editors that are not VS Code can install it too
+#
+# Release: bump `version` in editors/vscode/package.json, commit, then
+# `git tag -a editor-v0.1.0 -m … && git push origin editor-v0.1.0`.
+
+name: VS Code
+
+on:
+  push:
+    branches: [main]
+    paths: ["editors/vscode/**", ".github/workflows/vscode.yml"]
+    tags: ["editor-v*.*.*"]
+  pull_request:
+    paths: ["editors/vscode/**", ".github/workflows/vscode.yml"]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install
+        run: npm install
+      - name: The manifest and the grammar must be valid JSON
+        run: node -e "for (const f of ['package.json','syntaxes/frontage.injection.json','snippets/frontage.json']) JSON.parse(require('fs').readFileSync(f)); console.log('ok')"
+      - name: The client must at least parse
+        run: node --check client.js
+      - name: Package
+        run: npx --yes @vscode/vsce package --no-git-tag-version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: editors/vscode/*.vsix
+
+  publish:
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/editor-v')
+    runs-on: ubuntu-latest
+    environment: vscode
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install
+      - name: The tag must match the manifest
+        run: |
+          tag="${GITHUB_REF_NAME#editor-v}"
+          manifest="$(node -p "require('./package.json').version")"
+          test "$tag" = "$manifest" || { echo "tag $tag != package.json $manifest"; exit 1; }
+      - name: Visual Studio Marketplace
+        run: npx --yes @vscode/vsce publish --no-git-tag-version
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Open VSX
+        run: npx --yes ovsx publish --pat "$OVSX_PAT"
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}

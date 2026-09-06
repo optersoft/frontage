@@ -188,7 +188,7 @@ def _consume_literal(text, start, quote_at, prefix, found):
     is_t = lowered in _T_PREFIXES
     is_raw = "r" in lowered
     interpolated = is_t or "f" in lowered
-    parts = [] if is_t else None
+    parts = [] if interpolated else None  # an f-string needs them too, only nobody reads them
     body_end = _skip_string_body(text, body_start, quote, is_raw, interpolated, parts)
     end = min(body_end + len(quote), n) if body_end < n else n
     if is_t:
@@ -412,3 +412,134 @@ def context_at(text, offset, templates=None):
         attr = ""  # the last attribute seen is noise anywhere else
     start_offset = offsets[token_start] if token_start < len(offsets) else offset
     return Context(kind, template, tag=tag, attr=attr, word=word, word_start=start_offset, quote=quote, stack=stack)
+
+
+# Token kinds `emit_tokens` produces, in the order the semantic-token legend declares them.
+TOKEN_KINDS = ("tag", "attr", "prefixed", "value", "comment", "punct", "hole")
+
+
+def emit_tokens(text, template):
+    """Every markup span in one template, as `(kind, start, end)` in document offsets.
+
+    This is the same grammar `context_at` replays, read forwards instead of cut at a cursor.
+    They are kept apart on purpose: one answers "what is everything here", which a token
+    emitter can do in a single pass, and the other "what is at this one position while the
+    text around it is still half-written", which needs the state at a boundary rather than
+    the spans either side of it. `tests/test_lsp.py` asserts they agree.
+
+    Interpolations collapse to one character before tokenising, so an attribute that follows
+    a hole inside the same tag is still seen; the spans are mapped back afterwards, and a
+    token that runs across a hole — `class="row {cls} wide"` — comes back split around it.
+    """
+    if not template.is_html:
+        return []
+    markup = []
+    offsets = []
+    holes = []
+    for kind, start, end in template.parts:
+        if kind == "hole":
+            markup.append("\x00")
+            offsets.append((start, end))
+            holes.append(True)
+            continue
+        for index in range(start, end):
+            markup.append(text[index])
+            offsets.append((index, index + 1))
+            holes.append(False)
+    return _map_back(_tokens_in_chunk("".join(markup)), offsets, holes)
+
+
+def _map_back(spans, offsets, holes):
+    """Markup spans as document spans, splitting any that run across an interpolation."""
+    found = []
+    for kind, start, end in spans:
+        run_start = None
+        for index in range(start, min(end, len(offsets))):
+            if holes[index]:
+                if run_start is not None:
+                    found.append((kind, offsets[run_start][0], offsets[index - 1][1]))
+                    run_start = None
+                found.append(("hole", offsets[index][0], offsets[index][1]))
+                continue
+            if run_start is None:
+                run_start = index
+        if run_start is not None:
+            found.append((kind, offsets[run_start][0], offsets[min(end, len(offsets)) - 1][1]))
+    return found
+
+
+def _tokens_in_chunk(text):
+    """Markup spans over a whole reconstructed template body."""
+    found = []
+    i = 0
+    end = len(text)
+    while i < end:
+        lt = text.find("<", i, end)
+        if lt < 0:
+            break
+        if text.startswith("<!--", lt):
+            close = text.find("-->", lt, end)
+            stop = end if close < 0 else close + 3
+            found.append(("comment", lt, stop))
+            i = stop
+            continue
+        i = lt + 1
+        closing = i < end and text[i] == "/"
+        if closing:
+            i += 1
+        found.append(("punct", lt, i))
+        name_start = i
+        while i < end and text[i] not in " \t\r\n/>":
+            i += 1
+        if i > name_start:
+            found.append(("tag", name_start, i))
+        while i < end:
+            char = text[i]
+            if char == ">":
+                found.append(("punct", i, i + 1))
+                i += 1
+                break
+            if char == "/":
+                found.append(("punct", i, i + 1))
+                i += 1
+                continue
+            if char in " \t\r\n":
+                i += 1
+                continue
+            attr_start = i
+            while i < end and text[i] not in " \t\r\n=/>":
+                i += 1
+            name = text[attr_start:i]
+            found.append(("prefixed" if _is_prefixed(name) else "attr", attr_start, i))
+            if i < end and text[i] == "=":
+                found.append(("punct", i, i + 1))
+                i += 1
+                if i < end and text[i] in "\"'":
+                    quote = text[i]
+                    close = text.find(quote, i + 1, end)
+                    stop = end if close < 0 else close + 1
+                    found.append(("value", i, stop))
+                    i = stop
+                else:
+                    value_start = i
+                    while i < end and text[i] not in " \t\r\n>":
+                        i += 1
+                    if i > value_start:
+                        found.append(("value", value_start, i))
+    return found
+
+
+_PREFIX_SPELLINGS = (
+    "on:", "on_", "oncapture:", "oncapture_", "prop:", "prop_", "class:", "class_",
+    "style:", "style_", "bind:", "bind_", "attr:",
+)  # fmt: skip
+
+
+def _is_prefixed(name):
+    """Is this one of frontage's own attribute spellings rather than plain HTML?"""
+    if name == "ref":
+        return True
+    for prefix in _PREFIX_SPELLINGS:
+        if name.startswith(prefix) and len(name) > len(prefix):
+            return True
+    return False

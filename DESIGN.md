@@ -411,6 +411,19 @@ bridge; the two fixes the benchmark forced (O(1) dependency tracking, one versio
 list) mattered far more (swap 328 → 16 ms). The JavaScript shim question stays open until
 M5, with the numbers in `TODO.md`.
 
+**Second measurement (2026-09-06, 0.8.0, `tools/profile_rows.py`).** The Python side is
+three quarters of a 1,000-row create on MicroPython (124 ms of 160 with a renderer that
+does nothing, against 27 of 140 on Pyodide, where the bridge is the cost and templates the
+cure). Per row it is ~330 Python calls: element trees 19 ms per thousand, the `For` row and
+its static build 55, the two holes 43 (a `RenderEffect` with its owner, state and closures
+each), handlers 5, `Store` proxies 17. A method call costs 0.24 µs on MicroPython, an object
+0.5 µs, a closure 0.15 µs, and **an `isinstance` against a tuple that misses 2.7 µs**, fifteen
+times a single-class test; the hot paths use `type(x) is T` now. Trimming allocations did
+nothing measurable; trimming calls (the builder caches its tag factories, static attributes
+skip three calls, child insertion is inlined) gained 5%. The lever left is structural, fewer
+calls per hole and per row, and it is an open item in `TODO.md`. Templates stay the default
+on both: equal on MicroPython, a third faster on Pyodide.
+
 ## 13. Testing
 
 - `SPEC.md` first: behaviours, one line each, grouped by chapter, in our words.

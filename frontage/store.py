@@ -22,7 +22,9 @@ _writing = []  # a stack, so nested set() calls are fine
 
 
 def _is_container(value):
-    return isinstance(value, (dict, list))
+    # Two single-class tests: on MicroPython `isinstance(x, (dict, list))` that misses (every
+    # scalar read) costs fifteen times as much.
+    return isinstance(value, dict) or isinstance(value, list)
 
 
 class Store:

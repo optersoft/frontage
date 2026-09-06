@@ -1,0 +1,49 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "scopeName": "frontage.template.injection",
+  "injectionSelector": "L:source.python -comment -string.quoted.docstring",
+  "patterns": [{ "include": "#template" }],
+  "repository": {
+    "template": {
+      "comment": "html(t\"…\") — the markup is HTML, the braces are Python. One rule for all four quote styles; the end backreferences the opening quote.",
+      "begin": "(?<![\\w.])(html)\\s*(\\()\\s*((?:[rR][tT]|[tT][rR]|[tT])(\"\"\"|'''|\"|'))",
+      "beginCaptures": {
+        "1": { "name": "support.function.frontage" },
+        "2": { "name": "punctuation.section.arguments.begin.python" },
+        "3": { "name": "punctuation.definition.string.begin.python" }
+      },
+      "end": "\\4",
+      "endCaptures": { "0": { "name": "punctuation.definition.string.end.python" } },
+      "name": "meta.template.frontage",
+      "contentName": "meta.embedded.block.html",
+      "patterns": [
+        { "include": "#interpolation" },
+        { "include": "#frontage-attribute" },
+        { "include": "text.html.basic" }
+      ]
+    },
+    "interpolation": {
+      "comment": "A hole: real Python, so hand it to Python's own grammar.",
+      "begin": "(?<!\\{)(\\{)(?!\\{)",
+      "beginCaptures": { "1": { "name": "punctuation.section.embedded.begin.python" } },
+      "end": "(\\})",
+      "endCaptures": { "1": { "name": "punctuation.section.embedded.end.python" } },
+      "name": "meta.embedded.expression.python",
+      "patterns": [{ "include": "source.python" }]
+    },
+    "frontage-attribute": {
+      "comment": "The prefixes are frontage's, not HTML's; colour them as such so they read as behaviour rather than markup.",
+      "patterns": [
+        {
+          "match": "(?<=[\\s\"'<])(on|oncapture|prop|class|style|bind|attr)([:_])([\\w-]+)",
+          "captures": {
+            "1": { "name": "keyword.control.frontage" },
+            "2": { "name": "punctuation.separator.frontage" },
+            "3": { "name": "entity.other.attribute-name.frontage" }
+          }
+        },
+        { "match": "(?<=[\\s\"'<])(ref)(?=[\\s=>/])", "name": "keyword.control.frontage" }
+      ]
+    }
+  }
+}

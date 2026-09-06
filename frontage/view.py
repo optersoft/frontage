@@ -62,9 +62,10 @@ _floating = {}
 def _insert(renderer, parent, node, anchor=None):
     """Insert `node`, then let a floating hole whose marker this is fill in."""
     renderer.insert_node(parent, node, anchor)
-    fill = _floating.pop(id(node), None)
-    if fill is not None:
-        fill()
+    if _floating:  # a dict miss per insert is measurable on MicroPython; floating holes are rare
+        fill = _floating.pop(id(node), None)
+        if fill is not None:
+            fill()
 
 
 class Text:
@@ -129,9 +130,13 @@ def _children(items):
     for item in items:
         if item is None or item is True or item is False:
             continue
-        if isinstance(item, (list, tuple)):
+        # `type(x) is T`, not `isinstance(x, (A, B, C))`: on MicroPython an isinstance against
+        # a tuple that misses costs 2.7 µs, fifteen times a single-class test, and this runs
+        # for every child of every element (tools/profile: 30 ms of a 1,000-row create).
+        t = type(item)
+        if t is list or t is tuple:
             out.extend(_children(item))
-        elif isinstance(item, (Element, Text, Mounted)) or callable(item):
+        elif t is Element or t is Text or t is Mounted or callable(item):
             out.append(item)
         else:
             out.append(Text(item))
@@ -151,7 +156,11 @@ class _TagFactory:
 
 class _Builder:
     def __getattr__(self, tag):
-        return _TagFactory(tag.rstrip("_").replace("_", "-"))
+        # Runs once per tag: the factory is stored on the instance, so the next `h.td` is a
+        # plain attribute hit (no `__getattr__`, no allocation; 7,000 of both per 1,000 rows).
+        factory = _TagFactory(tag.rstrip("_").replace("_", "-"))
+        setattr(self, tag, factory)
+        return factory
 
     def __call__(self, tag, *children, **attrs):
         return _TagFactory(tag)(*children, **attrs)
@@ -227,7 +236,7 @@ def build(view, renderer, parent=None, anchor=None):
 
 def _text_node(value, renderer):
     """A text node for `value`: the next one in the prerendered HTML while hydrating."""
-    hyd = getattr(renderer, "hydration", None)
+    hyd = renderer.hydration
     if hyd is not None and hyd.active:
         node = hyd.claim_text(str(value))
         if node is not None:
@@ -238,23 +247,29 @@ def _text_node(value, renderer):
 def _build_nodes(view, renderer, cache=None):
     """The list of live nodes for a view. A hole contributes its marker node. `cache` lets a
     caller that builds many like-shaped views (a `For`) reuse one compiled Template."""
-    if isinstance(view, Text):
-        return [_text_node(view.value, renderer)]
-    if isinstance(view, Mounted):
-        return list(view.nodes)
-    if isinstance(view, Element):
+    t = type(view)
+    if t is Element:
         if TEMPLATES and getattr(renderer, "supports_templates", True):
             return [_build_template(view, renderer, cache)]
         node = renderer.create_element(view.tag)
-        _apply_attrs(node, view.attrs, renderer)
+        if view.attrs:
+            _apply_attrs(node, view.attrs, renderer)
         for child in view.children:
             if callable(child):
                 _mount_hole(node, child, renderer)
             else:
                 for n in _build_nodes(child, renderer):
-                    _insert(renderer, node, n)
+                    renderer.insert_node(node, n)  # `_insert` inlined: the hot loop
+                    if _floating:
+                        fill = _floating.pop(id(n), None)
+                        if fill is not None:
+                            fill()
         return [node]
-    if isinstance(view, (list, tuple)):
+    if t is Text:
+        return [_text_node(view.value, renderer)]
+    if t is Mounted:
+        return list(view.nodes)
+    if t is list or t is tuple:
         out = []
         for item in _children(view):
             out.extend(_build_nodes(item, renderer))
@@ -270,17 +285,18 @@ def _normalize(value, renderer):
     """Resolve a hole's value to a list of live nodes, running callables (tracked)."""
     if value is None or value is True or value is False:
         return []
-    if callable(value) and not isinstance(value, (Element, Text, Mounted)):
-        return _normalize(value(), renderer)
-    if isinstance(value, (list, tuple)):
+    t = type(value)  # see `_children` for why not isinstance with a tuple
+    if t is Mounted:
+        return list(value.nodes)
+    if t is Element or t is Text:
+        return _build_nodes(value, renderer)
+    if t is list or t is tuple:
         out = []
         for item in value:
             out.extend(_normalize(item, renderer))
         return out
-    if isinstance(value, Mounted):
-        return list(value.nodes)
-    if isinstance(value, (Element, Text)):
-        return _build_nodes(value, renderer)
+    if callable(value):
+        return _normalize(value(), renderer)
     return [_text_node(value, renderer)]
 
 
@@ -468,8 +484,8 @@ def _mount_hole(parent, accessor, renderer, marker=None):
 
     With `parent=None` the hole floats: the marker is returned and the content is placed
     before it as soon as `_insert` puts the marker somewhere. Returns the marker."""
-    hyd = getattr(renderer, "hydration", None)
-    fencing = getattr(renderer, "hydration_markers", False)
+    hyd = renderer.hydration  # class attributes of `Renderer`: no getattr with a default
+    fencing = renderer.hydration_markers
     if marker is None:
         if hyd is not None and hyd.active:
             marker = hyd.claim_hole()  # a floating hole: its fence and marker are in place
@@ -491,7 +507,8 @@ def _mount_hole(parent, accessor, renderer, marker=None):
         try:
             value = accessor()
             # Strings and numbers are the common case: keep one text node and update it.
-            if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+            t = type(value)
+            if t is str or t is int or t is float:
                 text = str(value)
                 if hyd is not None and start is not None:
                     state.adopted = hyd.claim_text(text)
@@ -642,7 +659,12 @@ def _index_of(nodes, node):
 
 def _apply_attrs(node, attrs, renderer):
     for raw_name, value in attrs.items():
-        _apply_attr(node, raw_name, value, renderer)
+        # The common case inline (a static attribute or property): one call instead of four.
+        found = _classified.get(raw_name)
+        if found is not None and (found[0] == "attr" or found[0] == "prop") and not callable(value):
+            renderer.set_property(node, found[1], value)
+        else:
+            _apply_attr(node, raw_name, value, renderer)
 
 
 def _apply_attr(node, raw_name, value, renderer):

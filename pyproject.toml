@@ -48,7 +48,7 @@ path = "frontage/version.py"
 packages = ["frontage"]
 
 [tool.hatch.build.targets.sdist]
-include = ["frontage", "tests", "examples", "tools/serve.py", "tools/fetch_pyscript.py", "README.md", "DESIGN.md", "SPEC.md", "LICENSE", "NOTICE"]
+include = ["frontage", "tests", "examples", "editors", "tools/serve.py", "tools/fetch_pyscript.py", "tools/lsp_probe.py", "README.md", "DESIGN.md", "SPEC.md", "LICENSE", "NOTICE"]
 
 [dependency-groups]
 dev = [

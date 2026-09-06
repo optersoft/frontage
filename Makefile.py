@@ -182,3 +182,30 @@ def _released_wheels(dest: Path) -> None:
 def site_deploy() -> None:
     """Publish ./www to Cloudflare Pages as the production deployment of `frontage`."""
     sh("wrangler", "pages", "deploy", str(WWW), "--project-name", "frontage", "--branch", "main", "--commit-dirty=true")
+
+
+VSCODE = ROOT / "editors" / "vscode"
+
+
+@task(name="vscode.package", requires=["npm"])
+def vscode_package() -> None:
+    """Build the VS Code extension into editors/vscode/*.vsix."""
+    sh("npm", "install", "--silent", cwd=VSCODE)
+    sh("npx", "--yes", "@vscode/vsce", "package", "--no-git-tag-version", cwd=VSCODE)
+    built = sorted(VSCODE.glob("*.vsix"))
+    note(f"built {built[-1].relative_to(ROOT)}" if built else "no .vsix produced")
+
+
+@task(name="vscode.install", needs=[vscode_package], requires=["code"])
+def vscode_install() -> None:
+    """Install the freshly built extension into the local VS Code."""
+    built = sorted(VSCODE.glob("*.vsix"))
+    if not built:
+        raise MakeError("no .vsix in editors/vscode; run `mk vscode.package` first")
+    sh("code", "--install-extension", str(built[-1]), "--force")
+
+
+@task(name="lsp.probe", requires=["uv"])
+def lsp_probe(path: str = "") -> None:
+    """Print what the language server reports for a file, without an editor in the way."""
+    sh("uv", "run", "--frozen", "python", "tools/lsp_probe.py", path or "examples/todo/todo.py")
