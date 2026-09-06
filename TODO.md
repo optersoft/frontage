@@ -195,6 +195,14 @@ constraint holds).
       clean `frontage check`; fixed `use_router`/`use_is_routing` imports, the `missing` route
       matching its repo, "accessor" and "boundary" defined where first used, the lambda rule
       explained once (Basic), stale metas, `number_input` import, the `_index` helper.
+- [x] The git-connected Pages build had failed on every push since this morning (no PyScript
+      bundle on the builder; found through the API build log), so the site sat at 0.4.0 while the
+      chapters named 0.5.0–0.7.0 wheels. `site.build` now fetches the bundle; the d510d1d build
+      deployed itself. `mk site.deploy` remains the hand fallback.
+- [ ] `[human]` The academy still cuts the chapters for anonymous readers (the Router page stops
+      after Links, 2026-09-06 15:00). `index.md` has `public: true`; the academy commit that
+      honours it (4e1b5042) is not deployed, and the academy tree has uncommitted work.
+      Do: deploy academy. Done: `curl -s academy.optersoft.com/python/frontage/router | grep -c Exercises` is 1.
 - [ ] `[human]` The nine chapter pipelines `pip install frontage` unpinned, so a rebuilt site runs
       whatever PyPI has that day while its page names one wheel. Pin, or accept (it is what keeps
       the sites current without nine commits).
