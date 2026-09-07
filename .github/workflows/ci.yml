@@ -1,3 +1,24 @@
+# Tests every component against the frontage checked out beside this one, and publishes the
+# three packages to PyPI on a tag.
+#
+# Publishing uses trusted publishing (OIDC): no token is stored anywhere. It needs **three**
+# publishers registered at https://pypi.org/manage/account/publishing/, one per package,
+# each with:
+#
+#   provider    GitHub
+#   owner       optersoft
+#   repository  frontage-component
+#   workflow    ci.yml
+#   env         pypi        (must match the `environment:` below)
+#
+# for the projects `frontage-layout`, `frontage-chart` and `frontage-table`. PyPI matches the
+# OIDC claim against the repository's *current* owner, and it fails with `422
+# invalid-publisher` — the version is never uploaded, so it stays claimable and re-running the
+# job succeeds once the publisher exists.
+#
+# Release: bump the version in the package's own pyproject.toml, then tag
+# `<package>-vX.Y.Z` — `frontage-chart-v0.1.0` publishes only frontage-chart.
+#
 # Tests every component against the frontage checked out beside this one — the same path-dep
 # convention the fleet's Rust repos follow (optersoft/CLAUDE.md). CI has no sibling checkout,
 # so it clones frontage first; `[tool.uv.sources]` then resolves to it.
@@ -6,6 +27,7 @@ name: ci
 on:
   push:
     branches: [main]
+    tags: ["*-v*.*.*"]
   pull_request:
 
 jobs:
@@ -35,3 +57,46 @@ jobs:
       # Python must be written in the subset MicroPython runs in the browser.
       - run: uv run --project ../frontage python -m frontage check frontage-layout frontage-chart frontage-table tests
         working-directory: frontage-component
+
+  publish:
+    # A tag names the package it releases: `frontage-chart-v0.1.0`. One repo, three packages,
+    # three release cadences — a shared version would force a pointless release of the other
+    # two every time one of them changed.
+    needs: [test]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # Lets the job mint the OIDC token PyPI exchanges for a one-off upload token.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v5
+      - name: Work out which package the tag releases
+        id: which
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          package="${tag%-v*}"
+          version="${tag##*-v}"
+          test -d "$package" || { echo "::error::no directory $package for tag $tag"; exit 1; }
+          declared=$(grep -m1 '^version = ' "$package/pyproject.toml" | cut -d\" -f2)
+          test "$declared" = "$version" || {
+            echo "::error::$package/pyproject.toml says $declared, tag says $version"; exit 1; }
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+      - run: uv build
+        working-directory: ${{ steps.which.outputs.package }}
+      # A component whose browser assets went missing installs and imports perfectly and then
+      # does nothing in a page, so check they are in the wheel before it reaches PyPI.
+      - name: The wheel carries its browser half
+        working-directory: ${{ steps.which.outputs.package }}
+        run: |
+          uv run --isolated --no-project --with dist/*.whl -- python -c "
+          import importlib, sys
+          from pathlib import Path
+          package = '${{ steps.which.outputs.package }}'.replace('-', '_')
+          browser = Path(importlib.import_module(package).__file__).parent / '_browser'
+          assert (browser / 'index.js').is_file(), 'no _browser/index.js in the wheel'
+          print(package, 'ships', sorted(p.name for p in browser.iterdir()))
+          "
+      - run: uv publish --trusted-publishing always
+        working-directory: ${{ steps.which.outputs.package }}

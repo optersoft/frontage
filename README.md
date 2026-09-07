@@ -58,6 +58,26 @@ And one that cost an afternoon to find: **MicroPython does not preserve dict ins
 so any API where the order of a mapping is visible must take pairs. `tabs` refuses a dict and
 says why.
 
+## Releasing
+
+Each package versions and releases on its own, because a shared version would force a pointless
+release of the other two whenever one changed. A tag names the package it releases:
+
+```sh
+# bump `version` in frontage-chart/pyproject.toml, commit, then
+git tag -a frontage-chart-v0.1.0 -m "frontage-chart 0.1.0" && git push origin frontage-chart-v0.1.0
+```
+
+CI checks the tag against the version in that package's `pyproject.toml`, builds it, asserts the
+wheel actually contains `_browser/index.js` — a component that loses its browser half installs
+and imports perfectly and then does nothing in a page — and publishes over OIDC.
+
+⚠ **Nothing publishes until three trusted publishers exist on PyPI**, one per package, at
+<https://pypi.org/manage/account/publishing/>: provider GitHub, owner `optersoft`, repository
+`frontage-component`, workflow `ci.yml`, environment `pypi`. All three names are unclaimed as of
+2026-09-07. A missing publisher fails with `422 invalid-publisher` and uploads nothing, so the
+version stays claimable and re-running the job succeeds once it is registered.
+
 ## Development
 
 ```sh
