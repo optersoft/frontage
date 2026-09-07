@@ -118,7 +118,7 @@ mk runtime.fetch        # the pinned micropython.mjs + .wasm into frontage/_runt
 mk serve                # examples and playground at http://127.0.0.1:8000/, package read live, reload on save
 mk test --browser       # every example in Chromium, on MicroPython in WebAssembly
 mk build examples/todo  # a static directory that boots from WebAssembly
-mk site.deploy          # publish frontage.optersoft.com (Cloudflare Pages): wheels, playground, redirects
+mk site.deploy          # publish frontage.optersoft.com by hand (Cloudflare Pages): landing page, gallery, playground, wheels
 ```
 
 Without `mk`: `uv sync --all-groups`, `uv run pytest`, `uv run ruff check`, `uv run ty check`.

@@ -25,8 +25,9 @@ Pages project `frontage` is connected to github.com/optersoft/frontage
 `mk site.deploy` is the hand deploy from before that, kept as a fallback when
 the Pages build is broken. Documentation lives on academy.optersoft.com, not
 here, and since 2026-09-06 the chapters run their apps in the page (the academy's
-`::: pyscript` frames, MicroPython, the released wheel by URL): frontage.optersoft.com
-redirects there and serves only /dist/ (the wheels) and /playground/. examples/ is
+`::: pyscript` frames, MicroPython, the released wheel by URL). frontage.optersoft.com
+serves its own landing page (web/index.html) and links there, plus the gallery, the
+playground and /dist/ (the wheels, which the chapters pin by URL). examples/ is
 the browser suite's and the benchmark's material. `mk` with no arguments lists everything.
 """
 
