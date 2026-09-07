@@ -34,6 +34,12 @@ APPS = [
     ("chart", "Chart", "uPlot as a component — a 20,000-point chart from Python.", "canvas"),
     ("wasm", "Wasm library", "A WebAssembly library imported like any Python module.", "#answer"),
     ("weather", "Weather", "Streamlit's Seattle Weather demo, ported: five charts, no server.", "#app canvas"),
+    (
+        "uber",
+        "Uber NYC",
+        "Streamlit's flagship demo, rebuilt: a million pickups, and panning the map is an input.",
+        "#histogram .bar",
+    ),
     ("tracker", "Tracker", "The whole framework in one app: routes, store, optimistic writes, a portal.", "#app"),
 ]
 
@@ -157,6 +163,13 @@ def measure(built, out):
             for app in built:
                 context = browser.new_context()  # cold cache per app
                 page = context.new_page()
+                # Nothing off this machine counts, and nothing off this machine is needed: the
+                # map app fetches OpenStreetMap tiles, which are neither ours to measure nor
+                # something a gallery build should depend on being reachable.
+                context.route(
+                    "**/*",
+                    lambda route: route.continue_() if "127.0.0.1" in route.request.url else route.abort(),
+                )
                 sent = [0]
                 page.on(
                     "response", lambda r, s=sent: s.__setitem__(0, s[0] + int(r.header_value("content-length") or 0))
