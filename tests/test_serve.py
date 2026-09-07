@@ -136,7 +136,7 @@ class _Upstream(http.server.BaseHTTPRequestHandler):
 
     release = threading.Event()
 
-    def log_message(self, *args):
+    def log_message(self, format, *args):
         pass
 
     def do_GET(self):

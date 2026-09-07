@@ -262,7 +262,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             )
             return
         with response:
-            self.send_response(response.status)
+            # `HTTPError` and `HTTPResponse` spell the status differently in the stubs.
+            self.send_response(int(getattr(response, "status", None) or getattr(response, "code", 502)))
             streaming = (response.headers.get("Content-Type") or "").startswith("text/event-stream")
             for key, value in response.headers.items():
                 if key.lower() in ("connection", "transfer-encoding", "keep-alive", "content-encoding"):
