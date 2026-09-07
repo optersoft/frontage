@@ -33,6 +33,7 @@ APPS = [
     ("contacts", "Contacts", "The router: nested routes, links, query strings.", "#app a"),
     ("chart", "Chart", "uPlot as a component — a 20,000-point chart from Python.", "canvas"),
     ("wasm", "Wasm library", "A WebAssembly library imported like any Python module.", "#answer"),
+    ("weather", "Weather", "Streamlit's Seattle Weather demo, ported: five charts, no server.", "#app canvas"),
     ("tracker", "Tracker", "The whole framework in one app: routes, store, optimistic writes, a portal.", "#app"),
 ]
 
@@ -196,7 +197,7 @@ def write_index(built, out, measured):
     footer = (
         f"Measured {when} · {how} · the interpreter, the loader and the framework are "
         f"{shared:,} KB of every figure and are byte-identical, so a browser downloads them "
-        "once for all nine."
+        "once for all of them."
     )
     (out / "index.html").write_text(PAGE.format(cards=cards, footer=footer))
     (out / "gallery.json").write_text(json.dumps(built, indent=2))

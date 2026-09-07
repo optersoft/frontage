@@ -1,0 +1,84 @@
+/* The dashboard's own stylesheet: plain CSS, no build step — the app is a directory of files. */
+:root {
+  --ink: #1b1d1f;
+  --muted: #62696f;
+  --line: #e2e5e8;
+  --card: #ffffff;
+  --page: #f7f8f9;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --ink: #e9ecef; --muted: #9aa3ab; --line: #2b3035; --card: #16191c; --page: #0f1113; }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.page { max-width: 1100px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+h1 { font-size: 1.9rem; margin: 0 0 .4rem; letter-spacing: -.02em; }
+h2 { font-size: 1.15rem; margin: 2.5rem 0 .9rem; letter-spacing: -.01em; }
+h3 { font-size: .95rem; margin: 0 0 .75rem; }
+header p { color: var(--muted); max-width: 46rem; margin: 0; }
+footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .85rem; }
+a { color: inherit; }
+
+/* --- the summary tiles --- */
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: .75rem; }
+.metric { background: var(--card); border: 1px solid var(--line); border-radius: .6rem; padding: .8rem .9rem; }
+.metric-label { color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
+.metric-value { font-size: 1.4rem; font-weight: 600; margin-top: .2rem; font-variant-numeric: tabular-nums; }
+.metric-delta { font-size: .8rem; margin-top: .1rem; font-variant-numeric: tabular-nums; }
+.metric-delta.up { color: #2e7d4f; }
+.metric-delta.down { color: #b3421e; }
+
+/* --- the year pills --- */
+.pills { display: flex; flex-wrap: wrap; gap: .5rem; }
+.pill {
+  font: inherit; font-size: .85rem; cursor: pointer;
+  padding: .3rem .9rem; border-radius: 999px;
+  border: 1.5px solid var(--line); background: var(--card); color: var(--muted);
+}
+.pill.on { color: var(--ink); font-weight: 600; }
+.warning { background: #fff4e0; color: #8a5a00; border-radius: .5rem; padding: .8rem 1rem; }
+@media (prefers-color-scheme: dark) { .warning { background: #33280f; color: #f0c674; } }
+
+/* --- the cards --- */
+.charts { display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.row.wide-left { grid-template-columns: 3fr 1fr; }
+@media (max-width: 800px) { .row, .row.wide-left { grid-template-columns: 1fr; } }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: .6rem; padding: 1rem; min-width: 0; }
+.axis-note { color: var(--muted); font-size: .75rem; margin: .5rem 0 0; }
+.fr-chart { width: 100%; }
+
+/* --- precipitation: twelve groups of bars, one per selected year --- */
+.bars { display: flex; align-items: flex-end; gap: .35rem; height: 200px; }
+.bar-column { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; min-width: 0; }
+.bar-group { display: flex; align-items: flex-end; gap: 1px; height: 100%; }
+.bar { flex: 1; min-height: 1px; border-radius: 2px 2px 0 0; }
+.bar-label { color: var(--muted); font-size: .65rem; text-align: center; padding-top: .3rem; }
+
+/* --- the distribution donut, which is one conic-gradient --- */
+.donut { position: relative; width: 150px; height: 150px; border-radius: 50%; margin: .5rem auto 1rem; }
+.donut-hole { position: absolute; inset: 28%; border-radius: 50%; background: var(--card); }
+.legend { list-style: none; margin: 0; padding: 0; font-size: .8rem; }
+.legend li { display: flex; align-items: center; gap: .4rem; padding: .1rem 0; color: var(--muted); }
+.legend b { margin-left: auto; color: var(--ink); font-variant-numeric: tabular-nums; }
+.swatch { width: .7rem; height: .7rem; border-radius: 2px; display: inline-block; }
+
+/* --- the normalised monthly stack --- */
+.stacks { display: flex; flex-direction: column; gap: .3rem; }
+.stack-row { display: flex; align-items: center; gap: .6rem; }
+.stack-label { width: 2.2rem; color: var(--muted); font-size: .72rem; }
+.stack { flex: 1; display: flex; height: 14px; border-radius: 3px; overflow: hidden; }
+.segment { height: 100%; }
+
+/* --- the raw rows --- */
+.table-scroll { max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: .4rem; }
+table { border-collapse: collapse; width: 100%; font-size: .78rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: .25rem .5rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { position: sticky; top: 0; background: var(--card); color: var(--muted); font-weight: 600; }
