@@ -1,7 +1,6 @@
-from pyscript import document
-
 import frontage
 from frontage import Effect, Memo, Signal, Store, h, render_to_string
+from frontage.runtime import document
 
 # Exercise the reactive core and the store here too: this file runs under MicroPython in
 # the browser suite, which is the only check that the package stays in its subset.

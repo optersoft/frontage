@@ -179,9 +179,11 @@ def _check_untracked_read(signal):
 def _check_tracked_write(listener):
     _warn_once(
         ("write", id(listener)),
-        f"a signal was written inside a tracked computation ({type(listener).__name__} "
-        f"{_name_of(listener._fn)}), which then depends on its own write. Write in a handler or in an "
-        "effect's second function, or wrap the write in untrack().",
+        # One f-string, not two: mpy-cross rejects adjacent f-strings (`f"a" f"b"`), though
+        # `f"a" "b"` is fine, so the framework would not cross-compile if this were split.
+        f"a signal was written inside a tracked computation ({type(listener).__name__} {_name_of(listener._fn)}), "
+        "which then depends on its own write. Write in a handler or in an effect's second function, "
+        "or wrap the write in untrack().",
     )
 
 

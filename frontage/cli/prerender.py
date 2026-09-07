@@ -1,6 +1,6 @@
 """`python -m frontage prerender APP`: the app's pages as finished HTML, hydrated on load.
 
-Exports the app (see `export`), then imports it on this CPython for each route, renders every
+Builds the app (see `build`), then imports it on this CPython for each route, renders every
 `mount` with the HTML renderer, waits for its resources and async memos, and writes the result into
 the page's target element with the fences hydration reads, the settled values as JSON, and a
 script that queues clicks and input until Python is ready. In the browser, `mount` finds the
@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 from . import PROG
+from . import build as build_cli
 from . import export as export_cli
 
 # Queued until `mount` hydrates, then replayed on the same targets (see DomRenderer.end_hydration).
@@ -32,6 +33,9 @@ q.forEach(function(p){var n=p[1];if(n&&n.isConnected){n.dispatchEvent(p[0]==="cl
 </script>
 """
 
+# What a wasm page declares, and the whole of what the prerenderer has to read from it.
+_BOOT_ENTRY = re.compile(r"""data-fr-entry\s*=\s*["']([\w.-]+)["']""")
+# The PyScript page's entry, found by hunting inline JavaScript. Goes with `export` at 1.0.
 _ENTRY = re.compile(r"""src\s*=\s*["']\./([\w./-]+\.py)["']""")
 
 
@@ -135,8 +139,17 @@ def _error_text(html):
 
 
 def find_entry(page_html):
-    """The app's Python file named by the page: `src="./app.py"` in a script tag or in
-    inline JavaScript (the examples build their tag at run time)."""
+    """The app's Python file, as the page names it.
+
+    A wasm page says so outright, in the boot tag's `data-fr-entry`. The attribute exists
+    because the old way — hunting `src="./app.py"` through inline JavaScript with a regex —
+    could only guess, and guessed from a string that was not addressed to it.
+
+    A PyScript page still gets the regex, until the academy's chapters move off it.
+    """
+    attribute = _BOOT_ENTRY.search(page_html)
+    if attribute:
+        return attribute.group(1) + ".py"
     match = _ENTRY.search(page_html)
     return match.group(1) if match else None
 
@@ -271,11 +284,19 @@ def prerender(
     quiet=True,
     crawl=False,
     limit=1000,
+    boot="wasm",
 ):
-    """Export `app` into `out` and write its prerendered pages there; returns the outputs.
+    """Build `app` into `out` and write its prerendered pages there; returns the outputs.
     With `crawl`, every route a rendered page links to (an `A`, a plain `<a href>`) is rendered
-    too, until no new one turns up or `limit` pages are written."""
-    out = export_cli.export(app, out, bundle_pyscript=bundle_pyscript, pyscript_dir=pyscript_dir, quiet=quiet)
+    too, until no new one turns up or `limit` pages are written.
+
+    `boot` is `wasm` (the loader, the framework as bytecode) or `pyscript` (0.9.x only).
+    Prerendering itself is the same either way: it runs on this CPython and writes HTML."""
+    out = Path(out).resolve() if out else Path.cwd() / "build" / Path(app).resolve().name
+    if boot == "pyscript":
+        out = export_cli.export(app, out, bundle_pyscript=bundle_pyscript, pyscript_dir=pyscript_dir, quiet=quiet)
+    else:
+        out = build_cli.build(app, out, entry=(entry or "").removesuffix(".py"), quiet=quiet)
     page = (out / "index.html").read_text()
     entry = entry or find_entry(page)
     if entry is None:
@@ -331,6 +352,12 @@ def main(argv=None):
         "--no-pyscript", action="store_true", help="link PyScript from pyscript.net instead of bundling it"
     )
     parser.add_argument("--pyscript", default=None, help="an unpacked bundle (the directory with core.js) to copy")
+    parser.add_argument(
+        "--boot",
+        choices=("wasm", "pyscript"),
+        default="wasm",
+        help="how the page starts Python (default: wasm; `pyscript` is 0.9.x only)",
+    )
     args = parser.parse_args(argv)
     try:
         results = prerender(
@@ -343,6 +370,7 @@ def main(argv=None):
             pyscript_dir=args.pyscript,
             quiet=False,
             crawl=args.crawl,
+            boot=args.boot,
         )
     except (FileNotFoundError, ValueError, RuntimeError, TimeoutError) as exc:
         print(f"error: {exc}", file=sys.stderr)

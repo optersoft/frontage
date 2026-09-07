@@ -1,7 +1,18 @@
-# Cloudflare Pages headers. The academy's live examples (`::: pyscript` frames, an opaque
-# origin) and every pyscript.json fetch the wheel cross-origin, so /dist/ answers CORS.
+# Cloudflare Pages headers. The academy's live examples run in a frame on an opaque origin and
+# fetch from here, so what they reach has to answer CORS. `Cross-Origin-Resource-Policy` is the
+# other half of that: a page setting `Cross-Origin-Embedder-Policy: require-corp` blocks any
+# cross-origin subresource that does not carry it, whatever CORS says.
+#
+# The runtime under /playground/_frontage/ is same-origin for the playground itself and needs
+# neither, but it is served with both anyway: when the academy gains a `::: frontage` frame it
+# will fetch exactly these files from exactly here, and a header that is already right is one
+# fewer thing to debug through an opaque origin.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
 /dist/*
   Access-Control-Allow-Origin: *
+  Cross-Origin-Resource-Policy: cross-origin
+/playground/_frontage/*
+  Access-Control-Allow-Origin: *
+  Cross-Origin-Resource-Policy: cross-origin

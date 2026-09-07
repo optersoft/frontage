@@ -444,6 +444,26 @@ class DomRenderer(Renderer):
 
         return remove
 
+    def teardown(self):
+        """Give the document back what this renderer put on it.
+
+        Disposing a mount's owner removes every listener bound to a node, but not these: one
+        dispatcher per delegated event type lives on `document`, shared by every element the
+        renderer handles, so no owner holds it. That went unnoticed while a page mounted once
+        and then ended. A dev swap mounts again, and would leave twenty-four of them behind
+        each time, every one still holding the old handler table.
+        """
+        for event in list(self._proxies):
+            proxy = self._proxies.pop(event)
+            document.removeEventListener(event, proxy)
+            destroy = getattr(proxy, "destroy", None)
+            if destroy is not None:
+                destroy()
+        # Cleared in place, not rebound: `_make_dispatcher` closes over this dict, so a new
+        # one would leave any surviving dispatcher reading a table nothing writes to.
+        self._delegated.clear()
+        self._handlers.clear()
+
     def _make_dispatcher(self, event):
         handlers = self._handlers
 

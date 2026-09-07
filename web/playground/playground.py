@@ -1,10 +1,10 @@
 """The playground: the code in the editor runs against the frontage package on this site; the
 URL fragment carries the code, so a link is a saved snippet. Runs on MicroPython."""
 
-from pyscript import document, ffi, window
-
 import frontage
+from frontage import dev
 from frontage.errors import format_exception
+from frontage.runtime import create_proxy, document, window
 
 EXAMPLES = {
     "counter": '''from frontage import Signal, component, html, mount
@@ -183,7 +183,6 @@ mount(card, "#app")
 editor = document.getElementById("code")
 status = document.getElementById("status")
 picker = document.getElementById("example")
-handle = [None]
 
 
 def current_code():
@@ -194,9 +193,11 @@ def current_code():
 
 
 def run(ev=None):
-    if handle[0] is not None:
-        handle[0].dispose()
-        handle[0] = None
+    # `frontage.dev` knows what is mounted; this function cannot. The snippet calls `mount()`
+    # itself, inside `exec`, and discards the handle — so the old code disposed `handle[0]`,
+    # which was always None, and every Run leaked a root owner plus the renderer's delegated
+    # document listeners. Replacing `out.innerHTML` hid it by taking the nodes away.
+    dev.teardown()
     out = document.getElementById("out")
     out.innerHTML = '<div id="app"></div>'
     namespace = {"__name__": "__main__"}
@@ -214,11 +215,24 @@ def run(ev=None):
 def share(ev=None):
     code = str(editor.value)
     window.location.hash = "code=" + str(window.encodeURIComponent(code))
-    try:
-        window.navigator.clipboard.writeText(str(window.location.href))
+    # The link is in the address bar either way; the clipboard is the bonus.
+    status.textContent = "link is in the address bar"
+
+    def copied(value=None):
         status.textContent = "link copied"
-    except Exception:
+
+    def refused(error=None):
         status.textContent = "link is in the address bar"
+
+    try:
+        # `writeText` REJECTS, it does not raise: a denied clipboard (no user gesture, an
+        # insecure origin, a headless browser) is ordinary, and must be handled on the
+        # promise. A `try` around the call catches only the synchronous half — and with
+        # PyScript gone nothing swallows the rejection, so it surfaces as a page error.
+        promise = window.navigator.clipboard.writeText(str(window.location.href))
+        promise.then(create_proxy(copied), create_proxy(refused))
+    except Exception:
+        pass
 
 
 def pick(ev):
@@ -227,7 +241,7 @@ def pick(ev):
 
 
 editor.value = current_code()
-document.getElementById("run").addEventListener("click", ffi.create_proxy(run))
-document.getElementById("share").addEventListener("click", ffi.create_proxy(share))
-picker.addEventListener("change", ffi.create_proxy(pick))
+document.getElementById("run").addEventListener("click", create_proxy(run))
+document.getElementById("share").addEventListener("click", create_proxy(share))
+picker.addEventListener("change", create_proxy(pick))
 run()

@@ -3,7 +3,11 @@
 Frontage runs in three places: Pyodide and MicroPython in the browser, and plain CPython on
 a server or in the tests. The names exported here are the browser globals and the FFI
 helpers on the two browser runtimes, and stand-ins on the server that say so if touched.
-Nothing else in the package imports `pyscript` or `js` directly.
+Nothing else in the package imports `js`, `jsffi` or `pyodide` directly.
+
+Since 0.9.0 there is no PyScript: the browser loads `micropython.wasm` and the framework as
+precompiled bytecode, and this module talks to MicroPython's own bridge. Everything the
+package needed from PyScript was a thin wrapper over that bridge, so the change stops here.
 """
 
 import sys
@@ -93,9 +97,17 @@ class Unavailable:
         return f"<{self._name}: unavailable outside the browser>"
 
 
-if in_browser:
-    from pyscript import document, window
-    from pyscript.ffi import create_proxy, to_js
+if platform == MICROPYTHON:
+    # Upstream MicroPython's own browser bridge (`ports/webassembly`: the `js` module and
+    # `modjsffi.c`). PyScript wrapped exactly these and added nothing the package used —
+    # `.new()`, which `dom` and `router` call, is upstream too — so frontage loads without it.
+    from js import document, window
+    from jsffi import create_proxy, to_js
+elif platform == PYODIDE:
+    # Unsupported since 0.9.0: no CI, no examples, no docs. Three lines that still work is a
+    # cheaper way to keep the door open than deleting a name `frontage.platform` promises.
+    from js import document, window
+    from pyodide.ffi import create_proxy, to_js
 else:
     document = Unavailable("document")
     window = Unavailable("window")

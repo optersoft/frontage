@@ -1,8 +1,12 @@
 # CLAUDE.md
 
-Frontage: a fine-grained reactive UI framework for Python in the browser (PyScript; Pyodide
-and MicroPython), published to PyPI as `frontage`, Apache 2.0, copyright Optersoft. Rewritten
-clean-room from `SPEC.md` per `DESIGN.md`; `main` is past milestone **M9** (0.7.0: the plan, the command line, prerendering with hydration, transitions that build the new state off screen, async memos as the router's data primitive). `origin` is
+Frontage: a fine-grained reactive UI framework for Python in the browser, on MicroPython
+compiled to WebAssembly, published to PyPI as `frontage`, Apache 2.0, copyright Optersoft.
+Rewritten clean-room from `SPEC.md` per `DESIGN.md`; `main` is past milestone **M11** (0.9.0:
+the WebAssembly boot, the framework as precompiled bytecode, a dev server that swaps modules
+into the running page, C/Rust libraries as plain imports — after M9's prerendering with
+hydration, transitions and async memos). **PyScript is gone from the browser path** and
+`export` keeps it alive only through 0.9.x, for the academy's chapter repos. `origin` is
 `github.com/optersoft/frontage` (GitHub, because PyPI publishing needs Actions); the PuePy fork is
 on branch `puepy-reference`.
 
@@ -18,9 +22,10 @@ on branch `puepy-reference`.
 
 | Path | What |
 |---|---|
-| `frontage/runtime.py` | which interpreter; the only module that imports `pyscript`; server stand-ins that raise a sentence |
+| `frontage/runtime.py` | which interpreter; the only module that imports the browser's globals (`js`/`jsffi` on MicroPython since 0.9.0, `pyodide.ffi` on the unsupported Pyodide path); server stand-ins that raise a sentence |
 | `frontage/reactive.py` | Signal, Memo (async when its function returns a coroutine; counts toward the Router's `is_routing` through `_navigation`, and prerenders/hydrates by ordinal), Effect/RenderEffect, Owner, context, batch, `spawn`, error routing, the two boundary contexts; `transition`/`Transition`/`use_transition`/`is_pending`/`Optimistic`; the `DEBUG` warnings |
 | `frontage/debug.py` | import it in an app for the per-node hydration mismatch report (`last_hydration`, `hydration_report()`); nothing else imports it |
+| `frontage/dev.py` | the module swap behind `frontage serve`: compile first, dispose every mount in `view._mounted` and let each renderer clean up the document, drop the app's modules, re-run the entry as `__main__`. Also what the playground uses to tear down between Runs |
 | `frontage/store.py` | `Store` over dicts and lists, `reconcile` |
 | `frontage/renderer.py` | the `Renderer` seam, `HtmlRenderer` (nodes → HTML, parses templates on CPython), `RecordingRenderer` |
 | `frontage/view.py` | `Element`/`Text`, the `h` builder, Template compile/clone, holes and the insert rules, floating holes, `mount` |
@@ -31,12 +36,13 @@ on branch `puepy-reference`.
 | `frontage/state.py` (+ `.pyi`) | `State` with `field`/`computed`; the stub types fields as their values |
 | `frontage/widgets.py` | form controls bound to signals |
 | `frontage/dom.py` | the `Renderer` over the real DOM, delegated events, template cloning; `Hydration`, the cursor `mount(hydrate=True)` walks over prerendered HTML |
-| `frontage/cli/` + `__main__.py` | `python -m frontage`: `export`, `prerender` (imports the app with `runtime.prerender.active`, renders each route with `HtmlRenderer(hydration_markers=True)`, awaits resources, injects HTML + JSON + the replay script), `tailwind` (standalone CLI fetched into `~/.cache/frontage`), `check` (lambda in a t-string, `html(f"…")`, HTML the parser rewrites), `pyscript` (the pinned bundle version lives here), `serve` (a static server with live reload: the reload script is injected into HTML, an SSE stream at `/__frontage/reload`, a polling `Watcher`; `tools/serve.py` subclasses its handler so `mk serve` and the browser tests reload too). CPython only; never listed in a `pyscript.json` |
+| `frontage/_runtime/` | what the browser downloads, committed: `micropython.{mjs,wasm}` (the pinned upstream build, fetched by `mk runtime.fetch`), `boot.js` (the loader), `frontage.tar` (the framework as `.mpy`, built by `mk runtime.build`). Shipped in the wheel, so `pip install frontage` is the whole install |
+| `frontage/cli/` + `__main__.py` | `python -m frontage`: `build` (an app + the runtime into a static directory that boots from wasm), `runtime` (fetch the interpreter, rebuild the image; the MicroPython pin lives in `cli/micropython.py`), `export`, `prerender` (imports the app with `runtime.prerender.active`, renders each route with `HtmlRenderer(hydration_markers=True)`, awaits resources, injects HTML + JSON + the replay script), `tailwind` (standalone CLI fetched into `~/.cache/frontage`), `check` (lambda in a t-string, `html(f"…")`, HTML the parser rewrites), `pyscript` (the pinned bundle version lives here), `serve` (a static server with live reload: the reload script is injected into HTML, an SSE stream at `/__frontage/reload`, a polling `Watcher`; `tools/serve.py` subclasses its handler so `mk serve` and the browser tests reload too). CPython only; never listed in a `pyscript.json` |
 | `frontage/lsp/` | the language server behind `frontage lsp`: `protocol` (Content-Length framing over stdio, hand-written, no dependency), `documents` (open files, UTF-16 positions), `scanner` (the tolerant t-string lexer and the HTML state machine that answers *where is the cursor*), `rules` (the three static rules, with ranges — `cli/check.py` is the command line over these), `data` (elements, attributes, frontage's prefixes), `features` (completion, hover, definition, semantic tokens), `server`. CPython only, like `cli/`; never in a `pyscript.json` |
 | `frontage/errors.py` | `FrontageError`, `RenderError`, `NotReady`, `format_exception` |
 | `tests/` | unit tests, CPython, no browser; `tests/browser/` is Playwright over `examples/` and starts its own server |
-| `examples/` | one page per example, the browser suite's and the benchmark's material (`tracker/` is the whole framework in one app: routes, a store kept by `reconcile`, memo-loaded details, a transactional toggle with `Optimistic`, a Portal modal, an `ActionForm`, boundaries; prerendered and hydrated in the tests too); `pyscript.json` lists the package files by path so edits show live. Not published: the academy chapters run their own apps in the page (`::: pyscript` frames on MicroPython, the released wheel by URL), so a chapter's code block is both what the reader reads and what runs |
-| `tools/serve.py`, `tools/fetch_pyscript.py`, `tools/bench.py`, `tools/profile/` + `tools/profile_rows.py` | dev server (live reload via `frontage.cli.serve`), offline PyScript fetch into `tools/pyscript/` (gitignored; the version is `frontage.cli.pyscript.VERSION`), the rows benchmark, the rows profile (phases + calibration, served at `/profile/`) |
+| `examples/` | one page per example, the browser suite's and the benchmark's material (`tracker/` is the whole framework in one app: routes, a store kept by `reconcile`, memo-loaded details, a transactional toggle with `Optimistic`, a Portal modal, an `ActionForm`, boundaries; prerendered and hydrated in the tests too; `wasm/` calls a 41-byte hand-assembled WebAssembly library through `data-fr-js`, which the docs quote byte for byte). Each page is one boot tag; the dev server answers `<dir>/_frontage/…` per directory and builds both archives from disk, so an edit to an example or to the framework shows on reload with nothing to rebuild. Not published: the academy chapters run their own apps in the page (`::: pyscript` frames on MicroPython, the released wheel by URL), so a chapter's code block is both what the reader reads and what runs |
+| `tools/serve.py`, `tools/fetch_pyscript.py`, `tools/bench.py`, `tools/profile/` + `tools/profile_rows.py` | dev server (live reload via `frontage.cli.serve`; it serves many apps at once, so a change reloads rather than swapping), offline PyScript fetch into `tools/pyscript/` (gitignored, 0.9.x only), the rows benchmark, the rows profile (phases + calibration, served at `/profile/`) |
 | `editors/` | the editor clients. `editors/vscode/` is the VS Code one — a thin client plus the TextMate injection grammar and the snippets, plain JavaScript so there is no build step; `editors/README.md` is the config block for Zed, Neovim, Helix and Emacs, which need no code at all |
 | `web/` | what frontage.optersoft.com still serves since 2026-09-06: `_redirects` (everything else goes to academy.optersoft.com/python/frontage), `_headers` (CORS on `/dist/`) and `web/playground/`; `mk site.build` assembles `www/` with the package, the bundle and every released wheel |
 | `typings/` | ty stubs for the browser-only modules |
@@ -78,8 +84,42 @@ on branch `puepy-reference`.
   paths (`_children`, `_build_nodes`, `_normalize`, a hole's compute, `Store._is_container`)
   use `type(x) is T`; keep it that way. `tools/profile_rows.py` (the page in `tools/profile/`)
   gives the phase-by-phase numbers and a per-primitive calibration on both interpreters.
+- **The browser boots from WebAssembly since 0.9.0 (M11), not PyScript.** A page loads
+  `_frontage/boot.js`, which loads `micropython.wasm`, unpacks `frontage.tar` (the framework,
+  precompiled to `.mpy`) and `app.tar` (the app, as source) into the interpreter's filesystem,
+  and execs the entry as `__main__`. Four requests against PyScript's twenty-nine, 52 ms
+  against 88 (DESIGN §12). The **MicroPython pin is one line**,
+  `frontage/cli/micropython.py:VERSION` — the same upstream build PyScript shipped, so a bump
+  is a browser run, not a port.
+- **Rebuild the image after touching a top-level module**: `mk runtime.build`. The vendored
+  `frontage/_runtime/frontage.tar` is what a wheel ships and what `frontage build` copies, so
+  stale bytecode means a silently old framework in the browser. `mk build` depends on the task
+  so the normal path cannot get it wrong, and the tar is reproducible (mtimes pinned to 0) so
+  CI rebuilds it and compares bytes rather than trusting a timestamp a wheel install flattens.
+  `frontage/_runtime/` is committed, ~640 KB.
+- **A C or Rust library reaches an app through `data-fr-js`** (0.9.0): `name=./lib.js` pairs on
+  the boot tag, imported and awaited before the entry runs, then `registerJsModule`d so it is a
+  plain `import name`. Specifiers resolve from `../` of `boot.js` -- the app's own directory in
+  every layout -- so a prerendered page at any depth needs no rewriting. A crossing is 1.00 us,
+  four MicroPython method calls; the limit is *volume*, because the two wasm modules have
+  separate memories and anything but a number is copied through JavaScript. `examples/wasm/`
+  and the academy's Wasm libraries chapter.
+- **`frontage build` is the command; `export` is the PyScript one**, and it survives only
+  through 0.9.x because the academy's nine chapter repos still boot that way.
+- **`frontage serve` swaps modules, it does not reload the page** (0.9.0). `frontage/dev.py`
+  compiles the changed app modules, disposes every mount in `view._mounted`, calls
+  `DomRenderer.teardown` (the delegated dispatchers on `document` are shared and owned by
+  nobody — that is a real leak, twenty-four per swap), drops the modules from `sys.modules`
+  and re-runs the entry as `__main__`. Under 180 ms, interpreter still warm. **A change under
+  `frontage/` reloads the page instead**: the framework's own module objects are what the live
+  page holds. In dev **nothing is built** — `_frontage/app.tar` and `frontage.tar` are
+  synthesised per request off disk, so a framework edit is live on the next reload.
+  ⚠ **A failed swap must not reload.** `dev.swap` compiles before it tears anything down, so a
+  half-typed file leaves the last working page on screen; reloading would replace it with the
+  broken source and a blank page.
 - **PyScript is pinned** in `frontage/cli/pyscript.py` and served locally; examples load
-  `/pyscript/core.js`. Bumping the version is one line there and a browser run.
+  `/pyscript/core.js`. Bumping the version is one line there and a browser run. The pin and
+  that whole path go at 1.0.
 - **The academy chapters are part of a release.** The docs live in
   `~/optersoft/academy-pages/python/frontage/` (served at academy.optersoft.com), not here.
   Every change that a user can see — a new or renamed API, a new flag, a moved command, a
@@ -144,7 +184,11 @@ on branch `puepy-reference`.
   `__name__`, no `co_argcount`, no `html.parser`, no `__getattribute__` hook, no `__mro__`, no
   writable instance `__dict__` (use `object.__setattr__`), `zip` has no `strict`, and **a
   `lambda` inside a template string's braces is a SyntaxError** (name the function). Pyodide
-  returns a `JsNull` proxy, not `None`, for JavaScript null (`dom.is_node`).
+  returns a `JsNull` proxy, not `None`, for JavaScript null (`dom.is_node`). Two more from
+  M11: **a module object cannot be constructed** (`type(sys)('__main__')` raises), which is
+  why `boot.js` execs the entry against `runPython`'s own globals, already `__main__`; and
+  **mpy-cross rejects two adjacent f-strings** (`f"a" f"b"`, though `f"a" "b"` is fine), which
+  bit exactly once, at `reactive.py:182`, and would stop the framework cross-compiling.
 - **Ruff's formatter follows the target version.** Under py314 it emits `except A, B:` (PEP
   758), which MicroPython cannot parse, so the package targets py312 and only the files with
   template strings are py314 (`per-file-target-version`). Its B009 autofix also rewrites a

@@ -1,9 +1,9 @@
 # frontage.optersoft.com has been the academy's Frontage section since 2026-09-06: the
 # landing page is gone and the chapters run their apps in the page. This Pages project
-# keeps what is fetched by URL: the wheels at /dist/ (every `pyscript.json` and the
-# academy's frames name one) and the playground, with the package and the PyScript bundle
-# it loads. PyScript's offline mode resolves its interpreters as ./pyscript/<name>/…
-# relative to the page, hence the rewrite (a 200 is a rewrite, not a redirect).
+# keeps what is fetched by URL: the wheels at /dist/ (the academy's frames name one) and
+# the playground, which carries its own copy of the WebAssembly runtime under
+# /playground/_frontage/. No rewrite rule is needed for it: `boot.js` resolves the
+# interpreter and both archives from its own URL, never from the page's.
 /  https://academy.optersoft.com/python/frontage  301
 /examples/counter/*  https://academy.optersoft.com/python/frontage/basic  301
 /examples/template/*  https://academy.optersoft.com/python/frontage/template  301
@@ -12,4 +12,3 @@
 /examples/fetch/*  https://academy.optersoft.com/python/frontage/async  301
 /examples/contacts/*  https://academy.optersoft.com/python/frontage/router  301
 /examples/*  https://academy.optersoft.com/python/frontage  301
-/playground/pyscript/* /pyscript/:splat 200

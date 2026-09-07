@@ -4,11 +4,10 @@ Buttons run each operation and the #stats line reports wall time and how many re
 operations (bridge crossings) it took, so tools/bench.py can read both.
 """
 
-from pyscript import window
-
 from frontage import Signal, Store, component, h, mount, selector
 from frontage.dom import DomRenderer
 from frontage.flow import For
+from frontage.runtime import window
 
 ADJECTIVES = [
     "pretty",

@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Frontage playground</title>
   <meta name="description" content="Write a Frontage app in the browser and share it as a link.">
-  <link rel="stylesheet" href="/pyscript/core.css">
-  <script type="module" src="/pyscript/core.js" offline></script>
   <!-- Tailwind's browser build (development-only by Tailwind's own account): utility classes
        work in the editor with no build step. Utilities only; preflight would restyle this page. -->
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
@@ -49,6 +47,6 @@
   <textarea id="code" spellcheck="false"></textarea>
   <div id="out"><div id="app"></div></div>
 </main>
-<script type="mpy" src="./playground.py" config="./pyscript.json"></script>
+<script type="module" src="./_frontage/boot.js" data-fr-boot data-fr-entry="playground"></script>
 </body>
 </html>

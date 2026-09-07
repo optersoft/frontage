@@ -4,16 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Frontage todo</title>
-  <link rel="stylesheet" href="/pyscript/core.css">
-  <script type="module" src="/pyscript/core.js" offline></script>
 </head>
 <body>
 <div id="app">Loading…</div>
-<script>
-  const type = new URLSearchParams(location.search).get("type") || "mpy";
-  const s = document.createElement("script");
-  s.type = type; s.src = "./todo.py"; s.setAttribute("config", "../pyscript.json");
-  document.body.appendChild(s);
-</script>
+<script type="module" src="./_frontage/boot.js" data-fr-boot data-fr-entry="todo"></script>
 </body>
 </html>

@@ -4,8 +4,9 @@
 
 **A fine-grained reactive UI framework for Python in the browser.** Signals, memos and
 effects; templates that clone once and bind only their holes; a keyed `For`; a nested
-router; running on [PyScript](https://pyscript.net) over WebAssembly, on Pyodide or
-MicroPython. No JavaScript, no Node, no bundler: you write Python and the browser runs it.
+router; running on MicroPython compiled to WebAssembly, with the framework delivered as
+precompiled bytecode. No JavaScript, no Node, no bundler: you write Python and the browser
+runs it.
 
 > **Status: 0.8.3, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete through
 > its M5 milestone: reactive core, store, templates (`h` and `html(t"…")`), control flow and
@@ -16,8 +17,11 @@ MicroPython. No JavaScript, no Node, no bundler: you write Python and the browse
 > console script and `prerender --crawl` (M7); 0.6.0 builds the new state off screen during a
 > transition and lets the router navigate inside one (M8); 0.7.0 makes async memos the router's
 > data primitive: they count toward `is_routing`, and `prerender` settles and hydrates them (M9); 0.8.0 adds
-> `frontage serve`, a dev server that reloads the page on save. The API is young and will move; the [browser suite](tests/browser/) runs every example under
-> MicroPython and Pyodide on Chromium each push and on Firefox and WebKit nightly.
+> `frontage serve`, a dev server that reloads the page on save; **0.9.0 replaces PyScript with a
+> direct WebAssembly boot** (M11): four requests instead of twenty-nine, 52 ms instead of 88,
+> the framework precompiled, and a dev server that swaps a module into the running page
+> without reloading it. The API is young and will move; the [browser suite](tests/browser/)
+> runs every example on Chromium each push and on Firefox and WebKit nightly.
 
 ```python
 from frontage import Signal, component, html, mount
@@ -51,19 +55,24 @@ does not accept a `lambda` inside a template's braces.
 
 **Try it** at [frontage.optersoft.com/playground](https://frontage.optersoft.com/playground/),
 which runs your code on MicroPython and keeps it in the link. **Learn it** at
-[academy.optersoft.com/python/frontage](https://academy.optersoft.com/python/frontage), nine
-chapters with exercises, each with its app published on GitLab Pages. **Install it** with a `pyscript.json`:
+[academy.optersoft.com/python/frontage](https://academy.optersoft.com/python/frontage), ten
+chapters with exercises, nine of them with an app published on GitLab Pages. **Install it** with pip,
+and `frontage build` writes a directory that runs anywhere:
 
-```json
-{ "packages": ["https://frontage.optersoft.com/dist/frontage-0.8.3-py3-none-any.whl"] }
+```sh
+uvx frontage build myapp        # index.html, your .py, and _frontage/ beside them
 ```
 
-| The counter above, as downloaded | MicroPython | Pyodide |
+| The counter, cold cache | 0.9.0 | 0.8.3 (PyScript) |
 |---|---|---|
-| transferred | 0.84 MB | 13.8 MB |
-| compressed | 0.32 MB | 6.4 MB |
+| requests | 6 | 29 |
+| transferred | 0.64 MB | 0.91 MB |
+| compressed | 0.27 MB | 0.33 MB |
+| to first paint | 52 ms | 88 ms |
 
-Frontage itself is 131 KB (39 KB compressed); the rest is the interpreter.
+Most of that is the interpreter: the framework is 82 KB of precompiled bytecode, and none of
+it is parsed in the browser. Medians of five, this laptop's Chromium; DESIGN.md §12 has the
+method.
 
 The same package is a small command line on your machine, stdlib only:
 
@@ -91,7 +100,7 @@ classes work as you type. The [Style](https://academy.optersoft.com/python/front
 
 ## Why
 
-Python in the browser exists (PyScript, Pyodide, MicroPython) and the frameworks that use it
+Python in the browser exists (MicroPython and CPython both compile to WebAssembly) and the frameworks that use it
 either carry a server into the browser (Streamlit's stlite, Shiny's Shinylive: tens of
 seconds to start) or rebuild and diff the page on every change. Frontage is browser-first:
 no session, no transport, no DSL, and a state change touches only the DOM nodes that read
@@ -105,10 +114,10 @@ The repo uses [uv](https://docs.astral.sh/uv/) and [mkrun](https://github.com/op
 ```sh
 mk sync                 # .venv with every dependency group
 mk check                # lint, types, unit tests: the gate
-mk pyscript.fetch       # PyScript's offline bundle (core + both interpreters) into tools/pyscript/
+mk runtime.fetch        # the pinned micropython.mjs + .wasm into frontage/_runtime/
 mk serve                # examples and playground at http://127.0.0.1:8000/, package read live, reload on save
-mk test --browser       # every example in Chromium, under MicroPython and Pyodide
-mk export examples/todo # python -m frontage export, with the local PyScript bundle
+mk test --browser       # every example in Chromium, on MicroPython in WebAssembly
+mk build examples/todo  # a static directory that boots from WebAssembly
 mk site.deploy          # publish frontage.optersoft.com (Cloudflare Pages): wheels, playground, redirects
 ```
 

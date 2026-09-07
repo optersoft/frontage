@@ -1,6 +1,6 @@
 # Frontage design
 
-**Status: implemented through M5 (0.2.0, 2026-09-06; 0.3.0 the same day added the command line and 0.4.0 prerendering with hydration, M6 in TODO.md); draft 4 of 2026-09-05 is the plan it followed.** Draft 1 kept PuePy's shape. Draft 2 was written from Leptos.
+**Status: implemented through M11 (0.9.0, 2026-09-07: the WebAssembly boot that replaced PyScript; M6-M9 shipped 2026-09-06). Draft 4 of 2026-09-05 is the plan it followed; §6 and §12 carry what measurement changed since.** Draft 1 kept PuePy's shape. Draft 2 was written from Leptos.
 Draft 3 added [Solid](https://github.com/solidjs/solid) (1.x, `dom-expressions`, the store,
 `solid-router`, the 2.0 release candidate), the JavaScript origin of the model and the size
 reference. This draft adds the three Python-first frameworks, [Streamlit](https://github.com/streamlit/streamlit),
@@ -122,7 +122,7 @@ it is measured.
 3. **Few bridge calls.** Every DOM operation from Python crosses the Python-to-JavaScript
    bridge, which is the dominant cost in PyScript. The design counts crossings the way a
    database design counts round trips (section 8).
-4. **Two runtimes.** Pyodide and MicroPython, one codebase, both in CI.
+4. **One runtime, chosen by measurement.** MicroPython compiled to WebAssembly. Pyodide was first-class through 0.8 and left in 0.9.0 (§6): the same code ran on both, and carrying the second cost 13.8 MB, half the browser matrix, and a defensive shape in `dom.py` for a proxy-identity difference nobody was exercising.
 5. **Small and teachable.** Core under ~4,000 lines; a reader can hold it in a day.
 6. **Renderer-agnostic views**: DOM in the browser, HTML string on CPython; server rendering
    stays possible without a rewrite (section 8).
@@ -152,9 +152,9 @@ than the pinned one.
 
 | | |
 |---|---|
-| PyScript | ≥ 2026.7.3; the examples pin one exact release, served locally in CI |
-| Pyodide | 3.14; Python 3.14 semantics incl. template strings (PEP 750) |
-| MicroPython | the build PyScript ships (template strings, `weakref`, `asyncio.Future` since 2026.3.1) |
+| MicroPython | 1.28.0-6, the upstream `webassembly` build for the `pyscript` variant (template strings, `weakref`, `asyncio.Future`), vendored in `frontage/_runtime/` and pinned on one line in `cli/micropython.py` |
+| PyScript | **left in 0.9.0** (M11). It was the delivery mechanism, never the bridge: `runtime.py`'s two imports were the whole coupling, and MicroPython's own `js`/`jsffi` answer them. `export` writes a PyScript page through 0.9.x for the academy's chapter repos, and goes at 1.0 |
+| Pyodide | **unsupported from 0.9.0**: no CI, no examples, no docs. 13.8 MB against 0.64 was never the story this framework tells, and one interpreter halves the browser matrix. `runtime.py` keeps a three-line branch that still works, which is a cheaper way to leave the door open than deleting a name `frontage.platform` promises |
 | Browsers | evergreen Chromium, Firefox, WebKit |
 | Server | CPython ≥ 3.12 for tests, tooling, the string renderer |
 
@@ -438,6 +438,41 @@ not repeating: **moving an owner's defaults to class attributes made it twice as
 `_queued` and `_disposed` are read on every mark and flush), and a linear scan instead of the
 dependency set measured no better. `clear` stays at 45 ms, and a 1,000-row create is bound by
 element construction rather than by any one thing worth cutting.
+
+**Fourth measurement (2026-09-07, the M11 spike).** Not the rows benchmark: *boot*, which no
+earlier measurement had ever timed. The question was whether dropping PyScript for a direct
+MicroPython-wasm load is worth the migration, and the answer had to be a number. The spike
+loads the stock upstream `micropython.{mjs,wasm}` 1.28.0-6 — byte-identical to the build
+PyScript already ships — plus the sixteen framework modules cross-compiled to `.mpy` and
+packed in one tar, with a 2.2 KB loader. `examples/counter`, cold cache, median of five,
+this laptop's Chromium, navigation until the app's first element is on screen:
+
+| boot | ms | requests | bytes | gzipped |
+|---|---|---|---|---|
+| wasm, framework precompiled | **52** | **6** | 640,031 | 268,511 |
+| PyScript, MicroPython | 88 | 29 | 905,330 | ~328,802 |
+| PyScript, Pyodide | 844 | 33 | 1,531,941 | — |
+
+So 41% off the boot and 29 requests down to 6. **Size is the least of it**: the framework as
+sixteen `.py` files is 198,645 bytes raw and 53,126 gzipped, against 81,920 and 40,478 as
+bytecode, a saving of 13 KB over the wire. What the compile buys is the *parse*, which
+MicroPython was repeating on all 5,700 lines on every page view.
+
+Three things the spike settled that no amount of reading would have. **`runtime.py`'s two
+imports are the entire PyScript coupling**: patch them to `js` and `jsffi` and the framework
+runs untouched, `.new()`, `create_proxy` and `to_js` included, because those are upstream
+MicroPython rather than PyScript additions. **MicroPython cannot instantiate a module object**
+(`type(sys)('__main__')` raises), so the app is exec'd against `runPython`'s own globals, which
+are already `__main__`. And **`mpy-cross` from PyPI rejects two adjacent f-strings** —
+`f"a" f"b"` fails where `f"a" "b"` compiles — which occurs exactly once in the package, at
+`reactive.py:182`. That build is from 2025-08-10 and also predates PEP 750, so it cannot
+compile a t-string at all; the framework is unaffected because its own source has none, and
+app code keeps compiling in the VM, where a t-string example boots in 55 ms.
+
+`romfs` was to be preferred over the tar and is genuinely available (`mp_js_register_romfs` is
+an export of this build). It is not worth it: writing sixteen files into the in-memory
+filesystem is lost in the noise of a 52 ms boot, and the image needs a builder the tar does
+not. Thirty lines of JavaScript beat a new toolchain dependency.
 
 ## 13. Testing
 

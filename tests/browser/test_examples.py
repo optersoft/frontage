@@ -1,4 +1,4 @@
-"""The examples in a real browser under both interpreters (SPEC S5, W13 in the DOM)."""
+"""The examples in a real browser under the WebAssembly runtime (SPEC S5, W13 in the DOM)."""
 
 import re
 
@@ -6,13 +6,12 @@ import pytest
 from playwright.sync_api import Page, expect
 
 
-@pytest.mark.parametrize("interpreter", ["mpy", "py"])
-def test_counter(server, page: Page, interpreter):
+def test_counter(server, page: Page):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(f"{server}/examples/counter/index.html?type={interpreter}")
+    page.goto(f"{server}/examples/counter/index.html")
     value = page.locator("#value")
-    expect(value).to_have_text("Value: 0, doubled: 0", timeout=60_000)
+    expect(value).to_have_text("Value: 0, doubled: 0", timeout=30_000)
     page.click("#inc")
     page.click("#inc")
     expect(value).to_have_text("Value: 2, doubled: 4")
@@ -25,13 +24,12 @@ def test_counter(server, page: Page, interpreter):
     assert errors == []
 
 
-@pytest.mark.parametrize("interpreter", ["mpy", "py"])
-def test_todo(server, page: Page, interpreter):
+def test_todo(server, page: Page):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(f"{server}/examples/todo/index.html?type={interpreter}")
+    page.goto(f"{server}/examples/todo/index.html")
     items = page.locator("#list li")
-    expect(items).to_have_count(1, timeout=60_000)
+    expect(items).to_have_count(1, timeout=30_000)
     expect(page.locator("#left")).to_have_text("1 left")
     page.fill("#new", "write tests")
     page.press("#new", "Enter")
@@ -54,13 +52,12 @@ def test_todo(server, page: Page, interpreter):
     assert errors == []
 
 
-@pytest.mark.parametrize("interpreter", ["mpy", "py"])
-def test_rows(server, page: Page, interpreter):
+def test_rows(server, page: Page):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(f"{server}/examples/rows/index.html?type={interpreter}")
+    page.goto(f"{server}/examples/rows/index.html")
     rows = page.locator("#tbody tr")
-    expect(page.locator("#run")).to_be_visible(timeout=60_000)
+    expect(page.locator("#run")).to_be_visible(timeout=30_000)
     page.click("#run")
     expect(rows).to_have_count(1000)
     first_label = rows.nth(0).locator("td").nth(1).text_content() or ""
@@ -79,12 +76,11 @@ def test_rows(server, page: Page, interpreter):
     assert errors == []
 
 
-@pytest.mark.parametrize("interpreter", ["mpy", "py"])
-def test_fetch(server, page: Page, interpreter):
+def test_fetch(server, page: Page):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(f"{server}/examples/fetch/index.html?type={interpreter}")
-    expect(page.locator("#name")).to_have_text("Ada Lovelace", timeout=60_000)
+    page.goto(f"{server}/examples/fetch/index.html")
+    expect(page.locator("#name")).to_have_text("Ada Lovelace", timeout=30_000)
     page.click("#u2")
     expect(page.locator("#state")).to_have_text("state: refreshing")
     expect(page.locator("#name")).to_have_text("Grace Hopper")
@@ -96,12 +92,11 @@ def test_fetch(server, page: Page, interpreter):
     assert errors == []
 
 
-@pytest.mark.parametrize("interpreter", ["mpy", "py"])
-def test_forms(server, page: Page, interpreter):
+def test_forms(server, page: Page):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(f"{server}/examples/forms/index.html?type={interpreter}")
-    expect(page.locator("#plan-free")).to_be_visible(timeout=60_000)
+    page.goto(f"{server}/examples/forms/index.html")
+    expect(page.locator("#plan-free")).to_be_visible(timeout=30_000)
     expect(page.locator("#save")).to_be_disabled()
     page.fill("#name", "Ann")
     expect(page.locator("#save")).to_be_enabled()
@@ -113,13 +108,12 @@ def test_forms(server, page: Page, interpreter):
     assert errors == []
 
 
-@pytest.mark.parametrize("interpreter", ["mpy", "py"])
-def test_template(server, page: Page, interpreter):
+def test_template(server, page: Page):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(f"{server}/examples/template/index.html?type={interpreter}")
+    page.goto(f"{server}/examples/template/index.html")
     value = page.locator("#value")
-    expect(value).to_have_text("Value: 0, doubled: 0", timeout=60_000)
+    expect(value).to_have_text("Value: 0, doubled: 0", timeout=30_000)
     page.click("#inc")
     page.click("#inc")
     page.click("#inc")
@@ -131,13 +125,12 @@ def test_template(server, page: Page, interpreter):
     assert errors == []
 
 
-@pytest.mark.parametrize("interpreter", ["mpy", "py"])
 @pytest.mark.parametrize("mode", ["hash", "history"])
-def test_contacts_router(server, page: Page, interpreter, mode):
+def test_contacts_router(server, page: Page, mode):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(f"{server}/examples/contacts/index.html?type={interpreter}&mode={mode}")
-    expect(page.locator("#home")).to_be_visible(timeout=60_000)
+    page.goto(f"{server}/examples/contacts/index.html?mode={mode}")
+    expect(page.locator("#home")).to_be_visible(timeout=30_000)
     page.click("#to-contacts")  # a plain <a> rendered by A: intercepted, no reload
     expect(page.locator("#pick")).to_be_visible()
     if mode == "hash":
@@ -187,7 +180,7 @@ def test_playground_runs_and_shares(server, page: Page):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(f"{server}/playground/index.html")
-    expect(page.locator("#status")).to_contain_text("ran on micropython", timeout=60_000)
+    expect(page.locator("#status")).to_contain_text("ran on micropython", timeout=30_000)
     page.click("#app button:nth-of-type(2)")  # the counter's +
     expect(page.locator("#app span")).to_have_text(" 1 ")
     page.select_option("#example", "state")
@@ -198,7 +191,7 @@ def test_playground_runs_and_shares(server, page: Page):
     page.click("#share")
     assert "#code=" in page.url
     page.reload()
-    expect(page.locator("#x")).to_have_text("shared", timeout=60_000)
+    expect(page.locator("#x")).to_have_text("shared", timeout=30_000)
     assert errors == []
 
 
@@ -206,7 +199,7 @@ def test_playground_tailwind(server, page: Page):
     """The playground loads Tailwind's browser build from jsdelivr (this test needs the network)
     without preflight, and it styles the DOM Frontage inserts."""
     page.goto(f"{server}/playground/index.html")
-    expect(page.locator("#status")).to_contain_text("ran on micropython", timeout=60_000)
+    expect(page.locator("#status")).to_contain_text("ran on micropython", timeout=30_000)
     page.select_option("#example", "tailwind")
     expect(page.locator("#app button")).to_have_text("Count")
     page.wait_for_function("getComputedStyle(document.querySelector('#app button')).borderRadius !== '0px'")
@@ -214,3 +207,16 @@ def test_playground_tailwind(server, page: Page):
     expect(page.locator("#app p")).to_have_text("clicked 1 times")
     # No preflight: the page's own header button keeps its border.
     assert page.locator("#run").evaluate("e => getComputedStyle(e).borderTopWidth") == "1px"
+
+
+def test_a_wasm_library_imports_as_a_python_module(server, page: Page):
+    """A C or Rust library compiled to WebAssembly, declared with `data-fr-js` and registered
+    before the app runs, so the app writes `import mathlib` and not `window.mathlib`."""
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{server}/examples/wasm/index.html")
+    expect(page.locator("#answer")).to_have_text("mathlib.add(2, 40) = 42", timeout=30_000)
+    expect(page.locator("#loop")).to_have_text("loop total 2000")  # 2,000 crossings, all correct
+    page.click("#again")
+    expect(page.locator("#answer")).to_have_text("mathlib.add(2, 40) = 43")  # and reactive
+    assert errors == []

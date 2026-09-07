@@ -8,7 +8,8 @@
 </head>
 <body>
 <h1>Frontage examples</h1>
-<p>Each page runs on MicroPython by default; add <code>?type=py</code> for Pyodide. The
+<p>Each page loads MicroPython compiled to WebAssembly and the framework as precompiled
+bytecode; there is no PyScript. The
 <a href="https://github.com/optersoft/frontage/tree/main/examples">source</a> is the same
 files the browser suite tests.</p>
 <ul>
@@ -20,6 +21,8 @@ files the browser suite tests.</p>
   <li><a href="forms/index.html">Forms</a>: bindings, <code>Switch</code>, an <code>Action</code> on submit</li>
   <li><a href="template/index.html">Template</a>: the counter as a template string, <code>html(t"…")</code></li>
   <li><a href="contacts/index.html">Contacts</a>: the router, nested routes, <code>A</code> links, <code>query()</code>; <code>?mode=history</code> for pushState</li>
+  <li><a href="wasm/index.html">Wasm library</a>: a C or Rust library compiled to WebAssembly, imported like any Python module</li>
+  <li><a href="tracker/index.html">Tracker</a>: the whole framework in one app — routes, a store, <code>Optimistic</code>, a Portal modal, an <code>ActionForm</code></li>
 </ul>
 </body>
 </html>

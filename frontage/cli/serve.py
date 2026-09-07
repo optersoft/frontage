@@ -10,9 +10,13 @@ scroll position. Stdlib only; `python -m http.server` with a watcher."""
 import argparse
 import functools
 import http.server
+import io
+import json
 import os
 import queue
+import re
 import sys
+import tarfile
 import threading
 import time
 from pathlib import Path
@@ -20,11 +24,48 @@ from pathlib import Path
 from . import PROG
 
 RELOAD_PATH = "/__frontage/reload"
+MODULE_PATH = "/__frontage/module/"
+RUNTIME_PREFIX = "/_frontage/"
+
+# A page with no boot tag (a PyScript page, 0.9.x) can only reload.
 RELOAD_SCRIPT = (
     '<script data-fr-reload>(function(){var s=new EventSource("'
     + RELOAD_PATH
-    + '");s.onmessage=function(e){if(e.data==="reload")location.reload()}})();</script>'
+    + '");s.onmessage=function(e){location.reload()}})();</script>'
 )
+
+# A wasm page can do better: keep the interpreter, replace the app's modules, mount again.
+# It imports the *same* module URL the page booted from, so it gets that live instance.
+SWAP_SCRIPT = """<script type="module" data-fr-reload>
+import {{ ready }} from "{boot}";
+const stream = new EventSource("{reload}");
+stream.onmessage = async (event) => {{
+  let message;
+  try {{ message = JSON.parse(event.data); }} catch {{ return location.reload(); }}
+  if (message.type !== "swap") return location.reload();
+  try {{
+    const mp = await ready;
+    for (const name of message.modules) {{
+      const source = await (await fetch("{module}" + name + ".py")).text();
+      mp.FS.writeFile("/lib/" + name + ".py", source);
+    }}
+    mp.globals.set("__fr_entry", message.entry);
+    mp.globals.set("__fr_names", message.modules.join(","));
+    // One line, semicolons rather than newlines: this string travels through a Python
+    // formatter into an HTML page into a JavaScript literal, and every newline in it is one
+    // more chance for a layer to eat a backslash. One of them already did.
+    mp.runPython("import frontage.dev as _d; _d.swap(__fr_entry, __fr_names.split(','))");
+  }} catch (error) {{
+    // Deliberately no reload. The usual failure here is a half-typed file, and `dev.swap`
+    // compiles before it tears anything down, so the page on screen is still the last one
+    // that worked. Reloading would replace it with the broken source and a blank page.
+    console.error("frontage: swap failed, page left as it was", error);
+  }}
+}};
+</script>"""
+
+_BOOT_SRC = re.compile(r"""<script[^>]*\bdata-fr-boot\b[^>]*>""", re.I)
+_SRC = re.compile(r"""\bsrc\s*=\s*["\']([^"\']+)["\']""", re.I)
 SKIP_DIRS = {"__pycache__", ".git", ".hg", ".venv", "node_modules", ".mypy_cache", ".ruff_cache", ".pytest_cache"}
 
 
@@ -73,19 +114,24 @@ class Watcher(threading.Thread):
         with self._lock:
             self._subscribers.discard(q)
 
-    def notify(self):
+    def notify(self, paths=()):
+        """Wake every subscriber with the paths that changed (empty means "something did")."""
         self.changes += 1
         with self._lock:
             for q in self._subscribers:
-                q.put("reload")
+                q.put(list(paths))
 
     def check(self):
         """One poll: True when something changed since the last one."""
         now = self.snapshot()
         changed = self._snapshot is not None and now != self._snapshot
+        if changed:
+            before = self._snapshot or {}
+            touched = [p for p in now if before.get(p) != now[p]]
+            touched += [p for p in before if p not in now]
         self._snapshot = now
         if changed:
-            self.notify()
+            self.notify(sorted(touched))
         return changed
 
     def run(self):
@@ -98,15 +144,53 @@ class Watcher(threading.Thread):
                 pass
 
 
+def dev_script(html):
+    """The script this page needs: a module swap if it boots from wasm, else a page reload."""
+    tag = _BOOT_SRC.search(html)
+    src = _SRC.search(tag.group(0)) if tag else None
+    if src is None:
+        return RELOAD_SCRIPT
+    return SWAP_SCRIPT.format(boot=src.group(1), reload=RELOAD_PATH, module=MODULE_PATH)
+
+
 def inject(html):
-    """`html` with the reload script before `</head>` (or `</body>`, or at the end)."""
+    """`html` with the dev script before `</head>` (or `</body>`, or at the end)."""
     if "data-fr-reload" in html:
         return html
+    script = dev_script(html)
     for tag in ("</head>", "</body>"):
         i = html.find(tag)
         if i >= 0:
-            return html[:i] + RELOAD_SCRIPT + html[i:]
-    return html + RELOAD_SCRIPT
+            return html[:i] + script + html[i:]
+    return html + script
+
+
+def _tar(members):
+    """`[(name, bytes)]` as an uncompressed USTAR archive, the shape `boot.js` unpacks."""
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w", format=tarfile.USTAR_FORMAT) as archive:
+        for name, data in members:
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            info.mtime = 0
+            archive.addfile(info, io.BytesIO(data))
+    return buffer.getvalue()
+
+
+def app_archive(root):
+    """The app's modules, straight off disk. Nothing is built in dev: an edit is live."""
+    return _tar([(p.name, p.read_bytes()) for p in sorted(Path(root).glob("*.py"))])
+
+
+def framework_archive():
+    """The framework as *source*, so a checkout's edits reach the page on the next reload.
+
+    A built site gets the precompiled `frontage.tar` instead; here the loop matters more than
+    the 35 ms, and this is what `tools/serve.py` has always done with `/frontage/*.py`.
+    """
+    from . import micropython as mp
+
+    return _tar([("frontage/" + p.name, p.read_bytes()) for p in mp.browser_modules()])
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -115,10 +199,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     watcher = None
     quiet = False
+    app_root = None  # where the app's .py files live; set by `make_server`
+    entry = None  # the module that mounts, so a swap knows what to re-run
 
     def do_GET(self):
-        if self.path.split("?", 1)[0] == RELOAD_PATH:
+        route = self.path.split("?", 1)[0]
+        if route == RELOAD_PATH:
             self._stream()
+            return
+        if route.startswith(MODULE_PATH):
+            self._send_module(route[len(MODULE_PATH) :])
+            return
+        at = route.find(RUNTIME_PREFIX)
+        if at >= 0:
+            # `_frontage/` anywhere, not only at the root: the app it belongs to is whatever
+            # directory holds it, so one server can carry many apps (the examples tree) with
+            # the same relative boot tag a built app uses.
+            self._send_runtime(route[at + len(RUNTIME_PREFIX) :], route[: at + 1])
             return
         path = self.translate_path(self.path)
         if os.path.isdir(path):
@@ -143,6 +240,48 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_bytes(self, body, content_type):
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_module(self, name):
+        """One app module's source, by module name, for a swap."""
+        root = Path(self.app_root or self.translate_path("/"))  # a swap only runs on a single-app server
+        candidate = root / name
+        if candidate.suffix != ".py" or candidate.parent != root or not candidate.is_file():
+            self.send_error(404)
+            return
+        self._send_bytes(candidate.read_bytes(), "text/x-python; charset=utf-8")
+
+    def _send_runtime(self, name, prefix="/"):
+        """`_frontage/*`: the two archives built on the spot, everything else from the package.
+
+        `prefix` is the directory the request came from, which is the app the archive is for.
+        """
+        from . import micropython as mp
+
+        try:
+            if name == "app.tar":
+                # Always the directory the request came from, never a configured root: on a
+                # server carrying several apps, `/examples/todo/_frontage/app.tar` must be the
+                # todo app whatever `app_root` says.
+                self._send_bytes(app_archive(self.translate_path(prefix)), "application/x-tar")
+                return
+            if name == mp.IMAGE_NAME:
+                self._send_bytes(framework_archive(), "application/x-tar")
+                return
+            asset = mp.RUNTIME_DIR / name
+            if "/" in name or not asset.is_file():
+                self.send_error(404)
+                return
+            kind = self.extensions_map.get(asset.suffix, "application/octet-stream")
+            self._send_bytes(asset.read_bytes(), kind)
+        except OSError:
+            self.send_error(404)
+
     def _stream(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -150,7 +289,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         watcher = self.watcher
         if watcher is None:
-            self.wfile.write(b"data: reload\n\n")  # no watcher: nothing will ever change
+            self.wfile.write(b'data: {"type":"reload"}\n\n')  # no watcher: nothing will ever change
             return
         q = watcher.subscribe()
         try:
@@ -158,16 +297,41 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.wfile.flush()
             while True:
                 try:
-                    message = q.get(timeout=15)
+                    paths = q.get(timeout=15)
                 except queue.Empty:
                     self.wfile.write(b": ping\n\n")
                 else:
-                    self.wfile.write(f"data: {message}\n\n".encode())
+                    message = self.change_message(paths)
+                    self.wfile.write(f"data: {json.dumps(message, separators=(',', ':'))}\n\n".encode())
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
         finally:
             watcher.unsubscribe(q)
+
+    @classmethod
+    def change_message(cls, paths):
+        """What to tell the page about `paths`.
+
+        An app module swaps. Anything else -- the page itself, a stylesheet, a file under
+        `frontage/` -- reloads, because the framework's own module objects are what the live
+        page is holding, and replacing those under it means two frameworks at once.
+        """
+        # A swap needs to know which module to re-run. Without an entry -- a server carrying
+        # many apps, like the examples tree -- the honest answer is a reload.
+        root = Path(cls.app_root) if cls.app_root and cls.entry else None
+        if root is None or not paths:
+            return {"type": "reload"}
+        modules = []
+        for path in paths:
+            candidate = Path(path)
+            if candidate.suffix == ".py" and candidate.parent == root:
+                modules.append(candidate.stem)
+            else:
+                return {"type": "reload"}
+        if not modules:
+            return {"type": "reload"}
+        return {"type": "swap", "modules": sorted(set(modules)), "entry": cls.entry}
 
     def handle(self):
         try:
@@ -190,9 +354,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 Handler.extensions_map.update({".wasm": "application/wasm", ".mjs": "text/javascript", ".js": "text/javascript"})
 
 
-def make_server(directory, host="127.0.0.1", port=8000, watch=(), handler=Handler, quiet=False):
+def make_server(
+    directory, host="127.0.0.1", port=8000, watch=(), handler=Handler, quiet=False, app_root=None, entry=None
+):
     """A `ThreadingHTTPServer` serving `directory` with live reload; its watcher is started.
-    `watch` names the directories to poll; the served one when it is empty."""
+    `watch` names the directories to poll; the served one when it is empty.
+
+    `app_root` is where the app's modules live (the served directory by default) and `entry`
+    is the one that mounts. Together they are what lets a change become a module swap rather
+    than a page reload."""
     directory = Path(directory).resolve()
     watcher = Watcher(list(watch) or [directory])
     watcher.start()
@@ -202,6 +372,8 @@ def make_server(directory, host="127.0.0.1", port=8000, watch=(), handler=Handle
 
     Bound.watcher = watcher
     Bound.quiet = quiet
+    Bound.app_root = str(Path(app_root).resolve()) if app_root else str(directory)
+    Bound.entry = entry
     # The plain handler serves `directory`; a subclass with its own `translate_path` needs none.
     factory = functools.partial(Bound, directory=str(directory)) if handler is Handler else Bound
     server = http.server.ThreadingHTTPServer((host, port), factory)  # ty: ignore[invalid-argument-type]
@@ -217,6 +389,7 @@ def main(argv=None):
     parser.add_argument("--host", default="127.0.0.1", help="0.0.0.0 to reach it from a phone on the same network")
     parser.add_argument("--watch", action="append", default=[], help="another directory to watch (repeatable)")
     parser.add_argument("--open", action="store_true", help="open the page in the browser")
+    parser.add_argument("--entry", default="", help="the module that mounts (default: inferred)")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
     directory = Path(args.dir)
@@ -227,14 +400,26 @@ def main(argv=None):
         if not Path(extra).exists():
             print(f"error: --watch {extra} does not exist", file=sys.stderr)
             return 2
+    # Knowing which module mounts is what turns a save into a swap instead of a reload. It is
+    # inferred the same way `build` infers it, and a directory it cannot read is not an error
+    # here: the page simply reloads, as it always did.
+    entry = args.entry
+    if not entry:
+        from .build import find_entry
+
+        try:
+            entry = find_entry(directory)
+        except SystemExit:
+            entry = ""
     try:
-        server = make_server(directory, args.host, args.port, watch=args.watch, quiet=args.quiet)
+        server = make_server(directory, args.host, args.port, watch=args.watch, quiet=args.quiet, entry=entry or None)
     except OSError as exc:
         print(f"error: cannot listen on {args.host}:{args.port} ({exc})", file=sys.stderr)
         return 2
     url = f"http://{args.host}:{args.port}/"
     if not args.quiet:
-        print(f"serving {directory.resolve()} on {url}  (reloads the page when a file changes)")
+        how = f"swaps {entry}.py in place" if entry else "reloads the page"
+        print(f"serving {directory.resolve()} on {url}  ({how} when a file changes)")
         sys.stdout.flush()
     if args.open:
         import webbrowser

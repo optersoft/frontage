@@ -10,13 +10,12 @@ through templates (what the example does). Then swap and update on the DOM mount
 
 import gc
 
-from pyscript import document, window
-
 from frontage import Signal, Store, h, mount, selector
 from frontage import view as _view
 from frontage.dom import DomRenderer
 from frontage.flow import For
 from frontage.renderer import Renderer
+from frontage.runtime import document, window
 
 ADJ = ["pretty", "large", "big", "small", "tall", "short", "long", "handsome", "plain", "quaint"]
 COL = ["red", "yellow", "blue", "green", "pink", "brown", "purple", "white", "black", "orange"]

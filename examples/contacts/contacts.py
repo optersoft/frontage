@@ -3,10 +3,9 @@ works from static hosting); `?mode=history` switches to pushState."""
 
 import asyncio
 
-from pyscript import window
-
 from frontage import A, Loading, Memo, Navigate, Route, Router, Signal, component, h, mount, use_params
 from frontage.router import query
+from frontage.runtime import window
 
 CONTACTS = {
     "ann": ("Ann Moore", "ann@example.com"),

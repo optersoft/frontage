@@ -847,13 +847,26 @@ def _value_of(node):
 # --- mounting -------------------------------------------------------------------------------
 
 
+# What is currently mounted. It exists for `frontage.dev`, which has to take a running page
+# apart before rebuilding it; nothing in a normal render reads it. A mount happens once or
+# twice per app, so the append is not on any path §12 counts.
+_mounted = []  # [_Root], most recent last
+
+
 class _Root:
-    def __init__(self, owner, nodes):
+    def __init__(self, owner, nodes, renderer=None, parent=None):
         self.owner = owner
         self.nodes = nodes
+        # Kept so a dev swap can put the page back the way it found it: the owner disposes the
+        # computations, the renderer holds the delegated document listeners.
+        self.renderer = renderer
+        self.parent = parent
+        _mounted.append(self)
 
     def dispose(self):
         self.owner.dispose()
+        if self in _mounted:
+            _mounted.remove(self)
 
 
 def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hydrate=None, scope=None):
@@ -941,7 +954,7 @@ def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hy
             _set_hydration_values(None)
             _set_memo_hydration(None)
             renderer.end_hydration()
-    return _Root(owner, [])
+    return _Root(owner, [], renderer, parent)
 
 
 def render_to_string(view, hydration_markers=False):

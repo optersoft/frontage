@@ -47,7 +47,13 @@ def test_prerender_counter(tmp_path):
     assert "Value: <!--h--><!--[-->0<!--h-->, doubled: <!--h--><!--[-->0<!--h-->" in page
     assert "__frontage_replay" in page and page.index("__frontage_replay") < page.index("<body>")
     assert "data-fr-data" not in page  # no resources, no data block
-    assert (out / "counter.py").exists() and (out / "frontage" / "view.py").exists()
+    # The wasm shape: the app's source beside the page, the framework as one precompiled
+    # archive, and no loose `frontage/*.py` for the browser to fetch and compile.
+    assert (out / "counter.py").exists()
+    assert (out / "_frontage" / "frontage.tar").exists()
+    assert (out / "_frontage" / "micropython.wasm").exists()
+    assert not (out / "frontage").exists()
+    assert 'data-fr-entry="counter"' in page
 
 
 def test_prerender_waits_for_resources_and_writes_their_values(tmp_path):
@@ -135,6 +141,47 @@ def test_inject_and_helpers():
     assert (
         relocate('src="./a.py" href="http://x/y" data="./z"', 2) == 'src="../../a.py" href="http://x/y" data="../../z"'
     )
+
+
+def test_a_wasm_page_names_its_entry_instead_of_being_guessed_at():
+    tag = '<script type="module" src="./_frontage/boot.js" data-fr-boot data-fr-entry="counter"></script>'
+    assert find_entry(tag) == "counter.py"
+    # The attribute wins over anything that merely looks like an entry elsewhere in the page.
+    assert find_entry(f'<script src="./decoy.py"></script>\n{tag}') == "counter.py"
+    assert find_entry("<p>no boot tag here</p>") is None
+
+
+def test_only_the_boot_tag_needs_relocating_at_depth():
+    # Everything else the loader fetches resolves from `import.meta.url`, so a nested route
+    # rewrites exactly one path. This is why the loader must never take a document-relative one.
+    page = '<script type="module" src="./_frontage/boot.js" data-fr-boot data-fr-entry="app"></script>'
+    assert relocate(page, 2) == page.replace('src="./', 'src="../../')
+    assert 'data-fr-entry="app"' in relocate(page, 2)  # a module name, not a path
+
+
+def test_prerender_can_still_write_a_pyscript_page(tmp_path):
+    """0.9.x only: the academy's nine chapter repos boot that way until they move.
+
+    The input is a PyScript-shaped app, not an example: `examples/` boots from WebAssembly
+    now, so feeding one to `--boot pyscript` would assert nothing about a PyScript page.
+    """
+    app = tmp_path / "app"
+    app.mkdir()
+    (app / "index.html").write_text(
+        "<!DOCTYPE html>\n<html><head>\n"
+        '<script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>\n'
+        '</head><body><div id="app">Loading…</div>\n'
+        '<script type="mpy" src="./app.py" config="./pyscript.json"></script></body></html>\n'
+    )
+    (app / "app.py").write_text("from frontage import h, mount\n\nmount(lambda: h.p('hi'), '#app')\n")
+    out = tmp_path / "out"
+    prerender(app, out, bundle_pyscript=False, boot="pyscript")
+    page = (out / "index.html").read_text()
+    assert (out / "frontage" / "view.py").exists() and (out / "pyscript.json").exists()
+    assert not (out / "_frontage").exists()
+    assert '<script type="mpy" src="./app.py"' in page  # the PyScript boot survived
+    assert '<div id="app" data-fr-hydrate>' in page  # hydration is the same either way
+    assert "<p>hi<!--h--></p>" in page  # rendered, with the fence hydration reads
 
 
 def test_check_flags_html_the_browser_rewrites():

@@ -1,8 +1,7 @@
 """The tracker example end to end: routes, a keyed list kept by reconcile, a memo-loaded
 detail, a transactional done toggle (Optimistic + transition), a Portal modal, an action that
-redirects, a State-backed form, an Errored boundary, and the not-found route. Both interpreters."""
+redirects, a State-backed form, an Errored boundary, and the not-found route. On MicroPython, from the WebAssembly runtime."""
 
-import pytest
 from playwright.sync_api import Page, expect
 
 
@@ -10,14 +9,13 @@ def requests(page):
     return int((page.locator("#requests").text_content() or "requests: 0").split(":")[1])
 
 
-@pytest.mark.parametrize("interpreter", ["mpy", "py"])
-def test_tracker(server, page: Page, interpreter):
+def test_tracker(server, page: Page):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(f"{server}/examples/tracker/index.html?type={interpreter}")
+    page.goto(f"{server}/examples/tracker/index.html")
 
     # Dashboard: memos over a Resource; the interval ticks.
-    expect(page.locator("#open")).to_have_text("3", timeout=90_000)
+    expect(page.locator("#open")).to_have_text("3", timeout=30_000)
     expect(page.locator("#done")).to_have_text("2")
     expect(page.locator("#high")).to_have_text("high: 2")
     expect(page.locator("#tick")).to_contain_text("for 1 s", timeout=5_000)

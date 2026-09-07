@@ -1,7 +1,15 @@
-"""Serve the repo for the browser tests and `mk serve`: examples at /examples/, the
-package at /frontage/ (read live, so an edit shows on reload), and the local PyScript
-bundle at /pyscript/. Everything else 404s. Nothing is cached, and the page reloads by
-itself when a file under examples/, frontage/ or web/ changes (`frontage.cli.serve`)."""
+"""Serve the repo for the browser tests and `mk serve`: examples at /examples/, the playground
+at /playground/, prerendered output at /build/. Everything else 404s. Nothing is cached, and
+the page reloads by itself when a file under examples/, frontage/ or web/ changes.
+
+The WebAssembly runtime answers under every directory, at `<dir>/_frontage/…`, which is where
+a built app's boot tag points too. `frontage.cli.serve` builds both archives on the spot from
+whatever is on disk — the framework from `frontage/*.py`, the app from that directory — so an
+edit to either shows on the next reload with nothing to rebuild.
+
+One server carries many apps here, so a change reloads the page rather than swapping a module:
+a swap has to know which module mounts, and on this tree that depends on the page you happen
+to be looking at. `frontage serve <one app>` swaps."""
 
 import argparse
 import sys
@@ -12,11 +20,6 @@ sys.path.insert(0, str(ROOT))
 
 from frontage.cli.serve import Handler as LiveHandler  # noqa: E402
 from frontage.cli.serve import make_server  # noqa: E402
-
-
-def pyscript_dir():
-    versions = sorted(ROOT.glob("tools/pyscript/*/pyscript"))
-    return versions[-1] if versions else None
 
 
 class Handler(LiveHandler):
@@ -30,12 +33,6 @@ class Handler(LiveHandler):
 
     def translate_path(self, path):
         path = path.split("?", 1)[0].split("#", 1)[0]
-        # PyScript's offline mode resolves its interpreters as ./pyscript/<name>/… relative to
-        # the *page*, so the bundle must answer at that path under every example directory
-        # too. The site does the same with a _redirects rule (see Makefile.py site_build).
-        if "/pyscript/" in path:
-            base = pyscript_dir()
-            return str(base / path.split("/pyscript/", 1)[1]) if base else "/nonexistent"
         for prefix, base in self.routes.items():
             if path.startswith(prefix):
                 return str(base / path[len(prefix) :])
@@ -50,6 +47,6 @@ if __name__ == "__main__":
     watch = [ROOT / "examples", ROOT / "frontage", ROOT / "web" / "playground"]
     with make_server(ROOT, port=args.port, watch=watch, handler=Handler, quiet=args.quiet) as httpd:
         if not args.quiet:
-            print(f"serving on http://127.0.0.1:{args.port}/examples/  (pyscript: {pyscript_dir() or 'NOT FETCHED'})")
+            print(f"serving on http://127.0.0.1:{args.port}/examples/")
         sys.stdout.flush()
         httpd.serve_forever()

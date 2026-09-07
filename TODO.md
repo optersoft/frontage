@@ -281,6 +281,129 @@ is the exit if it ever outgrows this.
       prerenderer ignored async memos started during a render and waited on disposed resources,
       and on MicroPython a task that disposed its own owner cancelled itself (C24).
 
+## M11 — boot from WebAssembly, drop PyScript (0.9.0, planned 2026-09-07)
+
+The delivery model Dioxus and Leptos have: the browser loads a compiled artifact instead of
+fetching sixteen `.py` files and compiling 5,700 lines on every page view. MicroPython only;
+the framework is cross-compiled to bytecode at release and vendored in the wheel; the app
+ships as source and costs about two milliseconds to compile in the VM. Plan in
+`~/.claude/plans/fizzy-stirring-simon.md`.
+
+- [x] Phase 0, the spike (2026-09-07), green and measured — numbers in DESIGN §12. Boot
+      **88 → 52 ms** and **29 → 6 requests**; counter and the t-string template example both
+      run, reactivity and all. Size is the small part: the framework is 53 KB gzipped as
+      source against 40 KB as bytecode, so what the compile buys is the parse, not the
+      download. `build/spike/` has the whole thing (gitignored).
+      - `runtime.py`'s two imports really are the entire PyScript coupling: point them at `js`
+        and `jsffi` and nothing else in the package moves.
+      - `romfs` exists in this build but is **not** worth its image builder; the 30-line JS
+        untar wins. Overrides the plan's preference.
+      - Two MicroPython findings for Phase 1: `type(sys)('__main__')` raises, so the app is
+        exec'd against `runPython`'s globals, which are already `__main__`; and mpy-cross
+        rejects adjacent f-strings (`f"a" f"b"`), which happens once, at `reactive.py:182`.
+- [x] Phase 1 (2026-09-07): the runtime seam, the vendored runtime, `frontage build`. **The
+      framework changed by 21 lines** — `runtime.py`'s two imports, and one adjacent-f-string
+      merge. Everything else is toolchain: `frontage/_runtime/` (committed, 628 KB, in the
+      wheel, which goes 100 KB → 394 KB), `frontage runtime fetch|image`, `frontage build`,
+      `mk runtime.fetch`/`mk runtime.build`/`mk build`, `typings/jsffi/`, 15 tests. mpy-cross
+      is dev-group only, so `dependencies = []` is untouched.
+- [x] Phase 2 (2026-09-07): prerender and hydration on the new boot. `find_entry` reads
+      `data-fr-entry` instead of hunting `src="./app.py"` through inline JavaScript with a
+      regex; `prerender --boot pyscript` keeps the old page for 0.9.x. Verified in Chromium on
+      the prerendered counter and fetch examples: HTML on screen before Python, an early click
+      replayed, the tagged node adopted rather than rebuilt, fences and `data-fr-h` consumed,
+      the data block consumed and removed, no refetch, no hydration warnings.
+      - `relocate` needed **no change**: the loader takes every runtime path from
+        `import.meta.url`, so a nested route rewrites exactly one string, the boot tag's `src`
+        (`./` → `../` → `../../`, verified at depth 2 through `--crawl`).
+      - `build` strips PyScript's `core.js`/`core.css` from a page it is migrating, so a
+        converted app does not ship two 404s.
+      - ⚠ Pre-existing, not caused by this work: `prerender examples/tracker --crawl` fails on
+        the tracker's deliberately cursed issue 13. The PyScript boot fails identically.
+- [x] Phase 3 (2026-09-07): the module-swap hot reload. Save a file and the page rebuilds in
+      **under 180 ms without reloading**: the interpreter stays up, the wasm is not fetched
+      again, the scroll position stays. `frontage/dev.py` (compile, dispose, drop from
+      `sys.modules`, re-run the entry as `__main__`), `view._mounted`, `DomRenderer.teardown`,
+      and a `serve.py` that reports *which* paths changed and streams JSON. Nothing is built in
+      dev: both archives are synthesised per request off disk, so a framework edit is live too.
+      Verified in Chromium: no reload, state rebuilt, still reactive, no leaked listeners, a
+      syntax error leaves the last good page up and interactive, and a later good save recovers.
+      - **The `Router` teardown was not needed and the risk was misdiagnosed.** `Router.__init__`
+        registers nothing; `popstate`, `hashchange` and the document click listener are all
+        registered in `__call__`, under the mount's owner, so disposing the mount removes them.
+        A module-level `Router` is fine.
+      - **The real leak was `DomRenderer`'s delegated dispatchers** — one per event type on
+        `document`, shared by every element, owned by nobody. Invisible while a page mounted
+        once and ended; twenty-four per swap otherwise.
+      - Fixed on the way: `web/playground/playground.py` disposed `handle[0]`, which was always
+        None, so every Run leaked a root owner and those listeners. It now calls
+        `dev.teardown()`, and the dead `handle` is gone.
+      - ⚠ **Do not reload the page when a swap fails.** The usual failure is a half-typed file,
+        and `dev.swap` compiles before it tears anything down, so what is on screen is still the
+        last version that worked. Reloading replaces it with the broken source and a blank page.
+        This was written the wrong way round first and the browser test caught it.
+      - MicroPython in this build **has `compile()`** and it rejects bad syntax, so the
+        compile-before-teardown guarantee is real. Verified in the VM, not assumed.
+- [x] Phase 4 (2026-09-07): examples, the dev server, the browser suite and the playground all
+      boot from wasm. **The browser suite is 16 tests in 14.5 s**, against ~44 cases and over a
+      minute when every one ran twice. No `?type=`, no PyScript anywhere in `examples/`.
+      - `<dir>/_frontage/…` resolves **per directory**, so one server carries every example with
+        the same relative boot tag a built app uses, and `tools/serve.py` lost the `/pyscript/`
+        rewrite (and `web/_redirects` its mirror of it). `mk site.build` is 23 files and 1 MB.
+      - `MISMATCH_PAGE` is **gone**: that fixture writes no `index.html`, so `build` supplies the
+        boot shape and the test cannot drift from what the command emits.
+      - Two tests were asserting things that were only true because the old boot was slow. The
+        fetch hydration test read the data block from the live DOM, which Python now consumes
+        first; it reads what the server sent instead. Pyodide's 60–90 s boot budgets are 30 s.
+      - The export tests now build their own PyScript-shaped app. Exporting an example to
+        PyScript stopped being a real combination, so it was asserting nothing.
+      - ⚠ **A rejected promise is nobody's problem now.** `playground.share` wrapped
+        `clipboard.writeText` in `try/except`, which catches only the synchronous half; PyScript
+        used to swallow the rejection and a denied clipboard is ordinary. It surfaced as an
+        uncaught page error the moment PyScript left. Handled on the promise now. Anything else
+        that ignores a returned promise has the same hole.
+- [x] Phase 5 (2026-09-07), the parts that live in this repo: Pyodide and PyScript out of
+      `DESIGN.md` §3/§6, `CLAUDE.md`, `README.md`, `pyproject.toml` and the academy's
+      `index.md`; `web/_headers` gains `Cross-Origin-Resource-Policy` beside the CORS it
+      already had, and the same pair on `/playground/_frontage/*`; CI drops both PyScript cache
+      blocks and **the `publish` job now asserts the vendored runtime is in the wheel** —
+      `import frontage` passed without it, so a packaging mistake would have shipped a release
+      that installs cleanly and boots nothing. That assertion was run against a real wheel, not
+      merely written.
+      - `version.py` is **deliberately still 0.8.3**. Bumping it is a release, and a release is
+        a commit in nine chapter repos too (the rule is in `CLAUDE.md`). The docs describe
+        0.9.0 because that is what this work ships as; the tag is a separate, deliberate act.
+- [x] Phase 6 (2026-09-07): **foreign wasm libraries (C, Rust) are a declared contract.**
+      `data-fr-js="mathlib=./mathlib.js"` on the boot tag; `boot.js` imports each one, awaits
+      it, and `registerJsModule`s the named ones, so an app writes `import mathlib` and
+      `from mathlib import add`. Specifiers resolve from `../` of `boot.js`, which is the app's
+      own directory in every layout, so a prerendered page at any depth is correct with nothing
+      for `relocate` to rewrite. `build` and the dev server needed **no change**: the `.js` and
+      `.wasm` are copied and served already.
+      - `examples/wasm/`: a **41-byte** hand-assembled module whose every byte is in the docs,
+        so a reader can see there is no magic in it. Browser test asserts the import, 2,000
+        correct crossings and reactivity. Verified served *and* built.
+      - Measured: **1.00 µs per crossing**, about four MicroPython method calls (§12). The
+        limit is volume, not frequency — separate linear memories, so anything but a number is
+        copied through JavaScript. That is what decides a coarse boundary API.
+      - Chapter written: `~/optersoft/academy-pages/python/frontage/wasm.md` + `.meta.md`, in
+        `index.md` under a new "Going further" section. ⚠ Its code blocks are **not** runnable
+        frames yet: `::: pyscript` cannot boot a wasm page, so the chapter waits on Phase 5's
+        `::: frontage` frame. It also has no GitLab repo yet, unlike the other nine.
+
+## M11 — what is left before 0.9.0 ships
+
+- [ ] `[human]` **The academy needs a `::: frontage` frame.** It lives in the academy app, not
+      in `academy-pages`, and `::: pyscript` cannot boot a wasm page. Until it exists the new
+      Wasm libraries chapter has code blocks rather than a running app, and the other nine
+      chapters keep their PyScript frames — which still work, because `export` survives through
+      0.9.x. Nothing on the live site is broken in the meantime.
+- [ ] The nine chapter repos (`gitlab.com/optersoft/python/frontage-<chapter>`) move to
+      `frontage build` once the frame lands; the new chapter gets a tenth.
+- [ ] Release: bump `version.py`, check the chapters name the new wheel, tag `v0.9.0`.
+- [ ] At 1.0: delete `frontage/cli/pyscript.py`, `tools/fetch_pyscript.py`, `mk pyscript.fetch`,
+      the `export` command with its tests, and the ~18 MB `tools/pyscript/` fixture.
+
 ## Do not "fix" these
 
 - A push to a chapter repo may create **no** GitLab pipeline (router, 0.8.2): the commit is on

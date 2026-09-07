@@ -58,11 +58,6 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - run: uv sync --all-groups --frozen
-      - uses: actions/cache@v4
-        with:
-          path: tools/pyscript
-          key: pyscript-${{ hashFiles('tools/fetch_pyscript.py') }}
-      - run: uv run --frozen python tools/fetch_pyscript.py
       - run: uv run --frozen playwright install --with-deps chromium
       - run: uv run --frozen pytest -q tests/browser --browser chromium
       - uses: actions/upload-artifact@v4
@@ -88,11 +83,6 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - run: uv sync --all-groups --frozen
-      - uses: actions/cache@v4
-        with:
-          path: tools/pyscript
-          key: pyscript-${{ hashFiles('tools/fetch_pyscript.py') }}
-      - run: uv run --frozen python tools/fetch_pyscript.py
       - run: uv run --frozen playwright install --with-deps ${{ matrix.browser }}
       - run: uv run --frozen pytest -q tests/browser --browser ${{ matrix.browser }}
 
@@ -113,5 +103,16 @@ jobs:
       - run: uv build
       # Catch a wheel that is missing files before it reaches PyPI.
       - run: uv run --isolated --no-project --with dist/*.whl -- python -c "import frontage; print(frontage.__version__)"
+      # The browser runtime rides in the wheel. `import frontage` passes without it, so a
+      # packaging mistake would ship a release that installs fine and boots nothing.
+      - run: |
+          uv run --isolated --no-project --with dist/*.whl -- python -c "
+          import frontage.cli.micropython as mp
+          for name in mp.WANTED + ('boot.js', mp.IMAGE_NAME):
+              path = mp.RUNTIME_DIR / name
+              assert path.is_file(), f'{name} missing from the wheel'
+              print(f'{name}: {path.stat().st_size:,} bytes')
+          assert (mp.RUNTIME_DIR / 'micropython.wasm').stat().st_size > 300_000
+          "
       - run: uv run --isolated --no-project --with dist/*.tar.gz -- python -c "import frontage; print(frontage.__version__)"
       - run: uv publish --trusted-publishing always

@@ -2,14 +2,17 @@
 
     mk sync                 .venv with every dependency group
     mk test                 unit tests (no browser)
-    mk test --browser       the examples in Chromium under MicroPython and Pyodide
+    mk test --browser       the examples in Chromium, on MicroPython in WebAssembly
+    mk runtime.fetch        the pinned micropython.mjs + .wasm into frontage/_runtime/
+    mk runtime.build        cross-compile the framework into frontage/_runtime/frontage.tar
     mk pyscript.fetch       PyScript's offline bundle (core + both interpreters) into tools/pyscript/
     mk lint [--fix]         ruff check + ruff format, as CI runs them
     mk types                ty
     mk check                the gate: lint, types, unit tests
     mk serve [--port N]     the examples at http://127.0.0.1:8000/examples/, package read live
     mk dist.build           sdist + wheel into ./dist, then import the wheel once
-    mk export APP [--out D] a self-contained static directory for one app (examples/counter, …)
+    mk build APP [--out D]  a self-contained static directory for one app, booting from wasm
+    mk export APP [--out D]  the same as a PyScript page (0.9.x only; `build` replaces it)
     mk vscode.test          the extension: manifest, snippets, client, grammar (needs npm)
     mk site.build           frontage.optersoft.com into ./www: the wheels, the playground, redirects
     mk site.deploy          build, then publish ./www to Cloudflare Pages by hand (fallback)
@@ -52,11 +55,11 @@ def sync() -> None:
 def test(*paths: str, browser: bool = False, verbose: bool = False) -> None:
     """Run the tests. Unit tests by default; the browser suite with --browser.
 
-    The browser suite needs `mk pyscript.fetch` once, and a Chromium once:
+    The browser suite needs `mk runtime.fetch` once, and a Chromium once:
     `uv run playwright install chromium`.
 
     Args:
-        browser: run tests/browser (Playwright, both interpreters) instead of the unit tests
+        browser: run tests/browser (Playwright, MicroPython in wasm) instead of the unit tests
         verbose: show each test name
     """
     target = list(paths) or (["tests/browser", "--browser", "chromium"] if browser else [])
@@ -94,9 +97,30 @@ def check() -> None:
     note("lint, types and unit tests passed")
 
 
-@task(requires=["uv"], needs=[pyscript_fetch])
+@task(name="runtime.fetch", requires=["uv"])
+def runtime_fetch() -> None:
+    """Download the pinned MicroPython WebAssembly build into frontage/_runtime/.
+
+    The version is one line, `frontage/cli/micropython.py:VERSION`, the way the PyScript pin
+    was. It is the same build PyScript shipped, so bumping it is a browser run, not a port.
+    """
+    sh("uv", "run", "--frozen", "python", "-m", "frontage", "runtime", "fetch")
+
+
+@task(name="runtime.build", requires=["uv"], needs=[runtime_fetch])
+def runtime_build() -> None:
+    """Cross-compile the framework to bytecode and pack frontage/_runtime/frontage.tar.
+
+    Needs mpy-cross (the dev group). The tar is reproducible -- mtimes are pinned to 0 -- so
+    CI rebuilds it and compares bytes rather than trusting a timestamp a wheel install
+    flattens. Run this after any change to a top-level module in frontage/.
+    """
+    sh("uv", "run", "--frozen", "python", "-m", "frontage", "runtime", "image")
+
+
+@task(requires=["uv"], needs=[runtime_fetch])
 def serve(*, port: int = 8000) -> None:
-    """Serve the examples and the local PyScript, reading ./frontage live; the page reloads when a file changes.
+    """Serve the examples, reading ./frontage live; the page reloads when a file changes.
 
     Args:
         port: TCP port to listen on
@@ -113,6 +137,26 @@ def dist_build() -> None:
         "-c",
         'uv run --isolated --no-project --with dist/*.whl -- python -c "import frontage; print(frontage.__version__)"',
     )
+
+
+@task(requires=["uv"], needs=[runtime_build])
+def build(app: str, *, out: str = "", entry: str = "") -> None:
+    """Build one app directory into static files that boot from WebAssembly.
+
+    Four requests to first paint and no PyScript: the interpreter, the framework as
+    precompiled bytecode, the app as source, and a 4 KB loader.
+
+    Args:
+        app: the app directory (its .py files, and an index.html if it wants one)
+        out: destination directory (default dist/<app name>)
+        entry: the module that mounts (default: inferred)
+    """
+    args = ["-m", "frontage", "build", app]
+    if out:
+        args += ["--out", out]
+    if entry:
+        args += ["--entry", entry]
+    sh("uv", "run", "--frozen", "python", *args)
 
 
 @task(requires=["uv"])
@@ -136,24 +180,32 @@ def export(app: str, *, out: str = "", no_pyscript: bool = False) -> None:
     sh("uv", "run", "--frozen", "python", *args)
 
 
-@task(name="site.build", needs=[pyscript_fetch])
+@task(name="site.build", needs=[runtime_build])
 def site_build() -> None:
-    """Assemble frontage.optersoft.com into ./www (fetching the PyScript bundle when absent).
+    """Assemble frontage.optersoft.com into ./www.
 
-    web/ holds the redirects to the academy and the playground; the package goes under
-    /frontage/ and the local PyScript bundle (without source maps) under /pyscript/, the
-    absolute paths the playground loads (tools/serve.py serves the same ones).
+    web/ holds the redirects to the academy and the playground. The playground carries its
+    own copy of the WebAssembly runtime at /playground/_frontage/, which is where its boot
+    tag points; `boot.js` finds the interpreter and both archives from its own URL, so
+    nothing here needs a rewrite rule.
     """
     if WWW.exists():
         shutil.rmtree(WWW)
     shutil.copytree(ROOT / "web", WWW)
-    shutil.copytree(
-        ROOT / "frontage", WWW / "frontage", ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "cli", "__main__.py")
-    )
-    bundles = sorted((ROOT / "tools" / "pyscript").glob("*/pyscript"))
-    if not bundles:
-        raise MakeError("no local PyScript bundle: run `mk pyscript.fetch` first")
-    shutil.copytree(bundles[-1], WWW / "pyscript", ignore=shutil.ignore_patterns("*.map"))
+    runtime = ROOT / "frontage" / "_runtime"
+    if not (runtime / "micropython.wasm").exists():
+        raise MakeError("no runtime: run `mk runtime.fetch` first")
+    shutil.copytree(runtime, WWW / "playground" / "_frontage")
+    # The playground's own source is its app, packed the way `build` packs one.
+    import tarfile
+
+    with tarfile.open(WWW / "playground" / "_frontage" / "app.tar", "w", format=tarfile.USTAR_FORMAT) as archive:
+        for module in sorted((ROOT / "web" / "playground").glob("*.py")):
+            info = tarfile.TarInfo(module.name)
+            info.size = module.stat().st_size
+            info.mtime = 0
+            with module.open("rb") as handle:
+                archive.addfile(info, handle)
     # The wheel, so a pyscript.json can name it by URL with no PyPI hop. Every wheel ever
     # released stays at its URL: the academy chapters and their repos pin one by version, and
     # a deploy must not break them.

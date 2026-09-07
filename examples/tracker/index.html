@@ -4,8 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Frontage tracker</title>
-  <link rel="stylesheet" href="/pyscript/core.css">
-  <script type="module" src="/pyscript/core.js" offline></script>
   <style>
     body { font: 15px/1.5 system-ui, sans-serif; margin: 1rem 2rem; }
     header { display: flex; gap: 1rem; align-items: baseline; border-bottom: 1px solid #ddd; position: relative; }
@@ -26,11 +24,6 @@
 </head>
 <body>
 <div id="app">Loading…</div>
-<script>
-  const type = new URLSearchParams(location.search).get("type") || "mpy";
-  const s = document.createElement("script");
-  s.type = type; s.src = "./tracker.py"; s.setAttribute("config", "../pyscript.json");
-  document.body.appendChild(s);
-</script>
+<script type="module" src="./_frontage/boot.js" data-fr-boot data-fr-entry="tracker"></script>
 </body>
 </html>

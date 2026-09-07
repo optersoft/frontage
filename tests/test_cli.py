@@ -59,18 +59,6 @@ def test_check_command_exit_status(tmp_path, capsys):
     assert f"{bad}:1:" in capsys.readouterr().out
 
 
-def test_export_without_the_bundle(tmp_path):
-    out = export.export(ROOT / "examples" / "counter", tmp_path / "counter", bundle_pyscript=False)
-    html = (out / "index.html").read_text()
-    assert "https://pyscript.net/releases/" in html and " offline" not in html
-    assert '"./pyscript.json"' in html
-    config = json.loads((out / "pyscript.json").read_text())
-    assert config["files"]["./frontage/view.py"] == "frontage/view.py"
-    assert "./frontage/__main__.py" not in config["files"]
-    assert (out / "frontage" / "reactive.py").exists() and not (out / "frontage" / "cli").exists()
-    assert (out / "counter.py").exists()
-
-
 THREE_FILE_HTML = """<!DOCTYPE html>
 <html><head>
   <link rel="stylesheet" href="https://pyscript.net/releases/{v}/core.css">
@@ -92,6 +80,21 @@ def _three_file_app(tmp_path):
         json.dumps({"packages": ["https://frontage.optersoft.com/dist/frontage-0.4.0-py3-none-any.whl", "numpy"]})
     )
     return app
+
+
+def test_export_without_the_bundle(tmp_path):
+    """`export` still writes a PyScript page for 0.9.x. Its input is a PyScript-shaped app:
+    `examples/` boots from WebAssembly now, so exporting one to PyScript is not a real
+    combination and would have tested nothing."""
+    out = export.export(_three_file_app(tmp_path), tmp_path / "out", bundle_pyscript=False)
+    html = (out / "index.html").read_text()
+    assert "https://pyscript.net/releases/" in html and " offline" not in html
+    assert '"./pyscript.json"' in html
+    config = json.loads((out / "pyscript.json").read_text())
+    assert config["files"]["./frontage/view.py"] == "frontage/view.py"
+    assert "./frontage/__main__.py" not in config["files"]
+    assert (out / "frontage" / "reactive.py").exists() and not (out / "frontage" / "cli").exists()
+    assert (out / "app.py").exists()
 
 
 def test_export_drops_the_frontage_wheel_and_keeps_other_packages(tmp_path):
