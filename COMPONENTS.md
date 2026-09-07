@@ -104,9 +104,23 @@ protecting.
 **Ahead**: boot (52 ms against tens of seconds), size, no server, fine-grained updates,
 prerendering, a real router, static hosting. A dev loop that swaps a module into a running page.
 
-**Behind, and this is the whole gap**: Streamlit ships about eighty display and input elements.
+**Behind, and this is the whole gap**: Streamlit ships about **115** public `st.*` commands.
 Frontage ships nine form controls. There is no chart, no table, no map, no metric, no layout
 primitive, no file uploader. An app that shows data has nothing to show it with.
+
+The gap is smaller than 115 sounds, and this is the number that should decide how much effort
+this is worth:
+
+| bucket | count | what it costs us |
+|---|---|---|
+| plain HTML — text, inputs, layout, status, media | ~52 | time only, no dependency |
+| one small library each — charts, table, map | ~12 | under 400 KB for all three |
+| the scientific stack — `pyplot`, `pydeck_chart`, pandas input contracts | ~6 | out of scope (§8) |
+| a server by construction — `secrets`, `connection`, `login`, cache tied to a process | ~14 | declined, not missing |
+
+**About 56% of Streamlit's surface is reachable for well under 400 KB**, and nearly half of
+that is plain HTML we simply have not written. The rest is not a backlog; it is two deliberate
+constraints.
 
 **Not competing**: pandas, scikit-learn, and the scientific stack. Chasing those means
 becoming stlite, which means becoming 50 MB. §7 says what to do instead.
@@ -189,7 +203,9 @@ convention already used for the academy.
 
 ## 6. What to build, in order
 
-Ordered by how much of Streamlit's gallery each unlocks per kilobyte.
+Ordered by how much of Streamlit's gallery each unlocks per kilobyte. The gallery divides
+cleanly: its top third is dashboards over data, which is ours to take; the rest needs a model
+runtime or a server, and §8 says why we let those go.
 
 1. **`frontage-chart`** (uPlot). Line, area, bar, scatter. Covers `st.line_chart`,
    `st.area_chart`, `st.bar_chart`, `st.scatter_chart` — the majority of gallery apps.
@@ -222,10 +238,15 @@ canvas, so the path gets *longer*, not shorter. The same goes for the grid and t
 **Do** reach for Rust where the work is bulk computation on data already in wasm memory, with
 a coarse call boundary:
 
+- **Signal processing.** The research turned up the concrete first case: the gallery's
+  **GW Quickview**, which plots gravitational-wave spectrograms, is blocked only by `scipy.signal`
+  and `gwpy` — the FFT and filtering *are* the app. One Rust module taking a buffer and
+  returning a spectrogram is the whole port, and it is precisely the shape the crossing cost
+  rewards. It is also the most impressive thing on the list to be able to say we run with no
+  server at all.
 - **Aggregation and filtering over columnar data.** Hand a Rust module an Arrow buffer once,
   then ask it coarse questions — group by, rolling mean, quantiles, resample. One call in, one
-  small answer out. This is exactly the shape the crossing cost rewards, and exactly what
-  Streamlit does with pandas on a server.
+  small answer out. Exactly what Streamlit does with pandas on a server.
 - **Decoding.** Parquet, CSV at scale, image formats.
 - **A domain hot loop** an application actually has: a simulation step, a solver, a codec.
   Tens of kilobytes, and the binding is already proven.
@@ -248,6 +269,15 @@ Streamlit has no answer to, because Streamlit's Python is on a server where the 
 - **Copy `st.*` names.** Frontage is reactive; Streamlit is a re-run. An API that looks the
   same but behaves differently is worse than one that looks different.
 - **A server.** The constraint that produced the 96 ms boot is the constraint that says no.
+  Two whole gallery categories go with it, and it is more honest to name them than to pretend
+  they are coming. **LLM chat apps** — the fastest-growing category — are blocked not by
+  compute but by the API key: calling a model provider from the browser exposes it, and hiding
+  it is exactly what Streamlit's server does. **Database-backed dashboards** are blocked
+  because a browser has no raw sockets. Both are reachable only through an HTTP API someone
+  else runs, which is a fine thing to document and a dishonest thing to claim.
+- **Model inference.** Face-GAN, YOLO and the image-model explorers need TensorFlow or PyTorch
+  and 100 MB to 1 GB of weights. ONNX Runtime Web is the only path and the download dominates
+  regardless. Not a framework gap.
 
 ## 9. What would make this real
 
@@ -257,7 +287,7 @@ The order matters more than the dates.
 |---|---|
 | the `frontage-component` protocol in `build` | nothing else can ship as a package until it exists |
 | `frontage-chart` and `frontage-layout` | the smallest pair that makes a credible dashboard |
-| a gallery of three rebuilt Streamlit apps, with the numbers beside each | the claim in §1 is only worth what it is demonstrated on |
+| a gallery of three rebuilt Streamlit apps, with the numbers beside each | the claim in §1 is only worth what it is demonstrated on. The research names the honest targets: **Uber NYC Pickups** (needs the map component; its 180 MB CSV becomes a sliced Parquet), a **filter-and-chart dashboard** (which `examples/chart/` almost is already), and **GW Quickview** once the DSP module exists |
 | `frontage-table` | the second thing every data app reaches for |
 | the `frontage-wasm` template | the differentiator, once there is an audience for it |
 

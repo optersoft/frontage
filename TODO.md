@@ -437,9 +437,14 @@ ships as source and costs about two milliseconds to compile in the VM. Plan in
 ## Beating Streamlit — the component strategy (planned 2026-09-07)
 
 `COMPONENTS.md` is the argument and the order of work. The short version: frontage already
-wins on boot, size and interaction, and loses on *surface* — Streamlit ships ~80 display and
-input elements, frontage ships nine form controls, so an app that shows data has nothing to
+wins on boot, size and interaction, and loses on *surface* — Streamlit ships ~115 public
+`st.*` commands, frontage ships nine form controls, so an app that shows data has nothing to
 show it with.
+
+**The number that right-sizes the job: ~52 of those 115 are plain HTML with no dependency, and
+~12 more are one small library each. About 56% of Streamlit's surface is reachable for well
+under 400 KB.** The remaining 44% is not a backlog — ~6 want the scientific stack and ~14 want
+a server, and both are constraints we chose.
 
 - [x] `examples/chart/`, measured and committed: a dashboard with two sliders and a live uPlot
       chart, wired through `data-fr-js`. **946 KB over 10 requests, 96 ms cold to a drawn
@@ -458,7 +463,14 @@ show it with.
 - [ ] `frontage-chart` (uPlot, +41 KB) and `frontage-layout` (columns, tabs, metric — pure
       Python, no dependency): the smallest pair that makes a credible dashboard.
 - [ ] Three Streamlit gallery apps rebuilt, with download size and cold start published beside
-      each. The gallery is the marketing and the test suite at once.
+      each. The gallery is the marketing and the test suite at once, and the research named the
+      honest targets: **Uber NYC Pickups** (needs the map; its 180 MB CSV becomes a sliced
+      Parquet), a **filter-and-chart dashboard** (`examples/chart/` almost is one), and **GW
+      Quickview** once a DSP module exists.
+- [ ] A DSP/FFT wasm module — the concrete first case for Rust, not a hypothetical one. GW
+      Quickview is blocked *only* by `scipy.signal` and `gwpy`: the FFT and filtering are the
+      app, one buffer in and a spectrogram out, exactly the coarse boundary the 1.00 µs
+      crossing rewards. It is also the most impressive thing on the list to run with no server.
 - [ ] `frontage-table`: a virtualised grid. Second thing every data app reaches for, and
       virtualisation is the whole trick.
 - [ ] A `frontage-wasm` template (wasm-pack, glue, Python wrapper, the `data-fr-js` line) so
