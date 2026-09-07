@@ -116,7 +116,9 @@ hydration, transitions and async memos). **PyScript is gone from the browser pat
   `frontage.components` entry point and lays out `_browser/index.js` (+ optional `index.css`);
   `build` copies the assets to `_frontage/components/<name>/`, merges a `data-fr-js` entry into
   the boot tag, and packs the component's Python under its package path so `import <package>`
-  resolves in the page. `--component NAME=PATH` develops one before publishing. **Discovery
+  resolves in the page. `--component NAME=PATH` develops one before publishing. **A module whose name starts with an
+  underscore stays on CPython** (`_server.py`, `_compile.py`): the page could not import it and
+  it is dead weight there. **Discovery
   must never import a component**: its Python targets the browser, and `find_spec` locates it
   without running it. ⚠ **In `serve`, a real file under `_frontage/` wins over the synthesised
   archive** — serving a built directory must serve what `build` produced, or a component's

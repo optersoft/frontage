@@ -170,6 +170,9 @@ def make_component(tmp_path, name="frontage_chart", style=True):
     (package / "_browser" / "index.js").write_text("export function draw() {}\n")
     if style:
         (package / "_browser" / "index.css").write_text(".chart { display: block }\n")
+    # Must not ship either: a private module is the component's CPython half (a server, a
+    # compiler), full of imports the page cannot satisfy and dead weight at best.
+    (package / "_server.py").write_text("import fastapi\n")
     # Must not ship: browser assets are not Python, and caches are nobody's business.
     (package / "__pycache__").mkdir()
     (package / "__pycache__" / "plot.cpython-314.pyc").write_bytes(b"\x00")
@@ -199,6 +202,12 @@ def test_a_component_ships_its_assets_its_python_and_a_declaration(tmp_path):
     with tarfile.open(out / "_frontage" / "app.tar") as tf:
         names = sorted(tf.getnames())
     assert names == ["counter.py", "frontage_chart/__init__.py", "frontage_chart/plot.py"]
+
+
+def test_a_private_module_stays_on_cpython(tmp_path):
+    component = make_component(tmp_path)
+    names = [n for n, _ in component.modules()]
+    assert names == ["frontage_chart/__init__.py", "frontage_chart/plot.py"]
 
 
 def test_a_component_without_a_stylesheet_links_nothing(tmp_path):

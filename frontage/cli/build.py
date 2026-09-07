@@ -82,7 +82,11 @@ def boot_tag(entry, prefix="./", declarations=()):
 #     frontage_chart/_browser/index.js     the module `data-fr-js` registers (required)
 #     frontage_chart/_browser/index.css    linked from the page if it exists
 #
-# Its Python is packed under its package path, so `import frontage_chart` works in the page.
+# Its Python is packed under its package path, so `import frontage_chart` works in the page —
+# except a module whose name starts with an underscore, which stays on CPython. That is how a
+# component keeps a server half (`_server.py`) or a build-time tool (`_compile.py`) out of a
+# page that could not import it anyway: frontage-polars shipped 15 KB of FastAPI imports to the
+# browser before this rule existed (2026-09-07).
 
 BROWSER_DIR = "_browser"
 COMPONENT_ENTRY = "index.js"
@@ -105,6 +109,8 @@ class Component:
             relative = path.relative_to(self.package)
             if BROWSER_DIR in relative.parts or "__pycache__" in relative.parts:
                 continue
+            if path.name.startswith("_") and path.name != "__init__.py":
+                continue  # private to CPython: a server half, a compiler, a test helper
             found.append((f"{self.package.name}/{relative.as_posix()}", path))
         return found
 
