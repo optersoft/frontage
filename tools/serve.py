@@ -27,6 +27,7 @@ class Handler(LiveHandler):
         "/examples/": ROOT / "examples",
         "/frontage/": ROOT / "frontage",
         "/playground/": ROOT / "web" / "playground",
+        "/web/": ROOT / "web",  # `runner.html`, which the browser suite embeds as a frame
         "/build/": ROOT / "build",  # `python -m frontage prerender` output, for the browser tests
         "/profile/": ROOT / "tools" / "profile",  # the rows profile page (tools/profile_rows.py)
     }

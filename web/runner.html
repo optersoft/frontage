@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frontage runner</title>
+<!--
+  A page that runs a Frontage program someone else supplies. It exists so a live-code frame —
+  the academy's `::: frontage`, a docs sample, a bug report — can be an <iframe> pointing here
+  with the program in the URL fragment, and nothing more.
+
+  Why a served file rather than a `srcdoc`: the same reason the academy's PyScript runner is
+  one. An inlined document's URL is `about:srcdoc`, and a loader that resolves anything
+  against its own location has nowhere to stand.
+
+  Why a fragment: it is part of `src`, so the frame runs without a handshake with the parent
+  page and without waiting for hydration; re-running is a `src` re-assignment; and a fragment
+  is never sent to a server, so the program stays in the browser.
+
+  The frame is expected to be sandboxed without `allow-same-origin`, which puts this document
+  in an opaque origin. Its own fetches then travel as `Origin: null`, which is why /_frontage/
+  answers CORS (see web/_headers) even though it looks same-origin from here.
+
+  The fragment is percent-encoded JSON: {"code": "...", "markup": "..."} — `markup` optional,
+  and it becomes the body the program mounts into. A bare fragment is treated as the code.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: .75rem 1rem; font: 1rem/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  #fr-error {
+    margin: 0; white-space: pre-wrap; color: #b91c1c;
+    font: .85rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+</style>
+</head>
+<body>
+<!-- The default body, replaced wholesale when the program brings its own markup. It has to
+     be replaced rather than filled: a markup fence carries its own mount target, and nesting
+     one #app inside another means `mount("#app")` clears the very markup it was given. -->
+<div id="fr-body"><div id="app"></div></div>
+<pre id="fr-error" hidden></pre>
+<script type="module">
+import { startRuntime } from "./_frontage/boot.js";
+
+function program() {
+  const raw = decodeURIComponent(location.hash.slice(1));
+  if (!raw) return { code: "", markup: "" };
+  try {
+    const parsed = JSON.parse(raw);
+    return { code: parsed.code || "", markup: parsed.markup || "" };
+  } catch {
+    return { code: raw, markup: "" }; // a bare fragment is the program
+  }
+}
+
+function fail(text) {
+  const box = document.getElementById("fr-error");
+  box.textContent = text;
+  box.hidden = false;
+}
+
+try {
+  const { code, markup } = program();
+  if (markup) document.getElementById("fr-body").innerHTML = markup;
+
+  const mp = await startRuntime();
+  mp.globals.set("__fr_code", code);
+  // `exec` against runPython's own globals, so the program sees __name__ == "__main__" and
+  // behaves as it would in a built app. `format_exception` is frontage's own, so a traceback
+  // here reads the way one does in the framework's error page.
+  mp.runPython(
+    "try:\n" +
+    "    exec(__fr_code)\n" +
+    "except Exception as _e:\n" +
+    "    from frontage.errors import format_exception\n" +
+    "    import js\n" +
+    "    _b = js.document.getElementById('fr-error')\n" +
+    "    _b.textContent = format_exception(_e)\n" +
+    "    _b.hidden = False\n"
+  );
+} catch (error) {
+  fail("frontage: " + (error && error.message ? error.message : String(error)));
+}
+</script>
+</body>
+</html>

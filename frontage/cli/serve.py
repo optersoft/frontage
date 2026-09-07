@@ -341,6 +341,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
+        # What `web/_headers` says in production. A sandboxed frame runs in an opaque origin,
+        # so even its own-origin fetches arrive as `Origin: null`; without this, `runner.html`
+        # works when served by Pages and not when served here, which is the worst way round.
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cross-Origin-Resource-Policy", "cross-origin")
         # Workers with SharedArrayBuffer need cross-origin isolation; harmless otherwise.
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         self.send_header("Cross-Origin-Embedder-Policy", "require-corp")

@@ -59,18 +59,42 @@ function declaredModules(value) {
     });
 }
 
-async function boot() {
-  const tag = document.querySelector("script[data-fr-boot]");
-  if (!tag) throw new Error("frontage: no <script data-fr-boot> on the page");
-  const entry = tag.dataset.frEntry || "app";
-
+/**
+ * The interpreter with the framework in it, and no application.
+ *
+ * Exported because not every page has an app directory to fetch. An embedded runner — the
+ * academy's live-code frames, the playground — holds the program in a URL fragment or a text
+ * box, and needs somewhere to run it rather than something to load:
+ *
+ *     const mp = await startRuntime();
+ *     mp.globals.set("__src", program);
+ *     mp.runPython("exec(__src)");
+ *
+ * It deliberately does not touch the document. A frame can call it from an opaque origin,
+ * where there is no boot tag and nothing to query.
+ */
+export async function startRuntime() {
   // `/lib` is already on MicroPython's sys.path, so nothing has to edit it.
-  const [mp, framework, app] = await Promise.all([
+  const [mp, framework] = await Promise.all([
     loadMicroPython({ url: asset("micropython.wasm") }), // heapsize/pystack: upstream defaults
     bytes(asset("frontage.tar")),
-    bytes(asset("app.tar")),
   ]);
   unpack(mp, framework);
+  return mp;
+}
+
+async function boot() {
+  const tag = document.querySelector("script[data-fr-boot]");
+  if (!tag) {
+    // Not an error. A page can import this module purely for `startRuntime` — an embedded
+    // runner holds its program in a fragment and has no app to boot. A real app that has
+    // simply lost its tag gets the warning and a page stuck on its placeholder.
+    console.warn("frontage: no <script data-fr-boot> on the page, so nothing was mounted");
+    return null;
+  }
+  const entry = tag.dataset.frEntry || "app";
+
+  const [mp, app] = await Promise.all([startRuntime(), bytes(asset("app.tar"))]);
   unpack(mp, app);
 
   // JavaScript modules the app asked for — the glue around a C or Rust library compiled to

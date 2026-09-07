@@ -16,3 +16,8 @@
 /playground/_frontage/*
   Access-Control-Allow-Origin: *
   Cross-Origin-Resource-Policy: cross-origin
+# `runner.html` is embedded as a sandboxed frame, so it runs in an opaque origin and its own
+# fetches leave as `Origin: null`. Same-origin by URL, cross-origin by policy.
+/_frontage/*
+  Access-Control-Allow-Origin: *
+  Cross-Origin-Resource-Policy: cross-origin

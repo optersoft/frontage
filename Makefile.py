@@ -196,6 +196,10 @@ def site_build() -> None:
     if not (runtime / "micropython.wasm").exists():
         raise MakeError("no runtime: run `mk runtime.fetch` first")
     shutil.copytree(runtime, WWW / "playground" / "_frontage")
+    # A second copy at the site root, for `runner.html`. Not shared with the playground's:
+    # `boot.js` finds `app.tar` beside itself, and the runner has no app to find, so one copy
+    # cannot serve both without breaking the rule that makes nested routes work.
+    shutil.copytree(runtime, WWW / "_frontage")
     # The playground's own source is its app, packed the way `build` packs one.
     import tarfile
 

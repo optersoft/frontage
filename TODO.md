@@ -203,6 +203,9 @@ constraint holds).
       after Links, 2026-09-06 15:00). `index.md` has `public: true`; the academy commit that
       honours it (4e1b5042) is not deployed, and the academy tree has uncommitted work.
       Do: deploy academy. Done: `curl -s academy.optersoft.com/python/frontage/router | grep -c Exercises` is 1.
+      **Still open, re-checked 2026-09-07**: `router`, `basic` and `async` all return 0. The
+      commit is in `~/optersoft/academy` with `adfb5bdc` on top of it, so the fix exists and
+      has simply never shipped. A day old now, and it hides every exercise on the site.
 
 ## M10 — the language server (in progress, 2026-09-06)
 
@@ -393,11 +396,27 @@ ships as source and costs about two milliseconds to compile in the VM. Plan in
 
 ## M11 — what is left before 0.9.0 ships
 
-- [ ] `[human]` **The academy needs a `::: frontage` frame.** It lives in the academy app, not
-      in `academy-pages`, and `::: pyscript` cannot boot a wasm page. Until it exists the new
-      Wasm libraries chapter has code blocks rather than a running app, and the other nine
-      chapters keep their PyScript frames — which still work, because `export` survives through
-      0.9.x. Nothing on the live site is broken in the meantime.
+- [x] The frontage half of the `::: frontage` frame (2026-09-07). `boot.js` exports
+      `startRuntime()`, and **`web/runner.html`** is the page a frame points at: the program
+      arrives as percent-encoded JSON in the URL fragment (`{"code":…, "markup":…}`), the
+      markup fence becomes the body, and a raising program shows `format_exception` output
+      rather than a blank frame. Proven in a **sandboxed, opaque-origin frame**, which is how
+      the academy embeds one. Two browser tests.
+      - Importing `boot.js` with no boot tag now **warns instead of throwing**: a runner
+        legitimately has no app to boot. A real app missing its tag still says so.
+      - `frontage serve` now sends the CORS and `Cross-Origin-Resource-Policy` headers that
+        `web/_headers` sends in production, or a frame would work on Pages and not locally.
+      - `mk site.build` publishes the runtime **twice**: under the playground and at the site
+        root for the runner. One copy cannot serve both, because `boot.js` finds `app.tar`
+        beside itself and the runner has no app.
+- [ ] `[human]` **The academy's half is a small Rust change now.** `academy-content`'s frame
+      dispatch gains a `frame.kind == "frontage"` branch beside the `"pyscript"` one at
+      `content.rs:4611`, reusing `academy_preview::pyscript`'s machinery with
+      `RUNNER_URL = "https://frontage.optersoft.com/runner.html"` — the fragment payload is
+      already the same shape. No new runner file is needed on that side: this repo hosts it.
+      Until that lands, the Wasm libraries chapter has code blocks rather than a running app,
+      and the other nine chapters keep their PyScript frames, which still work. Nothing on the
+      live site is broken in the meantime.
 - [ ] The nine chapter repos (`gitlab.com/optersoft/python/frontage-<chapter>`) move to
       `frontage build` once the frame lands; the new chapter gets a tenth.
 - [ ] Release: bump `version.py`, check the chapters name the new wheel, tag `v0.9.0`.

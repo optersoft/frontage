@@ -1,6 +1,8 @@
 """The examples in a real browser under the WebAssembly runtime (SPEC S5, W13 in the DOM)."""
 
+import json
 import re
+import urllib.parse
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -220,3 +222,45 @@ def test_a_wasm_library_imports_as_a_python_module(server, page: Page):
     page.click("#again")
     expect(page.locator("#answer")).to_have_text("mathlib.add(2, 40) = 43")  # and reactive
     assert errors == []
+
+
+RUNNER_PROGRAM = {
+    "markup": '<h2>from the markup fence</h2><div id="app"></div>',
+    "code": (
+        "from frontage import Signal, h, mount\n"
+        "count = Signal(0)\n"
+        "def inc(ev):\n"
+        "    count.update(lambda n: n + 1)\n"
+        "mount(lambda: h.div(h.p('count: ', count, id='n'), h.button('+', on_click=inc, id='b')), '#app')\n"
+    ),
+}
+
+
+def _runner(server, payload):
+    return f"{server}/web/runner.html#" + urllib.parse.quote(json.dumps(payload))
+
+
+def test_the_runner_runs_a_program_inside_a_sandboxed_frame(server, page: Page):
+    """`web/runner.html` is what an embedded live-code frame points at: the program travels in
+    the URL fragment, and the frame is sandboxed without `allow-same-origin`, so the document
+    sits in an opaque origin and even its own-origin fetches leave as `Origin: null`."""
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.set_content(
+        f'<iframe id="f" src="{_runner(server, RUNNER_PROGRAM)}" width="500" height="300" '
+        'sandbox="allow-scripts"></iframe>'
+    )
+    frame = page.frame_locator("#f")
+    expect(frame.locator("#n")).to_have_text("count: 0", timeout=30_000)
+    expect(frame.locator("h2")).to_have_text("from the markup fence")
+    frame.locator("#b").click()
+    expect(frame.locator("#n")).to_have_text("count: 1")
+    assert errors == []
+
+
+def test_the_runner_shows_a_traceback_instead_of_a_blank_frame(server, page: Page):
+    payload = {"code": "raise ValueError('a teaching mistake')"}
+    page.set_content(
+        f'<iframe id="f" src="{_runner(server, payload)}" width="500" height="200" sandbox="allow-scripts"></iframe>'
+    )
+    expect(page.frame_locator("#f").locator("#fr-error")).to_contain_text("a teaching mistake", timeout=30_000)

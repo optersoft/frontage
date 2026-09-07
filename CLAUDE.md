@@ -44,7 +44,7 @@ on branch `puepy-reference`.
 | `examples/` | one page per example, the browser suite's and the benchmark's material (`tracker/` is the whole framework in one app: routes, a store kept by `reconcile`, memo-loaded details, a transactional toggle with `Optimistic`, a Portal modal, an `ActionForm`, boundaries; prerendered and hydrated in the tests too; `wasm/` calls a 41-byte hand-assembled WebAssembly library through `data-fr-js`, which the docs quote byte for byte). Each page is one boot tag; the dev server answers `<dir>/_frontage/…` per directory and builds both archives from disk, so an edit to an example or to the framework shows on reload with nothing to rebuild. Not published: the academy chapters run their own apps in the page (`::: pyscript` frames on MicroPython, the released wheel by URL), so a chapter's code block is both what the reader reads and what runs |
 | `tools/serve.py`, `tools/fetch_pyscript.py`, `tools/bench.py`, `tools/profile/` + `tools/profile_rows.py` | dev server (live reload via `frontage.cli.serve`; it serves many apps at once, so a change reloads rather than swapping), offline PyScript fetch into `tools/pyscript/` (gitignored, 0.9.x only), the rows benchmark, the rows profile (phases + calibration, served at `/profile/`) |
 | `editors/` | the editor clients. `editors/vscode/` is the VS Code one — a thin client plus the TextMate injection grammar and the snippets, plain JavaScript so there is no build step; `editors/README.md` is the config block for Zed, Neovim, Helix and Emacs, which need no code at all |
-| `web/` | what frontage.optersoft.com still serves since 2026-09-06: `_redirects` (everything else goes to academy.optersoft.com/python/frontage), `_headers` (CORS on `/dist/`) and `web/playground/`; `mk site.build` assembles `www/` with the package, the bundle and every released wheel |
+| `web/` | what frontage.optersoft.com serves: `_redirects` (everything else goes to academy.optersoft.com/python/frontage), `_headers` (CORS + `Cross-Origin-Resource-Policy` on `/dist/` and both runtime copies), `web/playground/`, and **`runner.html`** — the page an embedded live-code frame points at, with the program in the URL fragment. `mk site.build` assembles `www/` with the playground, the runtime twice (once under the playground, once at the root for the runner) and every released wheel |
 | `typings/` | ty stubs for the browser-only modules |
 | branch `puepy-reference` | the PuePy fork, the acceptance test until 0.1.0; never merged |
 
@@ -97,6 +97,14 @@ on branch `puepy-reference`.
   so the normal path cannot get it wrong, and the tar is reproducible (mtimes pinned to 0) so
   CI rebuilds it and compares bytes rather than trusting a timestamp a wheel install flattens.
   `frontage/_runtime/` is committed, ~640 KB.
+- **An embedded frame runs a program through `web/runner.html`**, not through a boot tag.
+  `boot.js` exports `startRuntime()` — the interpreter with the framework in it and no
+  application — because a runner holds its program in a URL fragment and has nothing to fetch.
+  Importing `boot.js` without a boot tag warns rather than throwing, precisely so this works.
+  The frame is sandboxed without `allow-same-origin`, so it sits in an **opaque origin** and
+  even its own-origin fetches leave as `Origin: null`: that is why `/_frontage/*` answers CORS,
+  and why `frontage serve` sends the same headers — otherwise a frame works on Pages and not
+  locally, which is the worst way round.
 - **A C or Rust library reaches an app through `data-fr-js`** (0.9.0): `name=./lib.js` pairs on
   the boot tag, imported and awaited before the entry runs, then `registerJsModule`d so it is a
   plain `import name`. Specifiers resolve from `../` of `boot.js` -- the app's own directory in
