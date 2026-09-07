@@ -105,16 +105,22 @@ jobs:
         working-directory: ${{ needs.target.outputs.package }}
       # A component whose browser assets went missing installs and imports perfectly and then
       # does nothing in a page, so check they are in the wheel before it reaches PyPI.
+      #
+      # The wheel is read as a zip, not installed and imported: a component's Python imports
+      # `frontage`, which is not in an isolated environment, so importing it to look at its
+      # own files fails for a reason that has nothing to do with what is being checked.
       - name: The wheel carries its browser half
         working-directory: ${{ needs.target.outputs.package }}
         run: |
-          uv run --isolated --no-project --with dist/*.whl -- python -c "
-          import importlib
-          from pathlib import Path
-          package = '${{ needs.target.outputs.package }}'.replace('-', '_')
-          browser = Path(importlib.import_module(package).__file__).parent / '_browser'
-          assert (browser / 'index.js').is_file(), 'no _browser/index.js in the wheel'
-          print(package, 'ships', sorted(p.name for p in browser.iterdir()))
-          "
+          python3 - <<'CHECK'
+          import glob, zipfile
+          package = "${{ needs.target.outputs.package }}".replace("-", "_")
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          entry = f"{package}/_browser/index.js"
+          assert entry in names, f"{entry} is not in {wheel}"
+          shipped = sorted(n for n in names if n.startswith(f"{package}/_browser/"))
+          print(wheel, "ships", shipped)
+          CHECK
       - run: uv publish --trusted-publishing always
         working-directory: ${{ needs.target.outputs.package }}
