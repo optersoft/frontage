@@ -99,6 +99,10 @@ def make_app(static=None):
     app = FastAPI()
     app.include_router(src.router, prefix="/api")
 
+    @app.get("/healthz")
+    def healthz():
+        return {"ok": True, "rows": TRIPS.height}
+
     @app.post("/demo/append")
     def append(n: int = Query(1000, ge=1, le=100_000)):
         """More trips arrived: extend the frame and tell the pages. What a real server does
@@ -115,3 +119,12 @@ def make_app(static=None):
 
 static = os.environ.get("TRIPS_STATIC", str(HERE / "www"))
 app = make_app(static if Path(static).is_dir() else None)
+
+
+def main():
+    """The `trips` script: uvicorn on `TRIPS_ADDR` (default 127.0.0.1:8000). What the fleet's
+    unit runs, from the venv `uv sync --frozen` built on the box."""
+    import uvicorn
+
+    host, _, port = os.environ.get("TRIPS_ADDR", "127.0.0.1:8000").rpartition(":")
+    uvicorn.run(app, host=host or "127.0.0.1", port=int(port or 8000), log_level="info")
