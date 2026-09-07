@@ -12,6 +12,7 @@ dev = [
     "frontage",
     "frontage-layout",
     "frontage-chart",
+    "frontage-table",
 ]
 
 [tool.uv.sources]
@@ -20,6 +21,7 @@ dev = [
 frontage = { path = "../frontage", editable = true }
 frontage-layout = { path = "frontage-layout", editable = true }
 frontage-chart = { path = "frontage-chart", editable = true }
+frontage-table = { path = "frontage-table", editable = true }
 
 [tool.ruff]
 line-length = 120

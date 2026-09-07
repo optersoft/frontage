@@ -41,6 +41,7 @@ dev = [
     { name = "frontage" },
     { name = "frontage-chart" },
     { name = "frontage-layout" },
+    { name = "frontage-table" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -52,6 +53,7 @@ dev = [
     { name = "frontage", editable = "../frontage" },
     { name = "frontage-chart", editable = "frontage-chart" },
     { name = "frontage-layout", editable = "frontage-layout" },
+    { name = "frontage-table", editable = "frontage-table" },
     { name = "pytest", specifier = ">=8.2" },
     { name = "ruff", specifier = ">=0.16" },
 ]
@@ -60,6 +62,11 @@ dev = [
 name = "frontage-layout"
 version = "0.1.0"
 source = { editable = "frontage-layout" }
+
+[[package]]
+name = "frontage-table"
+version = "0.1.0"
+source = { editable = "frontage-table" }
 
 [[package]]
 name = "iniconfig"

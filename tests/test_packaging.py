@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-PACKAGES = [("layout", "frontage_layout"), ("chart", "frontage_chart")]
+PACKAGES = [("layout", "frontage_layout"), ("chart", "frontage_chart"), ("table", "frontage_table")]
 
 
 @pytest.mark.parametrize(("name", "package"), PACKAGES)

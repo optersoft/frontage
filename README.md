@@ -7,9 +7,10 @@ elements a data app needs, each a separate package that costs nothing until it i
 |---|---|---|
 | [`frontage-layout`](frontage-layout/) | 2.5 KB of CSS | `columns`, `tabs`, `expander`, `container`, `metric`, `progress`, `spinner`, `divider` — pure Python, no dependency |
 | [`frontage-chart`](frontage-chart/) | 41 KB gzipped | `line_chart`, `area_chart`, `bar_chart`, `scatter_chart`, on uPlot |
+| [`frontage-table`](frontage-table/) | 1.5 KB of CSS | a **virtualised, sortable grid** — 50,000 rows, 21 elements, no JavaScript |
 
 ```sh
-pip install frontage-layout frontage-chart
+pip install frontage-layout frontage-chart frontage-table
 ```
 
 That is the whole install. `frontage build` discovers each package by its entry point, copies
