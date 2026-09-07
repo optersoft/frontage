@@ -1,0 +1,32 @@
+[project]
+name = "frontage-chart"
+version = "0.1.0"
+description = "Charts for frontage, on uPlot: line, area, bar and scatter, to ~100k points"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Optersoft, S.L.", email = "david@optersoft.com" }]
+requires-python = ">=3.12"
+keywords = ["frontage", "webassembly", "micropython", "components", "charts", "uplot"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Environment :: WebAssembly",
+    "Programming Language :: Python :: Implementation :: MicroPython",
+]
+# No runtime dependency, deliberately. `frontage` is the host, not a dependency: this package's
+# Python is packed into the app by `frontage build` and imported inside the browser, where pip
+# is not involved. uPlot is vendored in `_browser/` (MIT) rather than fetched, so a build needs
+# no network and an app has no CDN in its critical path.
+dependencies = []
+
+# How `frontage build` finds this package. Build-time metadata read on CPython; the browser
+# pays nothing for the mechanism.
+[project.entry-points."frontage.components"]
+chart = "frontage_chart"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["frontage_chart"]
