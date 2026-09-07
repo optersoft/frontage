@@ -11,6 +11,7 @@ says so.
 """
 
 import argparse
+import hashlib
 import json
 import shutil
 import socket
@@ -43,51 +44,101 @@ PAGE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Frontage gallery</title>
 <meta name="description" content="Python apps running in the browser on WebAssembly. No server, no build step, no JavaScript.">
-<style>
-  :root {{ color-scheme: light dark; --bg:#fbfaf7; --fg:#1b1b1b; --line:#e3e0d8; --accent:#b3541e; --muted:#6b6862; }}
-  @media (prefers-color-scheme: dark) {{ :root {{ --bg:#15140f; --fg:#ebe8e1; --line:#2b2a24; --accent:#e08a4a; --muted:#9a968d; }} }}
-  * {{ box-sizing: border-box; }}
-  body {{ margin:0; padding:2rem 1.25rem 4rem; font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-         background:var(--bg); color:var(--fg); }}
-  .wrap {{ max-width: 62rem; margin: 0 auto; }}
-  h1 {{ font-size: 2rem; margin: 0 0 .25rem; }}
-  .lede {{ color: var(--muted); margin: 0 0 .5rem; max-width: 44rem; }}
-  a {{ color: var(--accent); }}
-  .grid {{ display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); margin-top: 2rem; }}
-  .card {{ border:1px solid var(--line); border-radius:10px; padding:1rem 1.1rem; display:flex; flex-direction:column; gap:.4rem; }}
-  .card h2 {{ font-size:1.05rem; margin:0; }}
-  .card h2 a {{ text-decoration: none; }}
-  .card p {{ margin:0; color:var(--muted); font-size:.9rem; flex:1; }}
-  .nums {{ display:flex; gap:1.25rem; font-size:.8rem; color:var(--muted); font-variant-numeric:tabular-nums;
-           border-top:1px solid var(--line); padding-top:.5rem; margin-top:.3rem; }}
-  .nums b {{ color:var(--fg); font-weight:600; }}
-  footer {{ margin-top:3rem; color:var(--muted); font-size:.85rem; border-top:1px solid var(--line); padding-top:1rem; }}
-  code {{ background:color-mix(in srgb, currentColor 8%, transparent); padding:.05em .35em; border-radius:4px; font-size:.9em; }}
-</style>
+<link rel="stylesheet" href="./gallery.css">
 </head>
-<body>
-<div class="wrap">
-<h1>Frontage gallery</h1>
-<p class="lede">Python in the browser, on MicroPython compiled to WebAssembly. Every app below is
-a directory of static files: no server, no build step, no JavaScript toolchain. The numbers are
-measured, not claimed — they come from loading each page in Chromium with a cold cache.</p>
-<p class="lede"><a href="https://academy.optersoft.com/python/frontage">Learn it</a> ·
-<a href="/playground/">Playground</a> ·
-<a href="https://github.com/optersoft/frontage">Source</a></p>
-<div class="grid">
+<body class="min-h-screen bg-page text-ink dark:bg-page-dark dark:text-ink-dark font-sans antialiased">
+<div class="mx-auto max-w-5xl px-5 py-10 sm:py-14">
+
+<header class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+  <a href="/" class="text-2xl font-bold tracking-tight no-underline text-ink dark:text-ink-dark">Frontage</a>
+  <span class="text-2xl tracking-tight text-muted dark:text-muted-dark">gallery</span>
+</header>
+
+<p class="mt-4 max-w-2xl text-muted dark:text-muted-dark">Python in the browser, on MicroPython
+compiled to WebAssembly. Every app below is a directory of static files: no server, no build
+step, no JavaScript toolchain. The numbers are measured, not claimed — they come from loading
+each page in Chromium with a cold cache.</p>
+
+<nav class="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium">
+  <a href="https://academy.optersoft.com/python/frontage" class="text-brand dark:text-brand-dark hover:underline">Learn it</a>
+  <a href="/playground/" class="text-brand dark:text-brand-dark hover:underline">Playground</a>
+  <a href="https://github.com/optersoft/frontage" class="text-brand dark:text-brand-dark hover:underline">Source</a>
+</nav>
+
+<div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 {cards}
 </div>
-<footer>{footer}</footer>
+
+<footer class="mt-14 border-t border-line dark:border-line-dark pt-4 text-sm text-muted dark:text-muted-dark">{footer}</footer>
 </div>
 </body>
 </html>
 """
 
-CARD = """  <div class="card">
-    <h2><a href="./{name}/">{title}</a></h2>
-    <p>{blurb}</p>
-    <div class="nums"><span><b>{kb}</b> KB</span>{timing}</div>
-  </div>"""
+CARD = """  <a href="./{name}/"
+     class="group flex flex-col gap-2 rounded-xl border border-line dark:border-line-dark
+            bg-card dark:bg-card-dark p-5 no-underline text-ink dark:text-ink-dark
+            transition hover:-translate-y-0.5 hover:border-brand dark:hover:border-brand-dark hover:shadow-md">
+    <h2 class="text-base font-semibold group-hover:text-brand dark:group-hover:text-brand-dark">{title}</h2>
+    <p class="flex-1 text-sm text-muted dark:text-muted-dark">{blurb}</p>
+    <div class="mt-1 flex gap-5 border-t border-line dark:border-line-dark pt-2 text-xs
+                tabular-nums text-muted dark:text-muted-dark">
+      <span><b class="font-semibold text-ink dark:text-ink-dark">{kb}</b> KB</span>{timing}
+    </div>
+  </a>"""
+
+TIMING = '<span>starts in <b class="font-semibold text-ink dark:text-ink-dark">{ms}</b> ms</span>'
+
+
+INPUT_CSS = ROOT / "tools" / "gallery.tailwind.css"
+BUILT_CSS = ROOT / "tools" / "gallery.css"
+
+
+def css_stamp():
+    """What the committed stylesheet must have been compiled from: the template and the input."""
+    material = (PAGE + CARD + TIMING + INPUT_CSS.read_text()).encode()
+    return f"/* built by mk gallery --css from {hashlib.sha256(material).hexdigest()[:12]} */"
+
+
+def stylesheet(out, force=False):
+    """Put `gallery.css` beside the page, compiling it only when it is missing or stale.
+
+    Tailwind's standalone CLI is a 100 MB download, and this also runs on the deploy builder,
+    so the compiled CSS is committed (`tools/gallery.css`) and normally just copied. The first
+    line of that file stamps what it was compiled from; when the template or the input CSS
+    changes the stamp no longer matches and this recompiles — or says so loudly and ships the
+    stale file, rather than deploying a page with no stylesheet at all.
+    """
+    stamp = css_stamp()
+    fresh = BUILT_CSS.exists() and BUILT_CSS.read_text(errors="replace").startswith(stamp)
+    if fresh and not force:
+        shutil.copy(BUILT_CSS, out / "gallery.css")
+        return True
+    if not fresh and not force:
+        print("gallery.css is stale: rebuilding it", file=sys.stderr)
+    code = subprocess.call(
+        [
+            sys.executable,
+            "-m",
+            "frontage",
+            "tailwind",
+            "--input",
+            str(INPUT_CSS),
+            "--output",
+            str(BUILT_CSS),
+            "--minify",
+        ],
+        cwd=ROOT,
+    )
+    if code == 0:
+        BUILT_CSS.write_text(f"{stamp}\n{BUILT_CSS.read_text()}")
+        shutil.copy(BUILT_CSS, out / "gallery.css")
+        return True
+    if BUILT_CSS.exists():
+        print("tailwind failed: shipping the committed gallery.css, which may be stale", file=sys.stderr)
+        shutil.copy(BUILT_CSS, out / "gallery.css")
+        return False
+    raise SystemExit("tailwind failed and there is no committed gallery.css")
 
 
 def free_port():
@@ -178,7 +229,7 @@ def write_index(built, out, measured):
             title=app["title"],
             blurb=app["blurb"],
             kb=f"{app['bytes'] // 1024:,}",
-            timing=f"<span>starts in <b>{app['ms']}</b> ms</span>" if measured else "",
+            timing=TIMING.format(ms=app["ms"]) if measured else "",
         )
         for app in built
     )
@@ -198,6 +249,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="mk gallery", description=__doc__)
     parser.add_argument("--out", default=str(ROOT / "www" / "gallery"))
     parser.add_argument("--quick", action="store_true", help="skip the browser; sizes only")
+    parser.add_argument("--css", action="store_true", help="recompile tools/gallery.css with Tailwind")
     args = parser.parse_args(argv)
 
     out = Path(args.out)
@@ -210,6 +262,7 @@ def main(argv=None):
     if not args.quick:
         built, measured = measure(built, out)
     write_index(built, out, measured)
+    stylesheet(out, force=args.css)
     total = sum(app["bytes"] for app in built)
     print(f"{out}: {len(built)} apps, {total:,} bytes")
     for app in built:

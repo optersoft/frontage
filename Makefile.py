@@ -14,7 +14,7 @@
     mk build APP [--out D]  a self-contained static directory for one app, booting from wasm
     mk export APP [--out D]  the same as a PyScript page (0.9.x only; `build` replaces it)
     mk vscode.test          the extension: manifest, snippets, client, grammar (needs npm)
-    mk gallery              build every example, measure it in Chromium, write www/gallery/
+    mk gallery [--css]      build every example, measure it in Chromium, write www/gallery/
     mk site.build           frontage.optersoft.com into ./www: the gallery, wheels, playground
     mk site.deploy          build, then publish ./www to Cloudflare Pages by hand (fallback)
 
@@ -183,7 +183,7 @@ def export(app: str, *, out: str = "", no_pyscript: bool = False) -> None:
 
 
 @task(requires=["uv"], needs=[runtime_fetch])
-def gallery(*, out: str = "", quick: bool = False) -> None:
+def gallery(*, out: str = "", quick: bool = False, css: bool = False) -> None:
     """Build every gallery app, measure it in Chromium, and write www/gallery/.
 
     The gallery is the marketing and an acceptance test at once: every app is built with the
@@ -193,12 +193,16 @@ def gallery(*, out: str = "", quick: bool = False) -> None:
     Args:
         out: destination (default www/gallery)
         quick: skip the browser and publish sizes only
+        css: recompile tools/gallery.css with Tailwind (it is committed, and rebuilt anyway
+            when the page template changes)
     """
     args = ["python", "tools/gallery.py"]
     if out:
         args += ["--out", out]
     if quick:
         args.append("--quick")
+    if css:
+        args.append("--css")
     sh("uv", "run", "--frozen", *args)
 
 
