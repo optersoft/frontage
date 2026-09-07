@@ -146,9 +146,10 @@ constraint holds).
 - [x] `check` flags HTML the parser rewrites (`<div>` in `<p>`, `<tr>` under `<table>`, `<a>`
       in `<a>`), the hydration-mismatch class Leptos documents.
 - [x] Browser tests: counter (adoption proven by a tagged node, early click replayed) and
-      fetch (no refetch, data block consumed), both interpreters.
-- [ ] Off the plan, on purpose: islands (Python has no tree shaking, so an `@island` saves
-      boot work, not download), streaming modes and server functions (need a server).
+      fetch (no refetch, data block consumed).
+- Off the plan, on purpose (a decision, not a task): islands (Python has no tree shaking, so
+      an `@island` saves boot work, not download), streaming modes and server functions (need
+      a server).
 - [x] 0.5.0: `prerender --crawl` (links filtered to the mounted Router's routes); `import
       frontage.debug` lists each hydration mismatch; `unique_id` counts per mount, named after
       the target (`fr-app-1`), so two mounts or two interpreters never collide.
@@ -433,6 +434,32 @@ ships as source and costs about two milliseconds to compile in the VM. Plan in
 - [ ] The nine chapter repos (`gitlab.com/optersoft/python/frontage-<chapter>`) move to
       `frontage build` once the frame lands; the new chapter gets a tenth.
 - [ ] Release: bump `version.py`, check the chapters name the new wheel, tag `v0.9.0`.
+## Beating Streamlit — the component strategy (planned 2026-09-07)
+
+`COMPONENTS.md` is the argument and the order of work. The short version: frontage already
+wins on boot, size and interaction, and loses on *surface* — Streamlit ships ~80 display and
+input elements, frontage ships nine form controls, so an app that shows data has nothing to
+show it with.
+
+- [x] Prototype, measured: a dashboard with two sliders and a live uPlot chart, wired through
+      `data-fr-js`. **946 KB over 10 requests, 96 ms cold to a drawn chart**, redraw 6/22/38/68
+      ms at 2k/5k/10k/20k points per series. stlite's playground downloads ~50 MB and starts in
+      tens of seconds. The component is 40 lines of JavaScript and 20 of Python.
+- [ ] The `frontage-component` protocol in `build`: discover installed components by entry
+      point, copy their `_browser/` assets, extend `data-fr-js`, and pack their Python into
+      `app.tar`. Everything it needs exists — this is discovery and packing, not new machinery.
+- [ ] `frontage-chart` (uPlot, +41 KB) and `frontage-layout` (columns, tabs, metric — pure
+      Python, no dependency): the smallest pair that makes a credible dashboard.
+- [ ] Three Streamlit gallery apps rebuilt, with download size and cold start published beside
+      each. The gallery is the marketing and the test suite at once.
+- [ ] `frontage-table`: a virtualised grid. Second thing every data app reaches for, and
+      virtualisation is the whole trick.
+- [ ] A `frontage-wasm` template (wasm-pack, glue, Python wrapper, the `data-fr-js` line) so
+      calling your own Rust is a fifteen-minute exercise. Streamlit has no answer to this: its
+      Python is on a server, where the wasm cannot go.
+- Not doing, deliberately: pandas/scikit-learn/matplotlib (that is stlite, at 13.8 MB before
+      app code), copying `st.*` names onto reactive semantics, or a server.
+
 - [ ] At 1.0: delete `frontage/cli/pyscript.py`, `tools/fetch_pyscript.py`, `mk pyscript.fetch`,
       the `export` command with its tests, and the ~18 MB `tools/pyscript/` fixture.
 
