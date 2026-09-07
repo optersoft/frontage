@@ -1,6 +1,6 @@
 [project]
 name = "frontage-polars"
-version = "0.2.0"
+version = "0.2.1"
 description = "Big datasets for frontage apps: polars on the server, small answers in the page"
 readme = "README.md"
 license = "Apache-2.0"
@@ -20,7 +20,10 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-server = ["polars>=1.0", "fastapi>=0.110", "uvicorn>=0.29"]
+# `frontage` too: the package's browser half imports it at import time, and the server
+# imports the package. Without it a server with only this extra installed fails at
+# `from frontage_polars.server import Sources` (found deploying the trips example).
+server = ["polars>=1.0", "fastapi>=0.110", "uvicorn>=0.29", "frontage>=0.9.1"]
 
 [project.entry-points."frontage.components"]
 remote = "frontage_polars"
