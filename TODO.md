@@ -409,6 +409,19 @@ ships as source and costs about two milliseconds to compile in the VM. Plan in
       - `mk site.build` publishes the runtime **twice**: under the playground and at the site
         root for the runner. One copy cannot serve both, because `boot.js` finds `app.tar`
         beside itself and the runner has no app.
+- [x] The nightly matrix, run for real (2026-09-07). **Chromium, Firefox and WebKit are all
+      19/19** on the wasm boot. WebKit was 18/19 and it was **not** M11's doing — the same
+      test failed on `main` at `76c80d1`, twice, once per interpreter.
+      - The cause: **WebKit resets `history.scrollRestoration` to `auto` on every hash
+        navigation.** Chromium and Firefox keep `manual`, so setting it once in
+        `HashMode.__init__` was enough there and quietly useless on WebKit from the first
+        `location.hash =` onwards. After that the browser restores scroll itself before
+        `hashchange` fires, so the position the router records for the page being left is
+        already the next page's — precisely what `_manual_scroll_restoration` exists to
+        prevent (U10), and what DESIGN §10 describes.
+      - Fixed by re-asserting it after every navigation `HashMode` causes or observes.
+      - Worth remembering: this had been failing on the nightly job since some point after
+        M5, where the entry claims both browsers passed. Nobody was reading it.
 - [ ] `[human]` **The academy's half is a small Rust change now.** `academy-content`'s frame
       dispatch gains a `frame.kind == "frontage"` branch beside the `"pyscript"` one at
       `content.rs:4611`, reusing `academy_preview::pyscript`'s machinery with

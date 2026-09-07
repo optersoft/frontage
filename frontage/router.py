@@ -274,6 +274,19 @@ class HistoryMode:
 
 
 class HashMode:
+    """⚠ **WebKit resets `history.scrollRestoration` to `auto` on every hash navigation.**
+
+    Setting it once in `__init__` is enough on Chromium and Firefox, which keep it. WebKit
+    discards it at the first `location.hash = …` and at every one after, so from then on the
+    browser restores scroll itself *before* `hashchange` fires — and the position the router
+    records for the page being left is already the next page's. That is the exact failure
+    `_manual_scroll_restoration` exists to prevent (U10), and it made
+    `test_contacts_router[webkit-hash]` fail for anyone who ran the nightly matrix.
+
+    So it is re-asserted after every navigation this class causes or observes. One property
+    write; the alternative is scroll restoration that is silently wrong in one browser.
+    """
+
     def __init__(self):
         _manual_scroll_restoration()
 
@@ -285,15 +298,22 @@ class HashMode:
 
     def push(self, url):
         window.location.hash = url
+        _manual_scroll_restoration()
 
     def replace(self, url):
         window.location.replace("#" + url)
+        _manual_scroll_restoration()
 
     def go(self, delta):
         window.history.go(delta)
 
     def listen(self, fn):
-        proxy = create_proxy(lambda ev: fn(self.current()))
+        def on_hashchange(ev):
+            # Before `fn`, which is what reads and records the scroll position.
+            _manual_scroll_restoration()
+            fn(self.current())
+
+        proxy = create_proxy(on_hashchange)
         window.addEventListener("hashchange", proxy)
         return lambda: window.removeEventListener("hashchange", proxy)
 
