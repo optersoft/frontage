@@ -431,8 +431,13 @@ ships as source and costs about two milliseconds to compile in the VM. Plan in
       Until that lands, the Wasm libraries chapter has code blocks rather than a running app,
       and the other nine chapters keep their PyScript frames, which still work. Nothing on the
       live site is broken in the meantime.
-- [ ] The nine chapter repos (`gitlab.com/optersoft/python/frontage-<chapter>`) move to
-      `frontage build` once the frame lands; the new chapter gets a tenth.
+- [x] The nine chapter repos moved to `frontage build` (2026-09-07). One boot tag instead of
+      PyScript CDN links, `pyscript.json` deleted, both pipelines on `frontage==0.9.0` and
+      `frontage build`. All nine built and opened in Chromium before pushing, all nine
+      pipelines fired, and all nine deployed sites verified live with the boot tag present.
+      They did **not** need to wait for the academy's frame: 0.9.0 talks to MicroPython's own
+      `js`/`jsffi`, which PyScript never removed.
+      - The tenth repo, for the Wasm libraries chapter, is still owed.
 - [ ] Release: bump `version.py`, check the chapters name the new wheel, tag `v0.9.0`.
 ## Beating Streamlit — the component strategy (planned 2026-09-07)
 
@@ -607,7 +612,10 @@ a server, and both are constraints we chose.
 - A push to a chapter repo may create **no** GitLab pipeline (router, 0.8.2): the commit is on
   `main` and no pipeline exists, so the site keeps serving the old wheel. Not a CI failure and
   not a bad `.gitlab-ci.yml`. `glab api -X POST "projects/optersoft%2Fpython%2Ffrontage-<c>/pipeline?ref=main"`.
-  Check after a wheel bump: `curl -sL https://optersoft.gitlab.io/python/frontage-<c>/frontage/version.py`.
+  ⚠ **The old check no longer works.** `curl .../frontage-<c>/frontage/version.py` read the
+  framework as loose `.py` files, and since 0.9.0 it is bytecode inside `_frontage/frontage.tar`.
+  Check the boot tag instead:
+  `curl -sL https://optersoft.gitlab.io/python/frontage-<c>/ | grep -c data-fr-boot` is 1.
 
 ## Outward-facing, for David
 

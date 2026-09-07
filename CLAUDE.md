@@ -146,6 +146,10 @@ hydration, transitions and async memos). **PyScript is gone from the browser pat
   `python/frontage/*.md` (it found three lambdas the browser suite could not, and it is not
   in `mk lint` because the pages are another repo). The chapters' `::: pyscript` frames name
   the wheel by URL too (`packages=`), so the wheel bump is one `sed` over the chapters.
+  Since 0.9.0 each chapter app boots from wasm: one `data-fr-boot` tag, no `pyscript.json`, and
+  a pipeline running `frontage build`. Verify a deploy with
+  `curl -sL https://optersoft.gitlab.io/python/frontage-<c>/ | grep -c data-fr-boot` — the old
+  check read `frontage/version.py`, which no longer exists as a file.
   **Each chapter's app is a repository** at `gitlab.com/optersoft/python/frontage-<chapter>`
   (checkout `~/xtec/python-frontage-<chapter>`), exported to GitLab Pages by its pipeline with
   the `frontage` on PyPI; the page's code blocks must match its `app/app.py`, and a wheel bump
