@@ -659,6 +659,12 @@ a server, and both are constraints we chose.
       the fifth PyPI trusted publisher (environment `frontage-schema`) before the first tag.
       ⚠ Met on the way: MicroPython has no `str.isalnum`, `json.dumps` takes no `indent`, and
       `re` has no counted repeats (`\d{4}` → None), so formats are string code.
+- [ ] `[auto]` The underscore rule in `build` (4701d08) says "private" when it means "not for
+      the browser": frontage-polars had to keep a 779-byte `server.py` shim re-exporting
+      `_server.py` because `from frontage_polars.server import Sources` is published. When a
+      second package needs the same shim, add a declared list instead — a key in the
+      component's `pyproject.toml`, read at discovery without importing — and keep the name rule.
+      Done: `build.Component.modules()` skips a listed module; the shim can go.
 - [ ] A `frontage-wasm` template (wasm-pack, glue, Python wrapper, the `data-fr-js` line) so
       calling your own Rust is a fifteen-minute exercise. Streamlit has no answer to this: its
       Python is on a server, where the wasm cannot go.
