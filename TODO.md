@@ -473,6 +473,18 @@ a server, and both are constraints we chose.
       crossing rewards. It is also the most impressive thing on the list to run with no server.
 - [ ] `frontage-table`: a virtualised grid. Second thing every data app reaches for, and
       virtualisation is the whole trick.
+- [ ] `frontage-postgrest`. **Correction to an earlier claim**: database dashboards are *not*
+      out of reach. Browsers have no raw sockets, but PostgREST generates an HTTP API from a
+      Postgres schema and enforces **row-level security**, so the policy lives next to the data
+      and applies to every client. That is better than Streamlit, which holds a connection
+      string in a process and expects you to write the access control in Python. §2b survives:
+      nothing of *ours* listens. The academy already teaches it — module 0486 *Accés a dades*,
+      chapter `data/postgres/postgrest`, plus Supabase — so the teaching material exists before
+      the users do.
+- [ ] The one thing a browser truly cannot do is hold an API key. For LLM apps that is ~20
+      lines of Cloudflare Worker in front, and the site already deploys to Pages. We do not
+      write a server or make frontage aware of one; both answers are off-the-shelf things an
+      app points at.
 - [ ] A `frontage-wasm` template (wasm-pack, glue, Python wrapper, the `data-fr-js` line) so
       calling your own Rust is a fifteen-minute exercise. Streamlit has no answer to this: its
       Python is on a server, where the wasm cannot go.

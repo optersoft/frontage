@@ -8,6 +8,35 @@ that, and it argues the way in is not to copy Streamlit's surface but to attack 
 it cannot fix: its architecture puts Python on a server, and every attempt to move it into the
 browser has been an attempt to carry the server along.
 
+## 0. The four findings, if you read nothing else
+
+**The job is smaller than it looks.** Streamlit ships about 115 public commands. But 52 are
+plain HTML with no dependency and 12 more are one small library each, so **about 56% of the
+surface is reachable for well under 400 KB** — and nearly half of that is markup nobody has
+written yet. The remaining 44% is roughly 6 that want the scientific stack and 14 that want a
+server. Constraints we chose, not a backlog (§3, §8).
+
+**The case for Rust is concrete now, not hypothetical.** The rule is to reach for it only where
+the work is bulk computation behind a coarse boundary, and the gallery supplies the example:
+**GW Quickview** plots gravitational-wave spectrograms and is blocked *only* by `scipy.signal`
+and `gwpy`. The FFT and the filtering are the app. One module, a buffer in, a spectrogram out —
+the exact shape a 1.00 µs crossing rewards, and the most impressive thing on the list to run
+with no server at all (§7).
+
+**The strongest argument is one we had not thought to make.** A Streamlit app is a process
+holding sessions, and it had no authentication until February 2025 — asked for on the 2019
+launch thread. A security vendor's scan in December 2025 found 14,995 addresses running it and
+well over ten thousand apps open to the public, Verizon call data among them. It still collects
+usage statistics by default. **A frontage app is a directory of static files**: no process, no
+session, nothing listening. It cannot be left unauthenticated because there is nothing to
+authenticate to. That is a difference of kind, and it gives the component protocol its second
+rule — a component may never phone home (§2b).
+
+**And what we let go is named rather than left silent.** Model-inference demos need 100 MB to
+1 GB of weights. LLM chat apps are blocked by the API key, not by compute. Both are real
+limits. But the third one I had wrong: database dashboards are *not* out of reach, and §7b says
+what to use instead of writing a server.
+
 ## 1. What the prototype already shows
 
 A dashboard — two sliders, a live line chart, data built in Python — using
@@ -217,7 +246,11 @@ runtime or a server, and §8 says why we let those go.
 4. **`frontage-map`** (MapLibre). `st.map` and `st.pydeck_chart`'s common case.
 5. **`frontage-echarts`**. Pie, radar, sankey, heatmap, gauge, treemap — the long tail, behind
    one bigger dependency that only apps needing it pay for.
-6. **`frontage-data`** (DuckDB-wasm). SQL over Parquet and CSV, in the browser, over files the
+6. **`frontage-postgrest`**. A `Resource` per table, typed filters, and errors that say when
+   row-level security refused rather than when the network did. See §7b: this is the piece that
+   turns "internal tool over a database" from out of reach into ordinary, and the academy
+   already teaches the server half.
+7. **`frontage-data`** (DuckDB-wasm). SQL over Parquet and CSV, in the browser, over files the
    user drops in. This is the one that goes somewhere Streamlit cannot follow without a server.
 
 A `frontage.widgets` pass belongs alongside: date, time, colour, file upload, multiselect,
@@ -261,6 +294,39 @@ section 8.6 proposed a JavaScript shim, milestone 5 measured it and declined.
 so that "call your Rust from your app" is a fifteen-minute exercise. That is a differentiator
 Streamlit has no answer to, because Streamlit's Python is on a server where the wasm cannot go.
 
+## 7b. When an app does need a server, which one
+
+I wrote earlier that database dashboards were out of reach because a browser has no raw
+sockets. That is true about sockets and wrong about the conclusion, and the correction matters
+because "internal tool over a database" is a large share of what Streamlit is used for.
+
+**For data: PostgREST.** It generates an HTTP API from a Postgres schema, and it is a finished
+piece of software you deploy rather than a server you write. A frontage app talks to it with
+`Resource` and `fetch`, like any other API.
+
+The important part is not the transport, it is where the authorisation lives. **PostgREST
+enforces Postgres row-level security**, so the policy sits in the database next to the data and
+applies to every client that ever connects. Compare Streamlit, which holds a connection string
+in a process and expects you to write the access control yourself in Python, in an app that had
+no authentication at all until 2025. The static-files property of §2b survives intact: nothing
+of *ours* is listening, and the boundary is the database's own policy engine rather than an
+application we would have to keep correct.
+
+Optersoft already teaches this. The academy's module 0486, *Accés a dades*, has a PostgREST
+chapter at `data/postgres/postgrest` and covers Supabase — which is PostgREST with
+authentication and realtime bolted on — so the pairing has teaching material before it has
+users. A `frontage-postgrest` component (typed queries, a `Resource` per table, RLS-aware
+errors) is a strong candidate for the catalogue in §6.
+
+**For secrets: a Cloudflare Worker.** The one thing a browser genuinely cannot do is hold an
+API key. An LLM chat app needs perhaps twenty lines in front of it that add the key and forward
+the request. The site already deploys to Cloudflare Pages, so a Pages Function is the
+path of least resistance and costs nothing at this scale.
+
+**What we still do not do is write that server ourselves, or make frontage aware of it.** Both
+answers above are off-the-shelf things an app points at. The framework stays a directory of
+static files, which is the whole point.
+
 ## 8. What we will not do
 
 - **Chase the scientific stack.** No pandas, no scikit-learn, no matplotlib. Wanting those
@@ -272,9 +338,7 @@ Streamlit has no answer to, because Streamlit's Python is on a server where the 
   Two whole gallery categories go with it, and it is more honest to name them than to pretend
   they are coming. **LLM chat apps** — the fastest-growing category — are blocked not by
   compute but by the API key: calling a model provider from the browser exposes it, and hiding
-  it is exactly what Streamlit's server does. **Database-backed dashboards** are blocked
-  because a browser has no raw sockets. Both are reachable only through an HTTP API someone
-  else runs, which is a fine thing to document and a dishonest thing to claim.
+  it is exactly what Streamlit's server does — see §7b, which says what to put there instead.
 - **Model inference.** Face-GAN, YOLO and the image-model explorers need TensorFlow or PyTorch
   and 100 MB to 1 GB of weights. ONNX Runtime Web is the only path and the download dominates
   regardless. Not a framework gap.
