@@ -44,7 +44,7 @@ hydration, transitions and async memos). **PyScript is gone from the browser pat
 | `tools/serve.py`, `tools/fetch_pyscript.py`, `tools/bench.py`, `tools/profile/` + `tools/profile_rows.py` | dev server (live reload via `frontage.cli.serve`; it serves many apps at once, so a change reloads rather than swapping), offline PyScript fetch into `tools/pyscript/` (gitignored, 0.9.x only), the rows benchmark, the rows profile (phases + calibration, served at `/profile/`) |
 | `editors/` | the editor clients. `editors/vscode/` is the VS Code one — a thin client plus the TextMate injection grammar and the snippets, plain JavaScript so there is no build step; `editors/README.md` is the config block for Zed, Neovim, Helix and Emacs, which need no code at all |
 | `tools/gallery.py` | `mk gallery`: builds every app in its `APPS` list with the real `frontage build`, loads each cold in Chromium, and writes `www/gallery/` with the measured size and start time on every card. A broken app fails the build; a slower one changes the number on the page. `site.build` runs it and then preserves the result rather than rebuilding it |
-| `web/` | what frontage.optersoft.com serves: `_redirects` (everything else goes to academy.optersoft.com/python/frontage), `_headers` (CORS + `Cross-Origin-Resource-Policy` on `/dist/` and both runtime copies), `web/playground/`, the **gallery** (generated, see `tools/gallery.py`), and **`runner.html`** — the page an embedded live-code frame points at, with the program in the URL fragment. `mk site.build` assembles `www/` with the playground, the runtime twice (once under the playground, once at the root for the runner) and every released wheel |
+| `web/` | what frontage.optersoft.com serves: `index.html` (the landing page; the documentation itself is the academy's Frontage section, linked from it), `_headers` (CORS + `Cross-Origin-Resource-Policy` on `/dist/` and both runtime copies), `web/playground/`, the **gallery** (generated, see `tools/gallery.py`), and **`runner.html`** — the page an embedded live-code frame points at, with the program in the URL fragment. `mk site.build` assembles `www/` with the playground, the runtime twice (once under the playground, once at the root for the runner) and every released wheel |
 | `typings/` | ty stubs for the browser-only modules |
 
 ## Rules that are not obvious from the code
@@ -144,8 +144,7 @@ hydration, transitions and async memos). **PyScript is gone from the browser pat
   spelling, update the wheel name in Basic, and run `python -m frontage check` over
   `python/frontage/*.md` (it found three lambdas the browser suite could not, and it is not
   in `mk lint` because the pages are another repo). The chapters' `::: pyscript` frames name
-  the wheel by URL too (`packages=`), so the wheel bump is one `sed` over the chapters. Any new page directory on the site also
-  needs a line in `web/_redirects` (PyScript resolves its interpreters relative to the page).
+  the wheel by URL too (`packages=`), so the wheel bump is one `sed` over the chapters.
   **Each chapter's app is a repository** at `gitlab.com/optersoft/python/frontage-<chapter>`
   (checkout `~/xtec/python-frontage-<chapter>`), exported to GitLab Pages by its pipeline with
   the `frontage` on PyPI; the page's code blocks must match its `app/app.py`, and a wheel bump

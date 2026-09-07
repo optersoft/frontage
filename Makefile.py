@@ -205,10 +205,10 @@ def gallery(*, out: str = "", quick: bool = False) -> None:
 def site_build() -> None:
     """Assemble frontage.optersoft.com into ./www.
 
-    web/ holds the redirects to the academy and the playground. The playground carries its
-    own copy of the WebAssembly runtime at /playground/_frontage/, which is where its boot
-    tag points; `boot.js` finds the interpreter and both archives from its own URL, so
-    nothing here needs a rewrite rule.
+    web/ holds the landing page and the playground. The playground carries its own copy of
+    the WebAssembly runtime at /playground/_frontage/, which is where its boot tag points;
+    `boot.js` finds the interpreter and both archives from its own URL, so nothing here
+    needs a rewrite rule.
 
     `mk gallery` has already written www/gallery/ by the time this runs, so it is preserved
     rather than rebuilt: the numbers on that page come from a real browser and are not

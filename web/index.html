@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Frontage — Python in the browser</title>
+<meta name="description" content="A fine-grained reactive UI framework for Python, running in the browser on MicroPython compiled to WebAssembly. No server, no build step, no JavaScript.">
+<style>
+  :root { color-scheme: light dark; --bg:#fbfaf7; --fg:#1b1b1b; --line:#e3e0d8; --accent:#b3541e; --muted:#6b6862; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#15140f; --fg:#ebe8e1; --line:#2b2a24; --accent:#e08a4a; --muted:#9a968d; } }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:2rem 1.25rem 4rem; font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+         background:var(--bg); color:var(--fg); }
+  .wrap { max-width: 62rem; margin: 0 auto; }
+  h1 { font-size: 2.4rem; margin: 0 0 .25rem; letter-spacing:-.01em; }
+  .lede { color: var(--muted); margin: 0 0 .5rem; max-width: 44rem; }
+  a { color: var(--accent); }
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); margin-top: 2rem; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:1rem 1.1rem; display:flex; flex-direction:column; gap:.4rem; }
+  .card h2 { font-size:1.05rem; margin:0; }
+  .card h2 a { text-decoration: none; }
+  .card p { margin:0; color:var(--muted); font-size:.9rem; flex:1; }
+  pre { border:1px solid var(--line); border-radius:10px; padding:1rem 1.1rem; overflow-x:auto;
+        background:color-mix(in srgb, currentColor 4%, transparent); font-size:.9rem; line-height:1.5; }
+  h3 { font-size:1rem; margin:2.5rem 0 .5rem; }
+  footer { margin-top:3rem; color:var(--muted); font-size:.85rem; border-top:1px solid var(--line); padding-top:1rem; }
+  pre code { background:none; padding:0; }
+  code { background:color-mix(in srgb, currentColor 8%, transparent); padding:.05em .35em; border-radius:4px; font-size:.9em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Frontage</h1>
+<p class="lede">A fine-grained reactive UI framework for Python, running in the browser on
+MicroPython compiled to WebAssembly. An app is a directory of static files: no server, no build
+step, no JavaScript toolchain. Signals, memos and effects update the exact text node that
+changed — the framework, the interpreter and the loader are 627 KB, downloaded once.</p>
+<p class="lede"><a href="https://academy.optersoft.com/python/frontage">Documentation</a> ·
+<a href="/gallery/">Gallery</a> ·
+<a href="/playground/">Playground</a> ·
+<a href="https://pypi.org/project/frontage/">PyPI</a> ·
+<a href="https://github.com/optersoft/frontage">Source</a></p>
+
+<pre><code>uvx frontage build myapp/ --out site/</code></pre>
+
+<div class="grid">
+  <div class="card">
+    <h2><a href="https://academy.optersoft.com/python/frontage">Learn it</a></h2>
+    <p>The chapters, on the academy — every code block runs in the page you are reading.</p>
+  </div>
+  <div class="card">
+    <h2><a href="/gallery/">Gallery</a></h2>
+    <p>Nine apps, each built with the real command and measured in a cold browser.</p>
+  </div>
+  <div class="card">
+    <h2><a href="/playground/">Playground</a></h2>
+    <p>Write Python, press Run, watch it render. Nothing is installed and nothing is sent anywhere.</p>
+  </div>
+</div>
+
+<h3>A counter, whole</h3>
+<pre><code>from frontage import Signal, component, html, mount
+
+@component
+def counter():
+    count = Signal(0)
+
+    def inc(ev):
+        count.update(lambda n: n + 1)
+
+    return html(t"""
+        &lt;button on:click={inc}&gt;clicked {count} times&lt;/button&gt;
+    """)
+
+mount(counter, "#app")</code></pre>
+
+<footer>Apache 2.0 · Optersoft · the wheels of every release stay at
+<a href="/dist/">/dist/</a>, because the chapters and their apps pin one by URL.</footer>
+</div>
+</body>
+</html>
