@@ -13,7 +13,7 @@ are for David.
 
 Frontage is a **clean-room implementation**, Optersoft's own code, of a fine-grained
 reactive web framework for Python in the browser. The PuePy fork on `main` moves to the
-branch `puepy-reference` and serves as an acceptance test until the rewrite passes its
+the tag history and serves as an acceptance test until the rewrite passes its
 examples. Reasons (ownership of copyright, license and story) are in draft 1 and hold.
 
 What carries over untouched: the name, the PyPI plan, `pyproject.toml`, the uv/ruff/ty
@@ -145,7 +145,10 @@ than the pinned one.
   "fine-grained reactivity" guide); PuePy's browser tests as an acceptance specification.
 - **Do not copy:** source, tests, docstrings or prose from any of them. Code is written from
   `SPEC.md` (section 13) with no reference repository open.
-- **Old tree:** branch `puepy-reference`, never merged, deleted after 0.1.0.
+- **Old tree:** deleted on 2026-09-07, long after 0.1.0. It needed no preserving: the fork is
+  this repository's own root, so the tree the rewrite replaced is an ancestor of `main` and is
+  contained in thirteen release tags. `puepy-reference` was a bookmark on that ancestor, not a
+  separate lineage — the "never merged" this line used to claim was never true.
 - **Every PR states** it was written from the spec without reference source open.
 
 ## 6. Platform
@@ -506,14 +509,15 @@ install. Reference generated from docstrings.
 section 5 makes contributions arrive under the same terms with no CLA, section 6 reserves the
 Frontage trademark. Not the MIT OR Apache pair: a user choosing MIT would take none of those
 obligations. PyScript is Apache 2.0; Solid and Leptos are MIT, which is why their ideas may
-be studied freely and their code is not copied regardless. The fork on `puepy-reference`
+be studied freely and their code is not copied regardless. The fork in this repository's
+history
 keeps its own notice; the rewrite carries Optersoft's from the first commit.
 
 ## 16. Milestones
 
 | | Deliverable | Done when |
 |---|---|---|
-| M0 ✅ | `SPEC.md`; `puepy-reference` branch; skeleton; `Renderer` protocol with `HtmlRenderer` and a recording fake; local PyScript fixture | `mk check` green; hello-world renders to a string |
+| M0 ✅ | `SPEC.md`; the fork tree off `main`; skeleton; `Renderer` protocol with `HtmlRenderer` and a recording fake; local PyScript fixture | `mk check` green; hello-world renders to a string |
 | M1 ✅ | reactive core (signals, memos, two-phase effects, owner, context, batch, `on`, `selector`); `Store` with draft writes; builder → `Template`; `DomRenderer`; delegated events; insert rules; `Show`, `For` (all keying modes); `bind:`; counter, todo and rows examples | unit suite green; browser suite green for those examples on both runtimes; the rows benchmark runs |
 | M2 ✅ | `t"…"` templates; `Resource`, `Action`, `Loading`, `Errored`; `NodeRef`; `Dynamic`, `Portal`; fetch and forms examples; the shim decision of 8.6 | same; section 12 decided |
 | M3 ✅ | router (nested, params, `preload`, `query`, `action`, `A`, three modes); contacts example; debug error page | full example suite green on Chromium, both runtimes |

@@ -12,7 +12,8 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
 
 ## M0 (in progress)
 
-- [x] `puepy-reference` branch; fork tree removed from `main`.
+- [x] Fork tree removed from `main`. (The `puepy-reference` bookmark went on 2026-09-07;
+      it pointed at an ancestor of `main`, so nothing needed keeping.)
 - [x] Skeleton: `runtime`, `errors`, `renderer` (seam + `HtmlRenderer` + `RecordingRenderer`),
       `view` (`h` builder, call and `with` forms, `render_to_string`).
 - [x] `SPEC.md` with milestone tags.

@@ -7,8 +7,10 @@ the WebAssembly boot, the framework as precompiled bytecode, a dev server that s
 into the running page, C/Rust libraries as plain imports — after M9's prerendering with
 hydration, transitions and async memos). **PyScript is gone from the browser path** and
 `export` keeps it alive only through 0.9.x, for the academy's chapter repos. `origin` is
-`github.com/optersoft/frontage` (GitHub, because PyPI publishing needs Actions); the PuePy fork is
-on branch `puepy-reference`.
+`github.com/optersoft/frontage` (GitHub, because PyPI publishing needs Actions). The PuePy fork
+is this repository's own root — `a38cd5c "First commit!!1"` is PuePy's — so the tree the
+rewrite replaced is reachable from `main` and from every release tag; the `puepy-reference`
+branch that used to bookmark it was deleted on 2026-09-07, per `DESIGN.md` §5.
 
 ## Read first
 
@@ -46,7 +48,6 @@ on branch `puepy-reference`.
 | `editors/` | the editor clients. `editors/vscode/` is the VS Code one — a thin client plus the TextMate injection grammar and the snippets, plain JavaScript so there is no build step; `editors/README.md` is the config block for Zed, Neovim, Helix and Emacs, which need no code at all |
 | `web/` | what frontage.optersoft.com serves: `_redirects` (everything else goes to academy.optersoft.com/python/frontage), `_headers` (CORS + `Cross-Origin-Resource-Policy` on `/dist/` and both runtime copies), `web/playground/`, and **`runner.html`** — the page an embedded live-code frame points at, with the program in the URL fragment. `mk site.build` assembles `www/` with the playground, the runtime twice (once under the playground, once at the root for the runner) and every released wheel |
 | `typings/` | ty stubs for the browser-only modules |
-| branch `puepy-reference` | the PuePy fork, the acceptance test until 0.1.0; never merged |
 
 ## Rules that are not obvious from the code
 
