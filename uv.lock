@@ -224,7 +224,7 @@ dev = [
 
 [[package]]
 name = "frontage-chart"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "frontage-chart" }
 
 [[package]]
@@ -239,6 +239,8 @@ dev = [
     { name = "frontage-layout" },
     { name = "frontage-map" },
     { name = "frontage-polars", extra = ["server"] },
+    { name = "frontage-schema" },
+    { name = "frontage-supabase" },
     { name = "frontage-table" },
     { name = "httpx" },
     { name = "pytest" },
@@ -255,6 +257,8 @@ dev = [
     { name = "frontage-layout", editable = "frontage-layout" },
     { name = "frontage-map", editable = "frontage-map" },
     { name = "frontage-polars", extras = ["server"], editable = "frontage-polars" },
+    { name = "frontage-schema", editable = "frontage-schema" },
+    { name = "frontage-supabase", editable = "frontage-supabase" },
     { name = "frontage-table", editable = "frontage-table" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "pytest", specifier = ">=8.2" },
@@ -274,7 +278,7 @@ source = { editable = "frontage-map" }
 
 [[package]]
 name = "frontage-polars"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "frontage-polars" }
 
 [package.optional-dependencies]
@@ -291,6 +295,16 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.29" },
 ]
 provides-extras = ["server"]
+
+[[package]]
+name = "frontage-schema"
+version = "0.1.0"
+source = { editable = "frontage-schema" }
+
+[[package]]
+name = "frontage-supabase"
+version = "0.1.0"
+source = { editable = "frontage-supabase" }
 
 [[package]]
 name = "frontage-table"

@@ -1,0 +1,36 @@
+[project]
+name = "frontage-schema"
+version = "0.1.0"
+description = "Schemas for frontage: validate JSON at the boundary and forms as they are typed, in the page"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Optersoft, S.L.", email = "david@optersoft.com" }]
+requires-python = ">=3.12"
+keywords = ["frontage", "webassembly", "micropython", "components", "validation", "schema", "json-schema", "forms"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Environment :: WebAssembly",
+    "Programming Language :: Python :: Implementation :: MicroPython",
+]
+# No runtime dependency, deliberately. `frontage` is the host, not a dependency: this package's
+# Python is packed into the app by `frontage build` and imported inside the browser, where pip
+# is not involved. Pydantic is not one either: `frontage-schema` (the command) reads the
+# models an app already has, on CPython, and never imports pydantic itself.
+dependencies = []
+
+# How `frontage build` finds this package. Build-time metadata read on CPython; the browser
+# pays nothing for the mechanism.
+[project.entry-points."frontage.components"]
+schema = "frontage_schema"
+
+# The build-time bridge: Pydantic models in, a schemas module out. CPython only.
+[project.scripts]
+frontage-schema = "frontage_schema.compile:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["frontage_schema"]

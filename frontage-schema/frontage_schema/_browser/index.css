@@ -1,0 +1,3 @@
+/* frontage-schema: the message a form shows under a field. One rule, overridable by class. */
+.fr-error { color: #b3261e; font-size: 0.875em; display: block; margin-top: 0.25rem; }
+.fr-error:empty { display: none; }

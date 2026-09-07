@@ -14,6 +14,7 @@ dev = [
     "frontage-chart",
     "frontage-table",
     "frontage-map",
+    "frontage-schema",
     "frontage-supabase",
     "frontage-polars[server]",
     "httpx>=0.27",
@@ -29,6 +30,7 @@ frontage-chart = { path = "frontage-chart", editable = true }
 frontage-table = { path = "frontage-table", editable = true }
 frontage-polars = { path = "frontage-polars", editable = true }
 frontage-map = { path = "frontage-map", editable = true }
+frontage-schema = { path = "frontage-schema", editable = true }
 frontage-supabase = { path = "frontage-supabase", editable = true }
 
 [tool.ruff]

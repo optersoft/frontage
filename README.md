@@ -10,9 +10,11 @@ elements a data app needs, each a separate package that costs nothing until it i
 | [`frontage-table`](frontage-table/) | 1.5 KB of CSS | a **virtualised, sortable grid** — 50,000 rows, 21 elements, no JavaScript; or a **windowed source**, when the rows live on a server |
 | [`frontage-polars`](frontage-polars/) | 0.6 KB of JavaScript | **polars on the server, small answers in the page**: named queries behind a FastAPI router, a `Resource` per query in the browser, windows for the grid, and a Server-Sent Events stream so a change on the server reaches every page. The one package here with a server half, and it is opt-in (`[server]`) |
 | [`frontage-map`](frontage-map/) | 46 KB gzipped | `map_view`, on Leaflet — points, popups, and **a viewport the app can read** |
+| [`frontage-schema`](frontage-schema/) | nothing but its Python | **validation in the page**: `record`/`text`/`integer`/`email`… schemas that check JSON at the boundary (`coerce` for strings, `sample` for big arrays) and a `Form` with a signal and a message per field; Pydantic models cross as JSON Schema, compiled by `frontage-schema` on CPython |
+| [`frontage-supabase`](frontage-supabase/) | nothing but its Python | **PostgREST as resources, realtime as a signal**: a `Resource` per table with typed filters, row-level security refusals reported as what they are, and the database's pushes arriving as a signal; PostgREST is HTTP and Realtime a websocket, both reached directly |
 
 ```sh
-pip install frontage-layout frontage-chart frontage-table frontage-map
+pip install frontage-layout frontage-chart frontage-table frontage-map frontage-schema
 ```
 
 That is the whole install. `frontage build` discovers each package by its entry point, copies
