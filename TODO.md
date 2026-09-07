@@ -390,10 +390,11 @@ ships as source and costs about two milliseconds to compile in the VM. Plan in
       - Measured: **1.00 µs per crossing**, about four MicroPython method calls (§12). The
         limit is volume, not frequency — separate linear memories, so anything but a number is
         copied through JavaScript. That is what decides a coarse boundary API.
-      - Chapter written: `~/optersoft/academy-pages/python/frontage/wasm.md` + `.meta.md`, in
-        `index.md` under a new "Going further" section. ⚠ Its code blocks are **not** runnable
-        frames yet: `::: pyscript` cannot boot a wasm page, so the chapter waits on Phase 5's
-        `::: frontage` frame. It also has no GitLab repo yet, unlike the other nine.
+      - Chapter written and shipped: `wasm.md` + `.meta.md`, in `index.md` under "Going
+        further", with a repository of its own like the other nine. Its `::: pyscript` frames
+        work unchanged — 0.9.0 runs under PyScript, because it talks to MicroPython's own
+        `js`/`jsffi`, which PyScript never removed. The `::: frontage` frame is a nicety now,
+        not a blocker.
 
 ## M11 — what is left before 0.9.0 ships
 
@@ -437,7 +438,11 @@ ships as source and costs about two milliseconds to compile in the VM. Plan in
       pipelines fired, and all nine deployed sites verified live with the boot tag present.
       They did **not** need to wait for the academy's frame: 0.9.0 talks to MicroPython's own
       `js`/`jsffi`, which PyScript never removed.
-      - The tenth repo, for the Wasm libraries chapter, is still owed.
+      - [x] The tenth repo exists: `gitlab.com/optersoft/python/frontage-wasm`, built from the
+        chapter's own code, live and verified. Its `pages_access_level` was set explicitly —
+        a new GitLab project serves Pages to members only even when the project is public.
+      - [x] The nine READMEs caught up too: they still described PyScript, a `pyscript.json`
+        the repos no longer have, and a pipeline running `export`.
 - [ ] Release: bump `version.py`, check the chapters name the new wheel, tag `v0.9.0`.
 ## Beating Streamlit — the component strategy (planned 2026-09-07)
 
