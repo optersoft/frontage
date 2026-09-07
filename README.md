@@ -14,12 +14,15 @@ elements a data app needs, each a separate package that costs nothing until it i
 | [`frontage-supabase`](frontage-supabase/) | nothing but its Python | **PostgREST as resources, realtime as a signal**: a `Resource` per table with typed filters, row-level security refusals reported as what they are, and the database's pushes arriving as a signal; PostgREST is HTTP and Realtime a websocket, both reached directly |
 
 ```sh
-pip install frontage-layout frontage-chart frontage-table frontage-map frontage-schema
+pip install frontage-layout frontage-chart frontage-table frontage-map frontage-schema frontage-supabase
 ```
 
-That is the whole install. `frontage build` discovers each package by its entry point, copies
-its browser assets, links its stylesheet, and packs its Python — so `from frontage_chart import
-line_chart` resolves inside the page with nothing to configure.
+That is the whole install — `frontage-polars` is left out on purpose, being the one with a
+server half; `pip install frontage-polars[server]` where that server runs. `frontage build`
+discovers each package by its entry point, copies its browser assets, links its stylesheet, and
+packs its Python — so `from frontage_chart import line_chart` resolves inside the page with
+nothing to configure. It ships only the components your app imports, and names the installed
+ones it left out.
 
 ## Why separate packages
 
