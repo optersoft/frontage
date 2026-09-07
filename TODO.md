@@ -481,6 +481,22 @@ a server, and both are constraints we chose.
       nothing of *ours* listens. The academy already teaches it — module 0486 *Accés a dades*,
       chapter `data/postgres/postgrest`, plus Supabase — so the teaching material exists before
       the users do.
+- [ ] `frontage-turso` — **the database in the page**, and the strategically interesting one.
+      `@tursodatabase/database-wasm` is SQLite in wasm with OPFS persistence, `sync-wasm` adds
+      push/pull against Turso Cloud. Measured from the published package: `turso.wasm32-wasi.wasm`
+      is **11.07 MB raw, 3.61 MB gzipped** — npm reports 41 MB because it counts every variant.
+      Opt-in, same bracket as DuckDB-wasm. It buys **offline-first data apps**: no network, the
+      app still works, remembers between visits, syncs later. Streamlit cannot enter that
+      category — it is a websocket to a process. And **we already run this engine**: the browser
+      package is 0.7.2 against `optersoft/turso`'s `>=0.7.0, <0.8` pin, so the `turso` skill's
+      gotchas (immature planner, rowid reuse, FKs off) apply unchanged. ⚠ Our own README says
+      *"alpha-grade engine"* and the browser package is BETA — fine behind an opt-in dependency,
+      not fine as a default.
+- [ ] Neon is PostgREST's alternative with less to run: Neon RLS + `pg_session_jwt` lets an app
+      be *"entirely client-side, without needing a server"*, and the serverless driver is a
+      0.43 MB package. Nothing to deploy because Neon hosts it; PostgREST wins on being
+      self-hostable and already taught. ⚠ Both share one failure mode, from Neon's own docs: a
+      connection role holding `BYPASSRLS` silently voids the entire guarantee.
 - [ ] The one thing a browser truly cannot do is hold an API key. For LLM apps that is ~20
       lines of Cloudflare Worker in front, and the site already deploys to Pages. We do not
       write a server or make frontage aware of one; both answers are off-the-shelf things an

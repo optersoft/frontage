@@ -34,8 +34,9 @@ rule — a component may never phone home (§2b).
 
 **And what we let go is named rather than left silent.** Model-inference demos need 100 MB to
 1 GB of weights. LLM chat apps are blocked by the API key, not by compute. Both are real
-limits. But the third one I had wrong: database dashboards are *not* out of reach, and §7b says
-what to use instead of writing a server.
+limits. But the third one I had wrong: database dashboards are *not* out of reach — PostgREST
+or Neon put row-level security between the browser and the data, and **Turso puts the database
+in the page**, which buys offline-first apps that Streamlit cannot build at any price (§7b).
 
 ## 1. What the prototype already shows
 
@@ -249,8 +250,12 @@ runtime or a server, and §8 says why we let those go.
 6. **`frontage-postgrest`**. A `Resource` per table, typed filters, and errors that say when
    row-level security refused rather than when the network did. See §7b: this is the piece that
    turns "internal tool over a database" from out of reach into ordinary, and the academy
-   already teaches the server half.
-7. **`frontage-data`** (DuckDB-wasm). SQL over Parquet and CSV, in the browser, over files the
+   already teaches the server half. A Neon variant is the same component with a different
+   transport.
+7. **`frontage-turso`**. The database in the page: OPFS persistence, sync to Turso Cloud, and
+   therefore **offline-first data apps**, which is a category Streamlit cannot enter. 3.6 MB
+   gzipped, opt-in, on the engine the fleet already runs.
+8. **`frontage-data`** (DuckDB-wasm). SQL over Parquet and CSV, in the browser, over files the
    user drops in. This is the one that goes somewhere Streamlit cannot follow without a server.
 
 A `frontage.widgets` pass belongs alongside: date, time, colour, file upload, multiselect,
@@ -317,6 +322,39 @@ chapter at `data/postgres/postgrest` and covers Supabase — which is PostgREST 
 authentication and realtime bolted on — so the pairing has teaching material before it has
 users. A `frontage-postgrest` component (typed queries, a `Resource` per table, RLS-aware
 errors) is a strong candidate for the catalogue in §6.
+
+**Neon is the same idea with less to run.** Neon RLS pairs a JWT from any auth provider with
+the `pg_session_jwt` extension, so `auth.user_id()` is available inside a policy and, in Neon's
+own words, developers *"can build applications that are entirely client-side, without needing a
+server or backend"*. Its serverless driver is a 0.43 MB package that speaks Postgres over HTTP.
+Against PostgREST: nothing to deploy, because Neon hosts it. In PostgREST's favour: it is
+self-hostable and the academy already teaches it. Either works, and the choice is operational
+rather than architectural — **one caution common to both**, from Neon's own documentation: the
+connection role must not hold `BYPASSRLS`, or the whole guarantee evaporates silently.
+
+**Turso is a different answer, and the interesting one.** Not "reach a database over HTTP" but
+*put the database in the page*. `@tursodatabase/database-wasm` is SQLite compiled to
+WebAssembly with OPFS persistence, and `@tursodatabase/sync-wasm` adds push/pull against Turso
+Cloud. Measured from the published package rather than npm's headline figure, which counts
+every variant:
+
+| | raw | gzipped |
+|---|---|---|
+| `turso.wasm32-wasi.wasm` | 11.07 MB | **3.61 MB** |
+
+Opt-in tier-three cost, in the same bracket as DuckDB-wasm's ~3.2 MB, and it buys something
+neither of the options above can: **the app keeps working with no network, remembers between
+visits, and syncs when it can.** Streamlit cannot enter that category at all — a Streamlit app
+is a websocket to a process, so no network means no app. stlite is offline-capable but has no
+persistence or sync story and costs ~13 MB before app code.
+
+**And we already run this engine.** `optersoft/turso` wraps the same Rust rewrite, pinned at
+`>=0.7.0, <0.8`; the browser package is 0.7.2. The same generation, so the same SQL semantics
+and the same hard-won list of gotchas in the `turso` skill — the immature query planner, rowid
+reuse after a delete, foreign keys off by default — apply unchanged. That is institutional
+knowledge nobody else competing here has. ⚠ It cuts both ways: our own README calls turso
+*"SQLite-compatible SQL, alpha-grade engine"* and the browser package is marked BETA. Fine for
+a component behind an opt-in dependency; not fine as the default anything.
 
 **For secrets: a Cloudflare Worker.** The one thing a browser genuinely cannot do is hold an
 API key. An LLM chat app needs perhaps twenty lines in front of it that add the key and forward
