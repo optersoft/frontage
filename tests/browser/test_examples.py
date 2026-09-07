@@ -2,10 +2,16 @@
 
 import json
 import re
+import shutil
+import subprocess
+import sys
 import urllib.parse
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_counter(server, page: Page):
@@ -285,4 +291,88 @@ def test_a_chart_library_becomes_an_importable_component(server, page: Page):
     }""")
     expect(page.locator("#count")).to_have_text("10000 points per series")
     assert page.evaluate("document.querySelector('canvas').dataset.keep") == "1"
+    assert errors == []
+
+
+COMPONENT_INIT = (
+    '"""frontage-chart, shaped as a published package."""\n\nfrom .plot import line_chart\n\n__all__ = ["line_chart"]\n'
+)
+
+COMPONENT_APP = """import math
+
+from frontage import Signal, h, mount
+from frontage.widgets import slider
+from frontage_chart import line_chart
+
+
+n = Signal(1000)
+
+
+def data():
+    return [[i for i in range(n())], [math.sin(i / 30.0) * 40 + 50 for i in range(n())]]
+
+
+mount(
+    lambda: h.div(
+        slider(n, "Points", min=200, max=5000, step=200),
+        line_chart(data, height=200, labels=["sine"]),
+        h.p(lambda: f"{n()} points", id="count"),
+    ),
+    "#app",
+)
+"""
+
+
+@pytest.fixture(scope="module")
+def component_app():
+    """An app built against a component laid out the way a `pip install`ed one would be:
+    Python beside a `_browser/`, discovered by `build`, its assets copied and its Python packed.
+    `examples/chart/` hand-wires the same library; this proves the packaged path."""
+    root = ROOT / "build" / "component-app"
+    if root.exists():
+        shutil.rmtree(root)
+    package = root / "src" / "frontage_chart"
+    (package / "_browser").mkdir(parents=True)
+    (package / "__init__.py").write_text(COMPONENT_INIT)
+    (package / "plot.py").write_text(
+        (ROOT / "examples" / "chart" / "plot.py").read_text().replace("import chartlib", "import chart as chartlib")
+    )
+    (package / "_browser" / "index.js").write_text((ROOT / "examples" / "chart" / "chartlib.js").read_text())
+    (package / "_browser" / "uplot.js").write_bytes((ROOT / "examples" / "chart" / "uplot.js").read_bytes())
+    (package / "_browser" / "index.css").write_bytes((ROOT / "examples" / "chart" / "uplot.css").read_bytes())
+    app = root / "app"
+    app.mkdir(parents=True)
+    (app / "app.py").write_text(COMPONENT_APP)
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "frontage",
+            "build",
+            str(app),
+            "--out",
+            str(root / "out"),
+            "--component",
+            f"chart={package}",
+            "--quiet",
+        ],
+        check=True,
+        cwd=ROOT,
+        capture_output=True,
+    )
+    return "/build/component-app/out"
+
+
+def test_a_packaged_component_is_discovered_copied_and_imported(server, page: Page, component_app):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{server}{component_app}/index.html")
+    expect(page.locator("canvas").first).to_be_visible(timeout=30_000)
+    expect(page.locator("#count")).to_have_text("1000 points")
+    page.evaluate("""() => {
+        const s = document.querySelector('input[type=range]');
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        set.call(s, '4000'); s.dispatchEvent(new Event('input', {bubbles: true}));
+    }""")
+    expect(page.locator("#count")).to_have_text("4000 points")
     assert errors == []

@@ -110,6 +110,15 @@ hydration, transitions and async memos). **PyScript is gone from the browser pat
   four MicroPython method calls; the limit is *volume*, because the two wasm modules have
   separate memories and anything but a number is copied through JavaScript. `examples/wasm/`
   and the academy's Wasm libraries chapter.
+- **A component is a Python package that also ships browser assets** (0.9.0). It declares a
+  `frontage.components` entry point and lays out `_browser/index.js` (+ optional `index.css`);
+  `build` copies the assets to `_frontage/components/<name>/`, merges a `data-fr-js` entry into
+  the boot tag, and packs the component's Python under its package path so `import <package>`
+  resolves in the page. `--component NAME=PATH` develops one before publishing. **Discovery
+  must never import a component**: its Python targets the browser, and `find_spec` locates it
+  without running it. ⚠ **In `serve`, a real file under `_frontage/` wins over the synthesised
+  archive** — serving a built directory must serve what `build` produced, or a component's
+  Python silently never reaches the page.
 - **`frontage build` is the command; `export` is the PyScript one**, and it survives only
   through 0.9.x because the academy's nine chapter repos still boot that way.
 - **`frontage serve` swaps modules, it does not reload the page** (0.9.0). `frontage/dev.py`

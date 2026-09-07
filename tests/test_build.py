@@ -154,3 +154,78 @@ def test_an_unknown_entry_is_an_error(tmp_path):
     with pytest.raises(SystemExit) as exc:
         build.build(app, tmp_path / "out", entry="nope", quiet=True)
     assert "nope.py" in str(exc.value)
+
+
+# --- components ---------------------------------------------------------------------------
+
+
+def make_component(tmp_path, name="frontage_chart", style=True):
+    """A component package on disk: Python beside a `_browser/` the page will load."""
+    from frontage.cli.build import Component
+
+    package = tmp_path / "site-packages" / name
+    (package / "_browser").mkdir(parents=True)
+    (package / "__init__.py").write_text("from .plot import line_chart\n")
+    (package / "plot.py").write_text("def line_chart(data):\n    return data\n")
+    (package / "_browser" / "index.js").write_text("export function draw() {}\n")
+    if style:
+        (package / "_browser" / "index.css").write_text(".chart { display: block }\n")
+    # Must not ship: browser assets are not Python, and caches are nobody's business.
+    (package / "__pycache__").mkdir()
+    (package / "__pycache__" / "plot.cpython-314.pyc").write_bytes(b"\x00")
+    return Component("chart", package)
+
+
+def test_discover_reads_entry_points_without_importing_anything():
+    # Nothing declares one in this repo, so the contract under test is "returns cleanly".
+    # Importing a component here would run browser-targeted Python on CPython.
+    assert build.discover() == []
+
+
+def test_a_component_ships_its_assets_its_python_and_a_declaration(tmp_path):
+    app = write_app(tmp_path, counter=APP)
+    component = make_component(tmp_path)
+    out = build.build(app, tmp_path / "out", quiet=True, components=[component])
+
+    assets = out / "_frontage" / "components" / "chart"
+    assert (assets / "index.js").is_file()
+    assert (assets / "index.css").is_file()
+
+    page = (out / "index.html").read_text()
+    assert 'data-fr-js="chart=./_frontage/components/chart/index.js"' in page
+    assert '<link rel="stylesheet" href="./_frontage/components/chart/index.css">' in page
+
+    # The Python travels under its package name, so `import frontage_chart` works in the page.
+    with tarfile.open(out / "_frontage" / "app.tar") as tf:
+        names = sorted(tf.getnames())
+    assert names == ["counter.py", "frontage_chart/__init__.py", "frontage_chart/plot.py"]
+
+
+def test_a_component_without_a_stylesheet_links_nothing(tmp_path):
+    app = write_app(tmp_path, counter=APP)
+    out = build.build(app, tmp_path / "out", quiet=True, components=[make_component(tmp_path, style=False)])
+    assert "stylesheet" not in (out / "index.html").read_text()
+
+
+def test_declarations_merge_into_a_hand_written_boot_tag(tmp_path):
+    """The examples hand-write their tag. Rewriting it would throw away what the author put
+    there; ignoring it would make an installed component silently do nothing."""
+    app = write_app(tmp_path, counter=APP)
+    tag = '<script type="module" src="./_frontage/boot.js" data-fr-boot data-fr-entry="counter"></script>'
+    (app / "index.html").write_text(f"<!DOCTYPE html>\n<body>\n{tag}\n</body>\n")
+    out = build.build(app, tmp_path / "out", quiet=True, components=[make_component(tmp_path)])
+    page = (out / "index.html").read_text()
+    assert page.count("data-fr-boot") == 1
+    assert 'data-fr-entry="counter"' in page and "chart=./_frontage/components/chart/index.js" in page
+
+
+def test_an_author_declaration_wins_and_is_not_duplicated():
+    tag = '<script data-fr-boot data-fr-entry="app" data-fr-js="chart=./mine.js"></script>'
+    merged = build.declare(tag, ["chart=./theirs.js", "grid=./grid.js"])
+    assert merged.count("data-fr-js") == 1
+    assert "chart=./mine.js" in merged and "chart=./theirs.js" not in merged
+    assert "grid=./grid.js" in merged
+
+
+def test_declare_leaves_a_page_with_no_boot_tag_alone():
+    assert build.declare("<p>nothing here</p>", ["chart=./x.js"]) == "<p>nothing here</p>"

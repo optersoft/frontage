@@ -457,9 +457,21 @@ a server, and both are constraints we chose.
         cost. Vendoring uPlot's minified ESM build costs 80 KB against the 446 KB interpreter
         already committed. When the component protocol lands, the chart moves out to its own
         package and this example becomes a consumer of it.
-- [ ] The `frontage-component` protocol in `build`: discover installed components by entry
-      point, copy their `_browser/` assets, extend `data-fr-js`, and pack their Python into
-      `app.tar`. Everything it needs exists — this is discovery and packing, not new machinery.
+- [x] The `frontage-component` protocol (2026-09-07). A component is a Python package that also
+      ships browser assets: it declares itself with a `frontage.components` entry point and lays
+      out `_browser/index.js` (+ optional `index.css`) by convention. `build` discovers them,
+      copies the assets beside the runtime, merges a `data-fr-js` declaration into the boot tag
+      (an author's own entry wins), links the stylesheet, and packs the component's Python under
+      its package path so `import frontage_chart` resolves in the page. `--component NAME=PATH`
+      uses one before it is published. Discovery never *imports* a component — its Python is
+      written for the browser. 6 unit tests, plus a browser test that builds against a
+      package shaped exactly like a published one. An afternoon, because the three pieces it
+      needed already shipped.
+      - ⚠ Two dev-server bugs found on the way, both one mistake: when serving a **built**
+        directory, `frontage serve` synthesised `app.tar` and intercepted `_frontage/`
+        sub-paths, so it served a different app than `build` produced — the component's Python
+        never reached the page and its assets 404'd. **Disk now wins over synthesis**;
+        synthesis is what happens when nothing is built, which is the dev loop.
 - [ ] `frontage-chart` (uPlot, +41 KB) and `frontage-layout` (columns, tabs, metric — pure
       Python, no dependency): the smallest pair that makes a credible dashboard.
 - [ ] Three Streamlit gallery apps rebuilt, with download size and cold start published beside

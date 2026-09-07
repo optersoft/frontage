@@ -257,17 +257,28 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self._send_bytes(candidate.read_bytes(), "text/x-python; charset=utf-8")
 
     def _send_runtime(self, name, prefix="/"):
-        """`_frontage/*`: the two archives built on the spot, everything else from the package.
+        """`_frontage/*`, in one order: what is on disk, then what we can build, then the
+        package's copy.
 
-        `prefix` is the directory the request came from, which is the app the archive is for.
+        Disk first, because a *built* directory already holds everything — including a
+        component's assets and an `app.tar` that carries its Python. Synthesising over the top
+        would silently serve a different app than the one `build` produced, which is how the
+        first component ever built here failed to import.
+
+        With nothing on disk we are serving sources, so the archives are made on the spot from
+        whatever is there: that is the dev loop, where an edit needs no build step.
         """
         from . import micropython as mp
 
         try:
+            on_disk = Path(self.translate_path(f"{prefix}{RUNTIME_PREFIX.strip('/')}/{name}"))
+            if on_disk.is_file():
+                kind = self.extensions_map.get(on_disk.suffix, "application/octet-stream")
+                self._send_bytes(on_disk.read_bytes(), kind)
+                return
             if name == "app.tar":
-                # Always the directory the request came from, never a configured root: on a
-                # server carrying several apps, `/examples/todo/_frontage/app.tar` must be the
-                # todo app whatever `app_root` says.
+                # The directory the request came from, never a configured root: one server can
+                # carry several apps, and `/examples/todo/_frontage/app.tar` must be the todo one.
                 self._send_bytes(app_archive(self.translate_path(prefix)), "application/x-tar")
                 return
             if name == mp.IMAGE_NAME:

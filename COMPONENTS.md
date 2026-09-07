@@ -219,9 +219,19 @@ chart = "frontage_chart"
 The author writes `pip install frontage-chart`, then `from frontage_chart import line_chart`.
 Nothing else.
 
-**Everything this needs already exists.** `data-fr-js` loads and registers the JavaScript;
-`registerJsModule` makes it a real Python import; `build` already copies and packs. The work
-is discovery and packing, not new machinery — call it a week, not a milestone.
+**✅ Built, 2026-09-07.** `frontage build` discovers components by entry point, copies each
+`_browser/` beside the runtime, merges a `data-fr-js` declaration into the boot tag (author's
+entries win), links a stylesheet if there is one, and packs the component's Python under its
+package path so `import frontage_chart` resolves in the page. `--component NAME=PATH` uses one
+before it is published, which is how you develop one. A browser test builds an app against a
+package laid out exactly as a published one would be and asserts the chart draws and stays
+reactive. It took an afternoon, not a week, because the three pieces it rests on were already
+there.
+
+Two dev-server bugs fell out of it, both the same mistake: serving a *built* directory,
+`frontage serve` was synthesising `app.tar` and intercepting `_frontage/` sub-paths, so it
+served a different app than `build` produced. Disk now wins over synthesis; synthesis is what
+happens when there is nothing built, which is the dev loop.
 
 **The component author's contract**, which `examples/chart/plot.py` already demonstrates: a `NodeRef` for
 the element the library owns, an `Effect` that redraws when its data accessor changes, and an
