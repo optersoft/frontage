@@ -8,9 +8,10 @@ elements a data app needs, each a separate package that costs nothing until it i
 | [`frontage-layout`](frontage-layout/) | 2.5 KB of CSS | `columns`, `tabs`, `expander`, `container`, `metric`, `progress`, `spinner`, `divider` — pure Python, no dependency |
 | [`frontage-chart`](frontage-chart/) | 41 KB gzipped | `line_chart`, `area_chart`, `bar_chart`, `scatter_chart`, on uPlot |
 | [`frontage-table`](frontage-table/) | 1.5 KB of CSS | a **virtualised, sortable grid** — 50,000 rows, 21 elements, no JavaScript |
+| [`frontage-map`](frontage-map/) | 46 KB gzipped | `map_view`, on Leaflet — points, popups, and **a viewport the app can read** |
 
 ```sh
-pip install frontage-layout frontage-chart frontage-table
+pip install frontage-layout frontage-chart frontage-table frontage-map
 ```
 
 That is the whole install. `frontage build` discovers each package by its entry point, copies
@@ -52,7 +53,11 @@ Two rules that are not obvious:
 - **Take an accessor, not data.** `line_chart(series)` redraws when `series` changes and at no
   other time. Taking a value throws away the reason to use this framework.
 - **Never phone home.** A frontage app is a directory of static files with nothing listening;
-  one component that makes an uninvited request gives that property away for all of them.
+  one component that makes an *uninvited* request gives that property away for all of them.
+  `frontage-map` is the one component that fetches anything at runtime, because a basemap comes
+  from a tile server and there is no way around that. The rule it keeps instead: the request is
+  the thing the caller asked for, the server is the caller's to choose, and `tiles=None` turns
+  it off. Nothing else may reach the network at all.
 
 And one that cost an afternoon to find: **MicroPython does not preserve dict insertion order**,
 so any API where the order of a mapping is visible must take pairs. `tabs` refuses a dict and

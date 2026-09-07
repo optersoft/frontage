@@ -1,0 +1,33 @@
+[project]
+name = "frontage-map"
+version = "0.1.0"
+description = "Maps for frontage, on Leaflet: points, popups, and a viewport the app can read"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Optersoft, S.L.", email = "david@optersoft.com" }]
+requires-python = ">=3.12"
+keywords = ["frontage", "webassembly", "micropython", "components", "map", "leaflet"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Environment :: WebAssembly",
+    "Programming Language :: Python :: Implementation :: MicroPython",
+]
+# No runtime dependency, deliberately. `frontage` is the host, not a dependency: this package's
+# Python is packed into the app by `frontage build` and imported inside the browser, where pip
+# is not involved. Leaflet is vendored in `_browser/` (BSD-2-Clause) rather than fetched, so a
+# build needs no network and an app has no CDN in its critical path. Map *tiles* are the one
+# thing this component fetches at runtime, and `tiles=None` turns that off.
+dependencies = []
+
+# How `frontage build` finds this package. Build-time metadata read on CPython; the browser
+# pays nothing for the mechanism.
+[project.entry-points."frontage.components"]
+map = "frontage_map"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["frontage_map"]

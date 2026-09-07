@@ -10,4 +10,18 @@ frontage-chart/frontage_chart/_browser/uplot.js. It is vendored rather than
 fetched so that a build needs no network and an app has no CDN in its
 critical path; its licence travels in the file's own header.
 
+frontage-map vendors Leaflet (https://leafletjs.com), copyright Vladimir
+Agafonkin and CloudMade, under the BSD 2-Clause License, at
+frontage-map/frontage_map/_browser/leaflet.js and, as the first part of
+index.css, leaflet.css. Both are verbatim except for four added lines in the
+JavaScript — a CommonJS shim and an `export default`, marked in the file — and
+two appended CSS rules, marked likewise. Vendored rather than fetched for the
+same reason as uPlot; its licence travels in the file's own header.
+
+Map *tiles* are not vendored and cannot be: a basemap is fetched at runtime
+from whatever tile server the app names. The default is OpenStreetMap's, whose
+tile usage policy applies to any app that ships with it
+(https://operations.osmfoundation.org/policies/tiles/). `tiles=None` requests
+no tiles at all.
+
 frontage-layout and frontage-table contain no third-party code.
