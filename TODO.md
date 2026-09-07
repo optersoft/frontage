@@ -619,13 +619,33 @@ a server, and both are constraints we chose.
         float** (an int formats fine), and **Chromium serialises a large inline
         `translateY` as `1.27996e+07px`**, which is the browser, not Python — a test must parse
         the value rather than match it.
-      - Not done: the binary column path (the server writing float64 columns the chart's
-        JavaScript takes straight from `fetch`, never touching MicroPython — the 10,000-point
-        series today parses ~400 KB of JSON in Python); `frontage serve --proxy` for the dev
-        loop (today: the FastAPI app mounts the built directory, or CORS across two ports);
-        a fleet deployment path for a Python process (every service under `hive` is a Rust
-        binary); the academy chapter; and the fourth PyPI trusted publisher, environment
-        `frontage-polars`, without which the tag publishes nothing.
+      - ✅ The four follow-ups, same day (2026-09-07 evening):
+        **the binary column path** — `GET /series/{name}?columns=a,b` answers float64 columns
+        behind an 8-byte header, the JavaScript half makes `Float64Array` views over the
+        response buffer, `Remote.series(...)` is a Resource of a `Series` whose `.data` the
+        chart draws as it is (frontage-chart 0.1.1 passes typed arrays through). Measured in
+        the MicroPython build for the trips example's 8,784-point series: the JSON path is
+        **11 ms per redraw** (6 parse + 5 lists-and-crossing) and 152 KB, the binary path
+        0.007 ms and 140 KB — smaller than the "~400 KB" guess above, because JSON parsing in
+        this build is fast; the win is the crossing and the bytes, and it grows with the
+        series. frontage-polars 0.2.0.
+        **`frontage serve --proxy PREFIX=URL`** (0.9.1): forwards a prefix to another port,
+        any method, status and headers relayed, an event stream copied line by line, a dead
+        upstream a 502 that names it. Four tests with a stand-in upstream that holds its
+        stream open until the first event is read.
+        **A fleet path for a Python process**: hive already had `runtime = "uv"` (coded,
+        unit-tested, never used — every row was a Rust binary). `examples/trips` is now a
+        deployable project (`pyproject.toml` with a `trips` script, `uv.lock`, `/healthz`,
+        `TRIPS_ADDR`), `[apps.trips]` is in `hive-deploy/fleet.toml` (nbg-3, :8008,
+        `activation = "restart"`, `avoid = ["broker"]`) and `hive fleet bootstrap --host
+        trips --dry-run` renders the unit as expected. ⚠ **Not rolled out**: bootstrap on the
+        VM, the DNS record for `trips.frontage.optersoft.com` and the gateway tenant are
+        operator steps, listed in `examples/trips/DEPLOY.md`. Two hive caveats from the
+        research: `packaged = true` + `uv` has no agent-side `uv sync`, so it is the rsync
+        path; and the README's `### runtime = "uv"` section it points at does not exist.
+        **The academy chapter**: `python/frontage/polars.md` (+ card), listed in the index
+        between Components and Wasm, no live frame (the first chapter whose app needs a
+        server, and it says so), code blocks matching `examples/trips`.
 - [ ] The one thing a browser truly cannot do is hold an API key. For LLM apps that is ~20
       lines of Cloudflare Worker in front, and the site already deploys to Pages. We do not
       write a server into the framework; both answers are off-the-shelf things an app points
