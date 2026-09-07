@@ -24,9 +24,10 @@ dependencies = []
 [project.entry-points."frontage.components"]
 schema = "frontage_schema"
 
-# The build-time bridge: Pydantic models in, a schemas module out. CPython only.
+# The build-time bridge: Pydantic models in, a schemas module out. CPython only, and named with
+# an underscore so `frontage build` leaves it out of the page.
 [project.scripts]
-frontage-schema = "frontage_schema.compile:main"
+frontage-schema = "frontage_schema._compile:main"
 
 [build-system]
 requires = ["hatchling"]

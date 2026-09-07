@@ -142,5 +142,5 @@ accepted (the hostname must be ASCII).
 
 ## Size
 
-The package is ~27 KB of Python source before precompilation and ships no JavaScript; the
-stylesheet is one rule for `.fr-error`. Apache 2.0.
+The page gets ~40 KB of Python source (the core, the form, the JSON Schema bridge) and no
+JavaScript; the compiler stays on CPython, and the stylesheet is one rule for `.fr-error`. Apache 2.0.

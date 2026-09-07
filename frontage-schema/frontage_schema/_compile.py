@@ -11,8 +11,8 @@ cross, and the generated file names each one it skipped.
 `--json FILE` reads a JSON Schema document instead of a model, for an API whose schema is
 published (an OpenAPI document under `--ref '#/components/schemas/User'`).
 
-The module is packed into a built app like the rest of the package, and never imported there;
-it imports nothing until `main` runs.
+The leading underscore is what keeps it out of the page: `frontage build` packs a component's
+modules except the private ones, and this one would only be 4 KB of dead weight there.
 """
 
 __all__ = ["compile_json", "compile_models", "main"]
