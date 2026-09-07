@@ -249,13 +249,16 @@ Ordered by how much of Streamlit's gallery each unlocks per kilobyte. The galler
 cleanly: its top third is dashboards over data, which is ours to take; the rest needs a model
 runtime or a server, and §8 says why we let those go.
 
-1. **`frontage-chart`** (uPlot). Line, area, bar, scatter. Covers `st.line_chart`,
+1. ✅ **`frontage-chart`** (uPlot). Line, area, bar, scatter. Covers `st.line_chart`,
    `st.area_chart`, `st.bar_chart`, `st.scatter_chart` — the majority of gallery apps.
+   Built 2026-09-07 in `~/optersoft/frontage-components`.
 2. **`frontage-table`**. A virtualised grid over a list of dicts: sort, filter, column
    formatting, row selection. This is `st.dataframe`, and it is the element most reached for
    after a chart. Virtualisation is the whole trick; 100k rows must not mean 100k DOM nodes.
-3. **`frontage-layout`**. `columns`, `tabs`, `expander`, `sidebar`, `metric`, `progress`,
-   `spinner`. Pure Python and CSS, no dependency, and it is what makes an app look like an app.
+3. ✅ **`frontage-layout`**. `columns`, `tabs`, `expander`, `container`, `metric`, `progress`,
+   `spinner`, `divider`. Pure Python and 2.5 KB of CSS, no dependency, and it is what makes an
+   app look like an app. Built 2026-09-07. A dashboard on these two: **78 ms to drawn, 730 KB
+   over 12 requests**.
 4. **`frontage-map`** (MapLibre). `st.map` and `st.pydeck_chart`'s common case.
 5. **`frontage-echarts`**. Pie, radar, sankey, heatmap, gauge, treemap — the long tail, behind
    one bigger dependency that only apps needing it pay for.

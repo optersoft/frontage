@@ -472,8 +472,22 @@ a server, and both are constraints we chose.
         sub-paths, so it served a different app than `build` produced — the component's Python
         never reached the page and its assets 404'd. **Disk now wins over synthesis**;
         synthesis is what happens when nothing is built, which is the dev loop.
-- [ ] `frontage-chart` (uPlot, +41 KB) and `frontage-layout` (columns, tabs, metric — pure
-      Python, no dependency): the smallest pair that makes a credible dashboard.
+- [x] `frontage-chart` and `frontage-layout` (2026-09-07), in a new sibling repo
+      **`~/optersoft/frontage-components`** — one repo, a package each, the way `hive/` and
+      `turso/` hold several crates. 38 tests, lint clean, `frontage check` clean.
+      - `frontage-layout`: columns, tabs, expander, container, metric, progress, spinner,
+        divider. **Pure Python and 2.5 KB of CSS**, no JavaScript, no dependency — about a third
+        of the ~52 commands that need nothing but markup.
+      - `frontage-chart`: line/area/bar/scatter on uPlot, 41 KB gzipped, vendored so a build
+        needs no network. Both take an **accessor**, not data.
+      - Measured together as a dashboard: **78 ms to drawn, 730 KB over 12 requests**, and a
+        region change updates a metric, a progress bar and the chart and nothing else.
+      - Proven through **real entry-point discovery**, not `--component`: installed, found,
+        assets copied, Python packed, `from frontage_chart import line_chart` resolving in the
+        page.
+      - ⚠ `--with` caches a built wheel, so editing a component's source and rebuilding runs the
+        *old* code in the browser. Use `--with-editable`; the symptom is a traceback from a line
+        number that does not match the file.
 - [ ] Three Streamlit gallery apps rebuilt, with download size and cold start published beside
       each. The gallery is the marketing and the test suite at once, and the research named the
       honest targets: **Uber NYC Pickups** (needs the map; its 180 MB CSV becomes a sliced

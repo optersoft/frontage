@@ -204,6 +204,13 @@ hydration, transitions and async memos). **PyScript is gone from the browser pat
   why `boot.js` execs the entry against `runPython`'s own globals, already `__main__`; and
   **mpy-cross rejects two adjacent f-strings** (`f"a" f"b"`, though `f"a" "b"` is fine), which
   bit exactly once, at `reactive.py:182`, and would stop the framework cross-compiling.
+- **MicroPython dicts do NOT preserve insertion order.** CPython has guaranteed it since 3.7,
+  so it is invisible until the browser: `{"Trend": …, "Cumulative": …, "About": …}` came back
+  as `["About", "Cumulative", "Trend"]`, which put a component's tabs in an arbitrary order and
+  opened the wrong one. **Any API where the order of a mapping is visible must take pairs**, not
+  a dict — `tabs([("Trend", view), …])`. Core is unaffected (audited 2026-09-07: every
+  `.items()` in `view`, `renderer`, `store`, `router` and `state` is a lookup or a cosmetic
+  join, never a semantic order), but it is a rule for every new API and every component.
 - **Ruff's formatter follows the target version.** Under py314 it emits `except A, B:` (PEP
   758), which MicroPython cannot parse, so the package targets py312 and only the files with
   template strings are py314 (`per-file-target-version`). Its B009 autofix also rewrites a
