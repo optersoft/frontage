@@ -1,0 +1,13 @@
+frontage-component
+Copyright 2026 Optersoft, S.L.
+
+Components for Frontage. "Frontage" is a trademark of Optersoft, S.L.; the
+Apache License grants no trademark rights (section 6).
+
+frontage-chart vendors uPlot (https://github.com/leeoniya/uPlot), copyright
+Leon Sorokin, under the MIT License, at
+frontage-chart/frontage_chart/_browser/uplot.js. It is vendored rather than
+fetched so that a build needs no network and an app has no CDN in its
+critical path; its licence travels in the file's own header.
+
+frontage-layout and frontage-table contain no third-party code.

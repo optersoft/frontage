@@ -1,0 +1,37 @@
+# Tests every component against the frontage checked out beside this one — the same path-dep
+# convention the fleet's Rust repos follow (optersoft/CLAUDE.md). CI has no sibling checkout,
+# so it clones frontage first; `[tool.uv.sources]` then resolves to it.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: frontage-component
+      - uses: actions/checkout@v5
+        with:
+          repository: optersoft/frontage
+          path: frontage
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: frontage-component/uv.lock
+      - run: uv sync --all-groups
+        working-directory: frontage-component
+      - run: uv run ruff check .
+        working-directory: frontage-component
+      - run: uv run ruff format --check .
+        working-directory: frontage-component
+      - run: uv run pytest -q
+        working-directory: frontage-component
+      # The rule that a component can break while installing and importing perfectly: its
+      # Python must be written in the subset MicroPython runs in the browser.
+      - run: uv run --project ../frontage python -m frontage check frontage-layout frontage-chart frontage-table tests
+        working-directory: frontage-component
