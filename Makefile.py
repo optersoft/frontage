@@ -181,7 +181,7 @@ def export(app: str, *, out: str = "", no_pyscript: bool = False) -> None:
     sh("uv", "run", "--frozen", "python", *args)
 
 
-@task(requires=["uv"], needs=[runtime_build])
+@task(requires=["uv"], needs=[runtime_fetch])
 def gallery(*, out: str = "", quick: bool = False) -> None:
     """Build every gallery app, measure it in Chromium, and write www/gallery/.
 
@@ -201,7 +201,7 @@ def gallery(*, out: str = "", quick: bool = False) -> None:
     sh("uv", "run", "--frozen", *args)
 
 
-@task(name="site.build", needs=[runtime_build, gallery])
+@task(name="site.build", needs=[gallery])
 def site_build() -> None:
     """Assemble frontage.optersoft.com into ./www.
 

@@ -70,6 +70,15 @@ def browser_modules(package=None):
     return sorted(p for p in package.glob("*.py") if p.name != "__main__.py")
 
 
+def _is_compiled(archive):
+    """True when the image holds `.mpy`, not `.py`."""
+    try:
+        with tarfile.open(archive) as tf:
+            return any(name.endswith(".mpy") for name in tf.getnames())
+    except (OSError, tarfile.TarError):
+        return False
+
+
 def _mpy_cross():
     """The cross-compiler, or None if it is not installed (a checkout without the dev group)."""
     try:
@@ -90,6 +99,14 @@ def image(dest=None, package=None, quiet=False):
     out = dest / IMAGE_NAME
     modules = browser_modules(package)
     mpy = _mpy_cross()
+
+    if mpy is None and out.exists() and _is_compiled(out):
+        # A host without mpy-cross must not replace a committed bytecode image with sources.
+        # It would still work, and it would silently ship a slower framework than the one in
+        # the repository — the worst kind of regression, because nothing fails.
+        if not quiet:
+            print(f"{out}: kept (no mpy-cross here, and the existing image is bytecode)")
+        return out, True
 
     with tempfile.TemporaryDirectory() as tmp:
         members = []

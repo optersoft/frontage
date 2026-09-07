@@ -113,8 +113,17 @@ def build_all(out):
 
 
 def measure(built, out):
-    """Load each app cold and record what the browser fetched and how long it waited."""
-    from playwright.sync_api import sync_playwright
+    """Load each app cold and record what the browser fetched and how long it waited.
+
+    Returns `(apps, measured)`. A build host without Playwright or without a browser gets
+    sizes only rather than a failure: this runs on the deploy builder, and a site that cannot
+    be assembled without Chromium is a site that stops deploying the first time that breaks.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("no playwright: publishing sizes only", file=sys.stderr)
+        return built, False
 
     port = free_port()
     server = subprocess.Popen(
@@ -131,7 +140,11 @@ def measure(built, out):
             except OSError:
                 time.sleep(0.1)
         with sync_playwright() as pw:
-            browser = pw.chromium.launch()
+            try:
+                browser = pw.chromium.launch()
+            except Exception as exc:  # no browser installed on this host
+                print(f"no browser ({type(exc).__name__}): publishing sizes only", file=sys.stderr)
+                return built, False
             for app in built:
                 context = browser.new_context()  # cold cache per app
                 page = context.new_page()
@@ -148,7 +161,7 @@ def measure(built, out):
             browser.close()
     finally:
         server.terminate()
-    return built
+    return built, True
 
 
 def shared_bytes(out, built):
@@ -193,9 +206,9 @@ def main(argv=None):
     out.mkdir(parents=True)
 
     built = build_all(out)
-    measured = not args.quick
-    if measured:
-        built = measure(built, out)
+    measured = False
+    if not args.quick:
+        built, measured = measure(built, out)
     write_index(built, out, measured)
     total = sum(app["bytes"] for app in built)
     print(f"{out}: {len(built)} apps, {total:,} bytes")
