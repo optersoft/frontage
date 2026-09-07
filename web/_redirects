@@ -1,0 +1,8 @@
+# One rule, and it is not a redirect: it is what makes a missing page a 404.
+#
+# The Pages project answers an unknown path with the landing page and HTTP 200 — a soft 404,
+# which tells a crawler that every wrong URL on this host is a real page. Pages serves a
+# matching asset first and only then consults this file, so a catch-all splat cannot shadow
+# anything that exists; what reaches it is exactly what would otherwise have been the
+# fallback. `frontage serve` and every other static host use 404.html on their own.
+/*  /404.html  404
