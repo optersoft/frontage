@@ -73,10 +73,26 @@ wheel actually contains `_browser/index.js` — a component that loses its brows
 and imports perfectly and then does nothing in a page — and publishes over OIDC.
 
 ⚠ **Nothing publishes until three trusted publishers exist on PyPI**, one per package, at
-<https://pypi.org/manage/account/publishing/>: provider GitHub, owner `optersoft`, repository
-`frontage-component`, workflow `ci.yml`, environment `pypi`. All three names are unclaimed as of
-2026-09-07. A missing publisher fails with `422 invalid-publisher` and uploads nothing, so the
-version stays claimable and re-running the job succeeds once it is registered.
+<https://pypi.org/manage/account/publishing/>. Owner `optersoft`, repository
+`frontage-component`, workflow `ci.yml` for all three — and **a different environment for each,
+named after its own package**:
+
+| PyPI project | environment |
+|---|---|
+| `frontage-layout` | `frontage-layout` |
+| `frontage-chart` | `frontage-chart` |
+| `frontage-table` | `frontage-table` |
+
+The differing environment is not decoration. A *pending* publisher is unique on
+`(owner, repo, workflow, environment)`, so three that share one environment collide and the
+second is refused with *"A pending trusted publisher matching this configuration has already
+been registered for a different project name"* — the monorepo case,
+[pypi/warehouse#16920](https://github.com/pypi/warehouse/issues/16920). The workflow reads the
+package out of the tag and selects the matching environment.
+
+All three names were unclaimed on 2026-09-07. A missing publisher fails with `422
+invalid-publisher` and uploads nothing, so the version stays claimable and re-running the job
+succeeds once it is registered.
 
 ## Development
 
