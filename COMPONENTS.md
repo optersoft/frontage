@@ -51,6 +51,54 @@ session.
 pandas, numpy, scikit-learn, pyarrow, matplotlib. stlite proves it can be dragged in, at
 ~50 MB, and proves what still breaks — no TensorFlow, no `requests`, `time.sleep` is a no-op.
 
+**And the re-run is not a wart, it is the design**, which is why waiting for it to be fixed is
+not a strategy. Streamlit's own issue #5827, open since December 2022 with 96 reactions,
+answers a request to stop re-running with *"This touches on the fundamental of Streamlit… No
+guarantees that we'll do this anytime soon!"* Its then Head of Developer Relations drew the
+scale line himself on Reddit in 2021: Streamlit is production-grade *"for use cases where fewer
+than 10's of thousands of simultaneous open connections are needed"*, and *"Sending a GB of
+data over to the browser is going to be slow"*.
+
+What practitioners report follows from that one decision. From r/dataengineering: components
+are not isolated, so *"you can break the component A by doing something with the component B in
+a very different place"*, and *"when that happens there is zero ways to debug the issue"*. From
+r/ExperiencedDevs: *"you can't define endpoints, any components or styles not already in it,
+multi pages are a hassle… and the page re runs the entire python script every time it is
+refreshed."* Posit — a competitor, so read it as such — demonstrates that styling one button
+means reaching out of an iframe with `window.parent.document.querySelectorAll('button')` and
+concludes *"this is the best way to change the style of an individual element in Streamlit"*.
+
+**One market signal worth more than any opinion.** Hugging Face Spaces, the largest host of ML
+demos, shipped a custom Streamlit frontend and roughly a dozen Streamlit changelog entries
+between 2021 and 2023. Then, dated 2025-04-30: *"Deprecate Streamlit SDK — Streamlit is no
+longer provided as a default built-in SDK option. Streamlit applications are now created using
+the Docker template."*
+
+## 2b. The argument we had not thought to make: there is nothing to leave open
+
+This one is not about features, and it is the strongest thing on the list.
+
+A Streamlit app is a Python process holding sessions. It had no authentication at all until
+`st.login` shipped in February 2025 — asked for on the 2019 launch thread, filed as an issue
+that December. UpGuard (a security vendor, and this is their scan, not ours) reported in
+December 2025 that they found **14,995 unique IP addresses** running Streamlit and *"well over
+ten thousand Streamlit applications granting access to the public"*, including call-performance
+data for Verizon brands, which they disclosed.
+
+Streamlit also collects usage statistics by default: `browser.gatherUsageStats` is `True` in
+`config.py` on `develop` today, seven years after the launch thread asked for it to be opt-in.
+Posit makes the GDPR argument against that; they are a competitor and say so.
+
+**A frontage app is a directory of static files.** No process, no session, no socket, no
+telemetry, nothing listening. It cannot be left unauthenticated because there is nothing to
+authenticate to, and it cannot leak a dashboard because the dashboard is the visitor's own
+browser. Where an app does need private data, the data stays on whatever already serves it and
+the page is a client like any other.
+
+That is a difference of kind rather than degree, and it is worth saying plainly in the
+documentation, because the people who feel it most are exactly the ones with data worth
+protecting.
+
 ## 3. Where frontage stands today
 
 **Ahead**: boot (52 ms against tens of seconds), size, no server, fine-grained updates,
@@ -83,6 +131,10 @@ of stlite's floor.
 
 **The rule this encodes**: a component is a dependency, not a feature of the framework. It
 ships separately, versions separately, and costs nothing until imported.
+
+**The second rule, from §2b**: a component may not phone home. No telemetry, default or
+otherwise. A static site that quietly makes requests is the one way to give away the property
+that section describes.
 
 ## 5. `frontage-component`: the protocol
 

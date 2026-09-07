@@ -466,6 +466,19 @@ show it with.
       Python is on a server, where the wasm cannot go.
 - Not doing, deliberately: pandas/scikit-learn/matplotlib (that is stlite, at 13.8 MB before
       app code), copying `st.*` names onto reactive semantics, or a server.
+- The research found an argument we had not thought to make (`COMPONENTS.md` §2b), and it may
+      be the strongest one: **a frontage app has nothing to leave open.** Streamlit had no
+      authentication until `st.login` in February 2025, asked for on the 2019 launch thread; a
+      security vendor's December 2025 scan found 14,995 IPs running it and *"well over ten
+      thousand"* apps publicly accessible, Verizon data among them. It also collects usage
+      statistics by default (`browser.gatherUsageStats = True`) to this day. A directory of
+      static files has no process, no session and nothing listening. **Consequence for us: a
+      frontage component may never phone home.** That property is given away by one library
+      that does.
+- Also worth knowing: Hugging Face Spaces shipped a custom Streamlit frontend for two years,
+      then **deprecated the Streamlit SDK on 2025-04-30**. And the re-run is not a wart to wait
+      out — Streamlit's issue #5827 answers it with *"This touches on the fundamental of
+      Streamlit… No guarantees that we'll do this anytime soon!"*, open since 2022.
 
 - [ ] At 1.0: delete `frontage/cli/pyscript.py`, `tools/fetch_pyscript.py`, `mk pyscript.fetch`,
       the `export` command with its tests, and the ~18 MB `tools/pyscript/` fixture.
