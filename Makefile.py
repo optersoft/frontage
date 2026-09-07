@@ -15,6 +15,7 @@
     mk export APP [--out D]  the same as a PyScript page (0.9.x only; `build` replaces it)
     mk vscode.test          the extension: manifest, snippets, client, grammar (needs npm)
     mk gallery [--css]      build every example, measure it in Chromium, write www/gallery/
+    mk site.css [--force]   compile web/site.css (Tailwind, committed; rebuilt when stale)
     mk site.build           frontage.optersoft.com into ./www: the gallery, wheels, playground
     mk site.deploy          build, then publish ./www to Cloudflare Pages by hand (fallback)
 
@@ -193,8 +194,8 @@ def gallery(*, out: str = "", quick: bool = False, css: bool = False) -> None:
     Args:
         out: destination (default www/gallery)
         quick: skip the browser and publish sizes only
-        css: recompile tools/gallery.css with Tailwind (it is committed, and rebuilt anyway
-            when the page template changes)
+        css: recompile web/site.css with Tailwind (it is committed, and rebuilt anyway
+            when the page template or either static page changes)
     """
     args = ["python", "tools/gallery.py"]
     if out:
@@ -206,11 +207,28 @@ def gallery(*, out: str = "", quick: bool = False, css: bool = False) -> None:
     sh("uv", "run", "--frozen", *args)
 
 
+@task(name="site.css", requires=["uv"])
+def site_css(*, force: bool = False) -> None:
+    """Compile web/site.css from web/site.tailwind.css with Tailwind's standalone CLI.
+
+    The output is committed, and `mk gallery` rebuilds it by itself whenever the pages or the
+    gallery template change, so this is only needed to force a recompile (a Tailwind version
+    bump, say).
+
+    Args:
+        force: recompile even when the stamp in site.css still matches
+    """
+    args = ["python", "tools/site_css.py"]
+    if force:
+        args.append("--force")
+    sh("uv", "run", "--frozen", *args)
+
+
 @task(name="site.build", needs=[gallery])
 def site_build() -> None:
     """Assemble frontage.optersoft.com into ./www.
 
-    web/ holds the landing page and the playground. The playground carries its own copy of
+    web/ holds the landing page, the 404, the site's stylesheet and the playground. The playground carries its own copy of
     the WebAssembly runtime at /playground/_frontage/, which is where its boot tag points;
     `boot.js` finds the interpreter and both archives from its own URL, so nothing here
     needs a rewrite rule.
@@ -227,7 +245,8 @@ def site_build() -> None:
         shutil.move(str(gallery_built), str(keep))
     if WWW.exists():
         shutil.rmtree(WWW)
-    shutil.copytree(ROOT / "web", WWW)
+    # site.tailwind.css is the input to site.css, not something the site serves.
+    shutil.copytree(ROOT / "web", WWW, ignore=shutil.ignore_patterns("site.tailwind.css"))
     if keep.exists():
         shutil.move(str(keep), str(WWW / "gallery"))
     runtime = ROOT / "frontage" / "_runtime"

@@ -11,7 +11,6 @@ says so.
 """
 
 import argparse
-import hashlib
 import json
 import shutil
 import socket
@@ -44,7 +43,7 @@ PAGE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Frontage gallery</title>
 <meta name="description" content="Python apps running in the browser on WebAssembly. No server, no build step, no JavaScript.">
-<link rel="stylesheet" href="./gallery.css">
+<link rel="stylesheet" href="./site.css">
 </head>
 <body class="min-h-screen bg-page text-ink dark:bg-page-dark dark:text-ink-dark font-sans antialiased">
 <div class="mx-auto max-w-5xl px-5 py-10 sm:py-14">
@@ -90,55 +89,13 @@ CARD = """  <a href="./{name}/"
 TIMING = '<span>starts in <b class="font-semibold text-ink dark:text-ink-dark">{ms}</b> ms</span>'
 
 
-INPUT_CSS = ROOT / "tools" / "gallery.tailwind.css"
-BUILT_CSS = ROOT / "tools" / "gallery.css"
-
-
-def css_stamp():
-    """What the committed stylesheet must have been compiled from: the template and the input."""
-    material = (PAGE + CARD + TIMING + INPUT_CSS.read_text()).encode()
-    return f"/* built by mk gallery --css from {hashlib.sha256(material).hexdigest()[:12]} */"
-
-
 def stylesheet(out, force=False):
-    """Put `gallery.css` beside the page, compiling it only when it is missing or stale.
+    """Put the site's stylesheet beside the page. Compiled only when stale — see site_css."""
+    import site_css
 
-    Tailwind's standalone CLI is a 100 MB download, and this also runs on the deploy builder,
-    so the compiled CSS is committed (`tools/gallery.css`) and normally just copied. The first
-    line of that file stamps what it was compiled from; when the template or the input CSS
-    changes the stamp no longer matches and this recompiles — or says so loudly and ships the
-    stale file, rather than deploying a page with no stylesheet at all.
-    """
-    stamp = css_stamp()
-    fresh = BUILT_CSS.exists() and BUILT_CSS.read_text(errors="replace").startswith(stamp)
-    if fresh and not force:
-        shutil.copy(BUILT_CSS, out / "gallery.css")
-        return True
-    if not fresh and not force:
-        print("gallery.css is stale: rebuilding it", file=sys.stderr)
-    code = subprocess.call(
-        [
-            sys.executable,
-            "-m",
-            "frontage",
-            "tailwind",
-            "--input",
-            str(INPUT_CSS),
-            "--output",
-            str(BUILT_CSS),
-            "--minify",
-        ],
-        cwd=ROOT,
-    )
-    if code == 0:
-        BUILT_CSS.write_text(f"{stamp}\n{BUILT_CSS.read_text()}")
-        shutil.copy(BUILT_CSS, out / "gallery.css")
-        return True
-    if BUILT_CSS.exists():
-        print("tailwind failed: shipping the committed gallery.css, which may be stale", file=sys.stderr)
-        shutil.copy(BUILT_CSS, out / "gallery.css")
-        return False
-    raise SystemExit("tailwind failed and there is no committed gallery.css")
+    current = site_css.build(force=force)
+    shutil.copy(site_css.OUTPUT, out / "site.css")
+    return current
 
 
 def free_port():

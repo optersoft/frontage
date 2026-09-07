@@ -1,12 +1,15 @@
-/* The gallery's stylesheet, compiled by `mk gallery --css` (Tailwind's standalone CLI, no
-   Node — `frontage tailwind` fetches it once). The result is committed as tools/gallery.css
-   and copied into the built page, so the deploy builder never has to download a binary.
+/* The site's stylesheet — the landing page, the 404 and the generated gallery — compiled by
+   `mk site.css` (Tailwind's standalone CLI, no Node: `frontage tailwind` fetches it once).
+   The result is committed as web/site.css and copied into the build, so the deploy builder
+   never has to download a 100 MB binary.
 
-   `source(none)` turns off Tailwind's file scanning: the only place a class name can appear
-   is the page template in gallery.py, and naming it here keeps the whole repo out of the
-   scan. */
+   `source(none)` turns off Tailwind's file scanning and the three `@source` lines name the
+   only files where a class name can appear: the two static pages, and the page template that
+   tools/gallery.py renders. */
 @import "tailwindcss" source(none);
-@source "./gallery.py";
+@source "./index.html";
+@source "./404.html";
+@source "../tools/gallery.py";
 
 /* The site's palette, light and dark as two sets of colours rather than one set that
    changes: Tailwind's `dark:` variant reads prefers-color-scheme, so the page names both. */
@@ -31,6 +34,8 @@
 
 /* A blurb writes `<code>` as prose, so it is styled here rather than with a utility class on
    every occurrence. Preflight strips the browser's own `code` styling first. */
+pre code { background: none; padding: 0; }
+
 code {
   background: color-mix(in srgb, currentColor 8%, transparent);
   padding: 0.05em 0.35em;
