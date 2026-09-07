@@ -2,6 +2,8 @@
 change, and the event stream that carries it to the page."""
 
 import http.client
+import http.server
+import json
 import os
 import threading
 
@@ -122,3 +124,137 @@ def test_the_archives_the_dev_server_synthesises(tmp_path):
         names = tf.getnames()
     assert "frontage/view.py" in names and "frontage/dev.py" in names
     assert all(n.startswith("frontage/") for n in names)
+
+
+# --- --proxy --------------------------------------------------------------------------------
+
+
+class _Upstream(http.server.BaseHTTPRequestHandler):
+    """A stand-in for uvicorn: JSON at /api/hello, a POST echo, a 404, and an event stream that
+    sends one event, then waits for the test to release it — so a test can prove the first
+    event came through *before* the upstream finished."""
+
+    release = threading.Event()
+
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        if self.path.startswith("/api/hello"):
+            body = json.dumps({"path": self.path, "accept": self.headers.get("Accept")}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("X-Upstream", "yes")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/api/events":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            self.wfile.write(b"data: first\n\n")
+            self.wfile.flush()
+            self.release.wait(5)
+            self.wfile.write(b"data: second\n\n")
+        else:
+            self.send_error(404, "no such thing upstream")
+
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        self.send_response(201)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def _serve(tmp_path, proxy):
+    (tmp_path / "index.html").write_text("<html><head></head><body>page</body></html>")
+    server = make_server(tmp_path, port=0, quiet=True, proxy=proxy)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, server.server_address[1]
+
+
+def test_proxy_forwards_a_prefix_with_path_query_headers_and_status(tmp_path):
+    import json as _json
+
+    upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Upstream)
+    threading.Thread(target=upstream.serve_forever, daemon=True).start()
+    server, port = _serve(tmp_path, [("/api", f"http://127.0.0.1:{upstream.server_address[1]}")])
+    try:
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        c.request("GET", "/api/hello?x=1&y=two%20words", headers={"Accept": "application/json"})
+        r = c.getresponse()
+        assert r.status == 200 and r.getheader("X-Upstream") == "yes"
+        assert _json.loads(r.read()) == {"path": "/api/hello?x=1&y=two%20words", "accept": "application/json"}
+        c.close()
+        # The page itself is still the dev server's, script and all.
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        c.request("GET", "/")
+        r = c.getresponse()
+        assert r.status == 200 and b"data-fr-reload" in r.read()
+        c.close()
+        # A POST with a body goes through, and so does a 404 from the upstream, as itself.
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        c.request("POST", "/api/things", body=b"payload", headers={"Content-Type": "text/plain"})
+        r = c.getresponse()
+        assert r.status == 201 and r.read() == b"payload"
+        c.close()
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        c.request("GET", "/api/missing")
+        r = c.getresponse()
+        assert r.status == 404 and b"no such thing upstream" in r.read()
+        c.close()
+        # `/apix` is not under `/api`; a POST anywhere else is still a 405.
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        c.request("POST", "/apix")
+        assert c.getresponse().status == 405
+        c.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        upstream.shutdown()
+        upstream.server_close()
+
+
+def test_proxy_streams_an_event_stream_line_by_line(tmp_path):
+    upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Upstream)
+    threading.Thread(target=upstream.serve_forever, daemon=True).start()
+    _Upstream.release.clear()
+    server, port = _serve(tmp_path, [("/api", f"http://127.0.0.1:{upstream.server_address[1]}")])
+    try:
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        c.request("GET", "/api/events")
+        r = c.getresponse()
+        assert r.status == 200 and r.getheader("Content-Type") == "text/event-stream"
+        assert r.fp.readline() == b"data: first\n"  # before the upstream is done: streamed, not buffered
+        _Upstream.release.set()
+        r.fp.readline()
+        assert r.fp.readline() == b"data: second\n"
+        c.close()
+    finally:
+        _Upstream.release.set()
+        server.shutdown()
+        server.server_close()
+        upstream.shutdown()
+        upstream.server_close()
+
+
+def test_an_unreachable_upstream_is_a_502_that_names_it(tmp_path):
+    server, port = _serve(tmp_path, [("/api", "http://127.0.0.1:9")])
+    try:
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        c.request("GET", "/api/hello")
+        r = c.getresponse()
+        assert r.status == 502 and b"cannot reach http://127.0.0.1:9" in r.read()
+        c.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_serve_command_rejects_a_malformed_proxy(tmp_path, capsys):
+    from frontage.cli.serve import main
+
+    assert main([str(tmp_path), "--proxy", "api=localhost:8000"]) == 2
+    assert "PREFIX=URL" in capsys.readouterr().err

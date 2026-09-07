@@ -1,4 +1,5 @@
-"""`frontage serve [DIR]`: a development server that reloads the page when a file changes.
+"""`frontage serve [DIR]`: a development server that reloads the page when a file changes,
+and forwards `--proxy PREFIX=URL` requests to a server half on another port.
 
 Serves `DIR` (the current directory by default) with nothing cached, and every HTML page it
 sends carries a few lines of script that listen on `/__frontage/reload`. A thread polls the
@@ -19,6 +20,8 @@ import sys
 import tarfile
 import threading
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from . import PROG
@@ -201,9 +204,91 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     quiet = False
     app_root = None  # where the app's .py files live; set by `make_server`
     entry = None  # the module that mounts, so a swap knows what to re-run
+    proxies = ()  # (prefix, upstream) pairs: `--proxy /api=http://127.0.0.1:8000`
+
+    def _upstream(self):
+        route = self.path.split("?", 1)[0]
+        for prefix, upstream in self.proxies:
+            if route == prefix or route.startswith(prefix.rstrip("/") + "/"):
+                return upstream
+        return None
+
+    def do_POST(self):
+        self._proxy_or(405)
+
+    def do_PUT(self):
+        self._proxy_or(405)
+
+    def do_PATCH(self):
+        self._proxy_or(405)
+
+    def do_DELETE(self):
+        self._proxy_or(405)
+
+    def _proxy_or(self, status):
+        if self._upstream() is not None:
+            self._proxy()
+        else:
+            self.send_error(status)
+
+    def _proxy(self):
+        """Forward this request to the upstream that owns its prefix, path and query intact,
+        and stream the answer back — line by line for an event stream, so a server's push
+        reaches the page through the dev server the way it will through a production proxy.
+
+        This is the dev loop for an app with a server half (`frontage-polars`): the page comes
+        from here, with its module swap, and `/api` goes to uvicorn on another port, from the
+        same origin, so there is no CORS to get wrong in development and not in production."""
+        upstream = self._upstream()
+        url = upstream.rstrip("/") + self.path
+        length = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(length) if length else None
+        headers = {
+            k: v
+            for k, v in self.headers.items()
+            if k.lower() not in ("host", "connection", "accept-encoding", "content-length")
+        }
+        request = urllib.request.Request(url, data=body, method=self.command, headers=headers)
+        try:
+            response = urllib.request.urlopen(request)  # noqa: S310  (the URL is the developer's own flag)
+        except urllib.error.HTTPError as exc:
+            response = exc  # a 4xx/5xx from the upstream is still its answer; relay it as-is
+        except (urllib.error.URLError, OSError) as exc:
+            self.send_response(502)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(
+                f"frontage serve: cannot reach {upstream} for {self.path} ({exc.reason if hasattr(exc, 'reason') else exc})\n".encode()
+            )
+            return
+        with response:
+            self.send_response(response.status)
+            streaming = (response.headers.get("Content-Type") or "").startswith("text/event-stream")
+            for key, value in response.headers.items():
+                if key.lower() in ("connection", "transfer-encoding", "keep-alive", "content-encoding"):
+                    continue
+                if streaming and key.lower() == "content-length":
+                    continue
+                self.send_header(key, value)
+            self.send_header("Connection", "close")
+            self.end_headers()
+            try:
+                if streaming:
+                    for line in response:
+                        self.wfile.write(line)
+                        self.wfile.flush()
+                else:
+                    while chunk := response.read(65536):
+                        self.wfile.write(chunk)
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
 
     def do_GET(self):
         route = self.path.split("?", 1)[0]
+        if self._upstream() is not None:
+            self._proxy()
+            return
         if route == RELOAD_PATH:
             self._stream()
             return
@@ -371,10 +456,11 @@ Handler.extensions_map.update({".wasm": "application/wasm", ".mjs": "text/javasc
 
 
 def make_server(
-    directory, host="127.0.0.1", port=8000, watch=(), handler=Handler, quiet=False, app_root=None, entry=None
+    directory, host="127.0.0.1", port=8000, watch=(), handler=Handler, quiet=False, app_root=None, entry=None, proxy=()
 ):
     """A `ThreadingHTTPServer` serving `directory` with live reload; its watcher is started.
-    `watch` names the directories to poll; the served one when it is empty.
+    `watch` names the directories to poll; the served one when it is empty. `proxy` is a list
+    of `(prefix, upstream)` pairs: requests under `prefix` are forwarded to `upstream`.
 
     `app_root` is where the app's modules live (the served directory by default) and `entry`
     is the one that mounts. Together they are what lets a change become a module swap rather
@@ -390,6 +476,7 @@ def make_server(
     Bound.quiet = quiet
     Bound.app_root = str(Path(app_root).resolve()) if app_root else str(directory)
     Bound.entry = entry
+    Bound.proxies = tuple(proxy)
     # The plain handler serves `directory`; a subclass with its own `translate_path` needs none.
     factory = functools.partial(Bound, directory=str(directory)) if handler is Handler else Bound
     server = http.server.ThreadingHTTPServer((host, port), factory)  # ty: ignore[invalid-argument-type]
@@ -406,8 +493,22 @@ def main(argv=None):
     parser.add_argument("--watch", action="append", default=[], help="another directory to watch (repeatable)")
     parser.add_argument("--open", action="store_true", help="open the page in the browser")
     parser.add_argument("--entry", default="", help="the module that mounts (default: inferred)")
+    parser.add_argument(
+        "--proxy",
+        action="append",
+        default=[],
+        metavar="PREFIX=URL",
+        help="forward requests under PREFIX to URL, e.g. /api=http://127.0.0.1:8000 (repeatable)",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
+    proxies = []
+    for spec in args.proxy:
+        prefix, sep, upstream = spec.partition("=")
+        if not sep or not prefix.startswith("/") or not upstream.startswith(("http://", "https://")):
+            print(f"error: --proxy wants PREFIX=URL, like /api=http://127.0.0.1:8000, not {spec!r}", file=sys.stderr)
+            return 2
+        proxies.append((prefix, upstream))
     directory = Path(args.dir)
     if not directory.is_dir():
         print(f"error: {directory} is not a directory", file=sys.stderr)
@@ -428,7 +529,9 @@ def main(argv=None):
         except SystemExit:
             entry = ""
     try:
-        server = make_server(directory, args.host, args.port, watch=args.watch, quiet=args.quiet, entry=entry or None)
+        server = make_server(
+            directory, args.host, args.port, watch=args.watch, quiet=args.quiet, entry=entry or None, proxy=proxies
+        )
     except OSError as exc:
         print(f"error: cannot listen on {args.host}:{args.port} ({exc})", file=sys.stderr)
         return 2
@@ -436,6 +539,8 @@ def main(argv=None):
     if not args.quiet:
         how = f"swaps {entry}.py in place" if entry else "reloads the page"
         print(f"serving {directory.resolve()} on {url}  ({how} when a file changes)")
+        for prefix, upstream in proxies:
+            print(f"  {prefix} -> {upstream}")
         sys.stdout.flush()
     if args.open:
         import webbrowser
