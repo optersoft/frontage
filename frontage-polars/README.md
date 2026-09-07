@@ -80,8 +80,8 @@ opaque-origin runner.
 ## A big series for a chart
 
 ```python
-cumulative = api.series("cumulative", "h", "revenue", borough=borough)   # a Resource of a Series
-line_chart(lambda: cumulative().data)                                     # Float64Arrays, drawn as they are
+cumulative = api.series("cumulative", "h", "revenue", borough=borough)  # a Resource of a Series
+line_chart(lambda: cumulative().data)  # Float64Arrays, drawn as they are
 ```
 
 `query` answers JSON, which MicroPython parses into lists that then cross into JavaScript for
