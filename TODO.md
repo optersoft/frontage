@@ -488,9 +488,18 @@ a server, and both are constraints we chose.
       - ⚠ `--with` caches a built wheel, so editing a component's source and rebuilding runs the
         *old* code in the browser. Use `--with-editable`; the symptom is a traceback from a line
         number that does not match the file.
-- [ ] Three Streamlit gallery apps rebuilt, with download size and cold start published beside
-      each. The gallery is the marketing and the test suite at once, and the research named the
-      honest targets: **Uber NYC Pickups** (needs the map; its 180 MB CSV becomes a sliced
+- [x] **An app gallery on the site** (2026-09-07): `mk gallery` builds all nine with the real
+      `frontage build`, loads each cold in Chromium, and writes `www/gallery/` with measured
+      size and start time on every card. Numbers are generated, never typed — a broken app
+      fails the build, a slower one changes the page. **51–83 ms cold, 638–700 KB each**, of
+      which 627 KB is the interpreter, loader and framework.
+      - ⚠ Each app carries its own copy of that 627 KB, so the site is 8 MB and a visitor
+        browsing three apps downloads it three times. That follows from the rule that keeps
+        nested routes correct — `boot.js` resolves `app.tar` beside itself — and sharing one
+        runtime would need a second base for `app.tar`. Left as designed; revisit only if the
+        gallery grows.
+- [ ] Three *Streamlit* gallery apps rebuilt, with download size and cold start published beside
+      each. The research named the honest targets: **Uber NYC Pickups** (needs the map; its 180 MB CSV becomes a sliced
       Parquet), a **filter-and-chart dashboard** (`examples/chart/` almost is one), and **GW
       Quickview** once a DSP module exists.
 - [ ] A DSP/FFT wasm module — the concrete first case for Rust, not a hypothetical one. GW

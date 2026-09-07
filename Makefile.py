@@ -14,7 +14,8 @@
     mk build APP [--out D]  a self-contained static directory for one app, booting from wasm
     mk export APP [--out D]  the same as a PyScript page (0.9.x only; `build` replaces it)
     mk vscode.test          the extension: manifest, snippets, client, grammar (needs npm)
-    mk site.build           frontage.optersoft.com into ./www: the wheels, the playground, redirects
+    mk gallery              build every example, measure it in Chromium, write www/gallery/
+    mk site.build           frontage.optersoft.com into ./www: the gallery, wheels, playground
     mk site.deploy          build, then publish ./www to Cloudflare Pages by hand (fallback)
 
 PyPI gets the package from CI on a `vX.Y.Z` tag (.github/workflows/ci.yml);
@@ -180,7 +181,27 @@ def export(app: str, *, out: str = "", no_pyscript: bool = False) -> None:
     sh("uv", "run", "--frozen", "python", *args)
 
 
-@task(name="site.build", needs=[runtime_build])
+@task(requires=["uv"], needs=[runtime_build])
+def gallery(*, out: str = "", quick: bool = False) -> None:
+    """Build every gallery app, measure it in Chromium, and write www/gallery/.
+
+    The gallery is the marketing and an acceptance test at once: every app is built with the
+    real `frontage build`, then loaded cold in a browser, so a broken one fails the build and
+    a slower one changes the number on the page. `site.build` runs this.
+
+    Args:
+        out: destination (default www/gallery)
+        quick: skip the browser and publish sizes only
+    """
+    args = ["python", "tools/gallery.py"]
+    if out:
+        args += ["--out", out]
+    if quick:
+        args.append("--quick")
+    sh("uv", "run", "--frozen", *args)
+
+
+@task(name="site.build", needs=[runtime_build, gallery])
 def site_build() -> None:
     """Assemble frontage.optersoft.com into ./www.
 
@@ -188,10 +209,22 @@ def site_build() -> None:
     own copy of the WebAssembly runtime at /playground/_frontage/, which is where its boot
     tag points; `boot.js` finds the interpreter and both archives from its own URL, so
     nothing here needs a rewrite rule.
+
+    `mk gallery` has already written www/gallery/ by the time this runs, so it is preserved
+    rather than rebuilt: the numbers on that page come from a real browser and are not
+    something a site assembly step should be inventing.
     """
+    gallery_built = WWW / "gallery"
+    keep = ROOT / "build" / "_gallery-keep"
+    if gallery_built.exists():
+        if keep.exists():
+            shutil.rmtree(keep)
+        shutil.move(str(gallery_built), str(keep))
     if WWW.exists():
         shutil.rmtree(WWW)
     shutil.copytree(ROOT / "web", WWW)
+    if keep.exists():
+        shutil.move(str(keep), str(WWW / "gallery"))
     runtime = ROOT / "frontage" / "_runtime"
     if not (runtime / "micropython.wasm").exists():
         raise MakeError("no runtime: run `mk runtime.fetch` first")
