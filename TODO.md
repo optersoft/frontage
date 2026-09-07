@@ -630,6 +630,15 @@ a server, and both are constraints we chose.
       lines of Cloudflare Worker in front, and the site already deploys to Pages. We do not
       write a server into the framework; both answers are off-the-shelf things an app points
       at (and `frontage-polars` is the opt-in exception a component may make, above).
+- [x] **`frontage-schema`** (2026-09-07, `frontage-component`): schemas as pairs, `validate` →
+      `(value, [(path, message)])`, `coerce` for strings, `sample` for big arrays, `Form` with a
+      signal and a message per field, `from_json_schema`/`json_schema()`, and the
+      `frontage-schema` command that compiles Pydantic models on CPython. 121 tests + a
+      MicroPython smoke under node + 3 Chromium tests over `examples/signup/`.
+      Left: `Resource(load, schema=)` and `use_query(schema=)` in core; the academy chapter;
+      the fifth PyPI trusted publisher (environment `frontage-schema`) before the first tag.
+      ⚠ Met on the way: MicroPython has no `str.isalnum`, `json.dumps` takes no `indent`, and
+      `re` has no counted repeats (`\d{4}` → None), so formats are string code.
 - [ ] A `frontage-wasm` template (wasm-pack, glue, Python wrapper, the `data-fr-js` line) so
       calling your own Rust is a fifteen-minute exercise. Streamlit has no answer to this: its
       Python is on a server, where the wasm cannot go.
@@ -656,6 +665,12 @@ a server, and both are constraints we chose.
 
 ## Do not "fix" these
 
+- Do not wrap `justrach/dhi` (the Zig validator, 28 KB wasm) for forms — evaluated 2026-09-07.
+  Its Python package is a CPython C extension over `typing.Annotated`/metaclasses and cannot
+  run on MicroPython; the wasm's 66 exports are `(ptr,len)->bool`, and through the JS bridge a
+  call is 0.55–0.75 µs against 0.25–3.35 µs in plain MicroPython (node, 20k iterations) — a
+  form validates five fields per keystroke, so neither number matters. Its rules are also
+  loose: `a@@b.c` and `2026-02-30` pass, `http://localhost:8000` and `o'neil@x.com` fail.
 - A push to a chapter repo may create **no** GitLab pipeline (router, 0.8.2): the commit is on
   `main` and no pipeline exists, so the site keeps serving the old wheel. Not a CI failure and
   not a bad `.gitlab-ci.yml`. `glab api -X POST "projects/optersoft%2Fpython%2Ffrontage-<c>/pipeline?ref=main"`.

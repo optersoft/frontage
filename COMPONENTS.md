@@ -282,6 +282,15 @@ runtime or a server, and §8 says why we let those go.
    theirs to name, and `tiles=None` draws the points on a plain background and asks for nothing
    — so an air-gapped app is still possible. The rule in the components README was amended to
    say *uninvited*, and no other component may reach the network at all.
+4b. ✅ **`frontage-schema`**. Out of order, because it is not a Streamlit element at all: it is
+   the thing every form and every `fetch` was missing. A schema is a tree of types with fields
+   as pairs (`record(("name", text(min=1)), ("email", email()), ("age", optional(integer()), None))`),
+   `validate` returns the value and a list of `(path, message)` pairs, `coerce=True` reads a
+   form's strings, `sample=N` checks a big array's two ends, and `Form(User)` gives a field a
+   signal and a message that waits until the visitor has typed. Built 2026-09-07, pure Python,
+   no JavaScript. **Pydantic stays on CPython** — MicroPython keeps no `__annotations__` — and
+   crosses as JSON Schema, compiled by the `frontage-schema` command; `justrach/dhi` was
+   measured and rejected (TODO). Walking a value costs ten times its `json.loads`, 13 µs a row.
 5. **`frontage-echarts`**. Pie, radar, sankey, heatmap, gauge, treemap — the long tail, behind
    one bigger dependency that only apps needing it pay for.
 6. **`frontage-supabase`**. A `Resource` per table, typed filters, errors that say when
