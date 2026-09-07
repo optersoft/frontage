@@ -42,3 +42,16 @@ and at no other time.
 so a mapping would shuffle your columns in the browser.
 
 Apache 2.0.
+
+## Rows that stay on a server
+
+`rows` may also be a **windowed source**: any object with `key()` (tracked; changes when the
+rows should be re-asked) and `async window(key, offset, limit, sort, descending, search)`
+returning `(total, offset, rows)`. The grid then fetches the block it is scrolled to — aligned
+to the window size and two windows long, so a small scroll asks for nothing — and leaves
+sorting and searching to the server; a header click or a keystroke is one request for a few
+dozen rows. Rows are shown where the server put them, so the previous block stays in place
+while the next one loads, and the grid carries `fr-loading` meanwhile.
+
+`frontage_polars.Remote.rows` is one such source; PostgREST's `Range` headers would make
+another in twenty lines.

@@ -13,9 +13,16 @@ So a hundred-thousand-row table costs about as much as a thirty-row one.
 
 `rows` is an accessor returning a list of dicts. Sorting, filtering and the visible slice are
 memos over it, so a change recomputes the slice and nothing else on the page.
+
+**Or a windowed source**, when the rows live on a server and should stay there: any object
+with `key()` (tracked; changes when the rows should be re-asked) and
+`async window(key, offset, limit, sort, descending, search)` returning `(total, offset,
+rows)`. The grid then fetches the block it is scrolled to, sorting and searching are the
+server's, and a header click or a keystroke is one request for a few dozen rows.
+`frontage_polars.Remote.rows` is one such source; PostgREST would be another.
 """
 
-from frontage import For, Memo, Signal, h
+from frontage import For, Memo, Resource, Signal, h
 
 from .style import STYLESHEET
 
@@ -76,11 +83,37 @@ def table(rows, columns=None, height=360, row_height=DEFAULT_ROW_HEIGHT, search=
     sort_key = Signal(sort[0] if sort else None)
     sort_desc = Signal(bool(sort[1]) if sort and len(sort) > 1 else False)
     scrolled = Signal(0)
+    first_visible = Memo(lambda: max(0, int(scrolled() / row_height) - OVERSCAN))
+    window = Memo(lambda: int(height / row_height) + OVERSCAN * 2)
+    remote = hasattr(rows, "window") and hasattr(rows, "key")
 
-    def source():
-        return rows() if callable(rows) else rows
+    if remote:
+        # The rows are elsewhere. One `Resource` fetches the block the viewport is in, aligned
+        # to the window size so a small scroll asks for nothing new, and two windows long so
+        # the next block is already here. Its `source` is the whole request, so a header click,
+        # a search keystroke, a scroll into a new block or a change in the source's own key is
+        # one refetch; a superseded fetch never settles.
+        def request():
+            start = (first_visible() // window()) * window()
+            query = (search() if search is not None else "").strip()
+            return (rows.key(), start, window() * 2, sort_key(), sort_desc(), query or None)
 
-    spec = Memo(lambda: _columns(columns, source()))
+        async def fetch(req):
+            total, offset, page = await rows.window(req[0], req[1], req[2], req[3], req[4], req[5])
+            return {"total": total, "offset": offset, "rows": page}
+
+        fetched = Resource(fetch, source=request, initial={"total": 0, "offset": 0, "rows": []})
+
+        def source():
+            return fetched()["rows"]
+
+    else:
+
+        def source():
+            return rows() if callable(rows) else rows
+
+    # Declared columns never read the rows, so a refetch or an update leaves the header alone.
+    spec = Memo(lambda: _columns(columns, None if columns is not None else source()))
 
     def filtered():
         data = source()
@@ -108,11 +141,17 @@ def table(rows, columns=None, height=360, row_height=DEFAULT_ROW_HEIGHT, search=
             # only comparison that always works, and it is what the reader sees anyway.
             return sorted(data, key=column.text, reverse=descending)
 
-    body = Memo(ordered)
-    total = Memo(lambda: len(body()))
-    first_visible = Memo(lambda: max(0, int(scrolled() / row_height) - OVERSCAN))
-    window = Memo(lambda: int(height / row_height) + OVERSCAN * 2)
-    visible = Memo(lambda: body()[first_visible() : first_visible() + window()])
+    if remote:
+        # The fetched rows are shown where the server says they sit, so while the next block
+        # loads the previous one stays in place rather than jumping to the new scroll position.
+        total = Memo(lambda: fetched()["total"])
+        base = Memo(lambda: fetched()["offset"])
+        visible = Memo(source)
+    else:
+        body = Memo(ordered)
+        total = Memo(lambda: len(body()))
+        base = first_visible
+        visible = Memo(lambda: body()[first_visible() : first_visible() + window()])
 
     def toggle(key):
         def click(ev):
@@ -148,13 +187,20 @@ def table(rows, columns=None, height=360, row_height=DEFAULT_ROW_HEIGHT, search=
         )
 
     def row_view(row, index):
+        # Local rows are keyed by identity: `row` is the dict and `index` an accessor. A fetched
+        # page replaces every row, so the remote grid runs `For` in index mode instead: the
+        # elements are reused by position, `row` is an accessor and `index` a plain int, and a
+        # new page updates the text of the cells that changed.
+        get_row = row if remote else (lambda: row)
+        at = (lambda: index) if remote else index
+
         def offset():
-            return f"{(first_visible() + index()) * row_height}px"
+            return f"{(base() + at()) * row_height}px"
 
         return h.div(
             *[
                 h.div(
-                    (lambda c=col: c.text(row)),
+                    (lambda c=col: c.text(get_row())),
                     cls="fr-td",
                     style_text_align=col.align,
                     style_flex=f"0 0 {col.width}" if col.width else "1 1 0",
@@ -171,7 +217,7 @@ def table(rows, columns=None, height=360, row_height=DEFAULT_ROW_HEIGHT, search=
 
     viewport = h.div(
         h.div(
-            For(visible, row_view, key=None),
+            For(visible, row_view, key=False if remote else None),
             cls="fr-rows",
             style_height=lambda: f"{total() * row_height}px",
         ),
@@ -180,4 +226,6 @@ def table(rows, columns=None, height=360, row_height=DEFAULT_ROW_HEIGHT, search=
         on_scroll=on_scroll,
     )
     footer = h.div(lambda: f"{total():,} rows", cls="fr-table-footer")
-    return h.div(head, viewport, footer, cls=f"fr-table {cls}" if cls else "fr-table", **attrs)
+    base_cls = f"fr-table {cls}" if cls else "fr-table"
+    table_cls = (lambda: base_cls + " fr-loading" if fetched.loading() else base_cls) if remote else base_cls
+    return h.div(head, viewport, footer, cls=table_cls, **attrs)

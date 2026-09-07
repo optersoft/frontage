@@ -7,7 +7,8 @@ elements a data app needs, each a separate package that costs nothing until it i
 |---|---|---|
 | [`frontage-layout`](frontage-layout/) | 2.5 KB of CSS | `columns`, `tabs`, `expander`, `container`, `metric`, `progress`, `spinner`, `divider` — pure Python, no dependency |
 | [`frontage-chart`](frontage-chart/) | 41 KB gzipped | `line_chart`, `area_chart`, `bar_chart`, `scatter_chart`, on uPlot |
-| [`frontage-table`](frontage-table/) | 1.5 KB of CSS | a **virtualised, sortable grid** — 50,000 rows, 21 elements, no JavaScript |
+| [`frontage-table`](frontage-table/) | 1.5 KB of CSS | a **virtualised, sortable grid** — 50,000 rows, 21 elements, no JavaScript; or a **windowed source**, when the rows live on a server |
+| [`frontage-polars`](frontage-polars/) | 0.6 KB of JavaScript | **polars on the server, small answers in the page**: named queries behind a FastAPI router, a `Resource` per query in the browser, windows for the grid, and a Server-Sent Events stream so a change on the server reaches every page. The one package here with a server half, and it is opt-in (`[server]`) |
 | [`frontage-map`](frontage-map/) | 46 KB gzipped | `map_view`, on Leaflet — points, popups, and **a viewport the app can read** |
 
 ```sh

@@ -38,4 +38,7 @@ STYLESHEET = """\
   border-top: 1px solid var(--fr-line); padding: .4rem .75rem;
   font-size: .8rem; color: var(--fr-muted);
 }
+
+/* A windowed source is fetching the block the viewport moved into. */
+.fr-table.fr-loading .fr-rows { opacity: .7; transition: opacity .15s; }
 """

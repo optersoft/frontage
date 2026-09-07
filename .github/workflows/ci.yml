@@ -59,7 +59,15 @@ jobs:
         working-directory: frontage-component
       - run: uv run ruff format --check .
         working-directory: frontage-component
-      - run: uv run pytest -q
+      - run: uv run pytest -q --ignore=tests/browser
+        working-directory: frontage-component
+      # The trips example end to end: built with the real `frontage build`, served by its own
+      # uvicorn, driven in Chromium. This is where the browser half is actually exercised —
+      # a MicroPython awaiting a fetch, the event stream reaching a page — and nothing on
+      # CPython can stand in for it.
+      - run: uv run playwright install chromium --with-deps
+        working-directory: frontage-component
+      - run: uv run pytest -q tests/browser --browser chromium
         working-directory: frontage-component
       # The rule that a component can break while installing and importing perfectly: its
       # Python must be written in the subset MicroPython runs in the browser.
