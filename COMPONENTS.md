@@ -167,7 +167,7 @@ eighty. Frontage's should be proportional and lazy:
 | the framework | 0.64 MB | reactivity, router, form controls, prerendering |
 | a chart | +41 KB | uPlot: line, area, bar, scatter, to ~100k points |
 | a table | +~60 KB | virtualised grid, sort, filter, column config |
-| a map | +~200 KB | MapLibre, vector tiles, markers, layers |
+| a map | +46 KB | Leaflet: points, popups, and a viewport the app reads |
 | a rich chart | +~100 KB | ECharts tree-shaken: pie, radar, sankey, heatmap, gauge |
 | analytics | +~3.2 MB | DuckDB-wasm: SQL over Parquet, multi-GB, opt-in |
 
@@ -261,7 +261,22 @@ runtime or a server, and §8 says why we let those go.
    `spinner`, `divider`. Pure Python and 2.5 KB of CSS, no dependency, and it is what makes an
    app look like an app. Built 2026-09-07. A dashboard on these two: **78 ms to drawn, 730 KB
    over 12 requests**.
-4. **`frontage-map`** (MapLibre). `st.map` and `st.pydeck_chart`'s common case.
+4. ✅ **`frontage-map`**. `st.map`'s job, plus the part Streamlit cannot do: `on_move` reports
+   the viewport back as state, so a table, a count and a chart follow the map as it is panned,
+   with no rerun. Built 2026-09-07. **On Leaflet, not MapLibre**, which is a correction to this
+   document's own estimate above: MapLibre measures **275 KB gzipped**, larger than the whole
+   framework, and it buys vector tiles, WebGL styling and 3D — none of which is what a data app
+   draws. Leaflet is **42 KB**, the same size as frontage itself, and points on a basemap is its
+   entire job. Canvas markers rather than the default icon, so tens of thousands stay
+   interactive and **no image is ever requested**. Vector tiles remain available later as a
+   separate, heavier component; making it the default would have charged every map six times
+   over for a feature most never use.
+
+   It is also **the one component that touches the network at runtime**, because a basemap comes
+   from a tile server. That is the caller's request rather than a phone-home, the provider is
+   theirs to name, and `tiles=None` draws the points on a plain background and asks for nothing
+   — so an air-gapped app is still possible. The rule in the components README was amended to
+   say *uninvited*, and no other component may reach the network at all.
 5. **`frontage-echarts`**. Pie, radar, sankey, heatmap, gauge, treemap — the long tail, behind
    one bigger dependency that only apps needing it pay for.
 6. **`frontage-supabase`**. A `Resource` per table, typed filters, errors that say when
