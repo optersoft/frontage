@@ -278,12 +278,13 @@ source = { editable = "frontage-map" }
 
 [[package]]
 name = "frontage-polars"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "frontage-polars" }
 
 [package.optional-dependencies]
 server = [
     { name = "fastapi" },
+    { name = "frontage" },
     { name = "polars" },
     { name = "uvicorn" },
 ]
@@ -291,6 +292,7 @@ server = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
+    { name = "frontage", marker = "extra == 'server'", specifier = ">=0.9.1" },
     { name = "polars", marker = "extra == 'server'", specifier = ">=1.0" },
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.29" },
 ]
