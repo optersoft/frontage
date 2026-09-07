@@ -126,6 +126,43 @@ def discover():
     return found
 
 
+_IMPORTS = "(?:^|\n)[ \t]*(?:from|import)[ \t]+{0}\\b"
+
+
+def imports(text, package):
+    """Does this source import that package? `import x`, `from x import y`, `from x.y import z`."""
+    return re.search(_IMPORTS.format(re.escape(package)), text) is not None
+
+
+def required(app, installed):
+    """The installed components an app actually imports, and whatever those import in turn.
+
+    `discover()` answers "what is in this environment", which is not the question a build asks.
+    Without this step a developer with five components installed ships five: an app with no
+    chart still downloads uPlot, registers it as a JavaScript module and links its stylesheet.
+    That is the exact opposite of the rule the whole design rests on — a component is a
+    dependency and costs nothing until it is imported — and it is invisible, because the extra
+    ones work perfectly and only make the page bigger.
+
+    Matching is textual on purpose. A component's Python is written for MicroPython, so asking
+    the import system here would run it on the wrong interpreter, which is why `discover()`
+    refuses to import one either. `--component` bypasses discovery and therefore this too.
+    """
+    by_package = {c.package.name: c for c in installed}
+    sources = "\n".join(path.read_text() for path in sorted(app.glob("*.py")))
+    wanted, frontier = set(), [name for name in by_package if imports(sources, name)]
+    while frontier:
+        name = frontier.pop()
+        if name in wanted:
+            continue
+        wanted.add(name)
+        # A component may use another — a table built out of layout's container, say — and its
+        # own imports are as binding as the app's.
+        body = "\n".join(path.read_text() for _, path in by_package[name].modules())
+        frontier.extend(n for n in by_package if n not in wanted and imports(body, n))
+    return [c for c in installed if c.package.name in wanted]
+
+
 def find_entry(app):
     """The module that mounts the app, in the order a person would guess it.
 
@@ -218,7 +255,12 @@ def build(app, out="", entry="", quiet=False, components=None):
     framework_image(runtime, quiet=quiet)
 
     # Components: assets beside the runtime, Python in the archive, a line in the boot tag.
-    installed = list(discover()) if components is None else list(components)
+    if components is None:
+        found = list(discover())
+        installed = required(app, found)
+        skipped = [c.name for c in found if c not in installed]
+    else:
+        installed, skipped = list(components), []
     declarations, styles = [], []
     for component in installed:
         target = runtime / "components" / component.name
@@ -247,6 +289,9 @@ def build(app, out="", entry="", quiet=False, components=None):
         total = sum(p.stat().st_size for p in out.rglob("*") if p.is_file())
         names = ", ".join(c.name for c in installed)
         extra = f", components: {names}" if installed else ""
+        # Named rather than silent: an app that imports a component in a way the scan cannot
+        # see would otherwise fail in the browser with no clue where the module went.
+        extra += f" (installed but not imported, so not shipped: {', '.join(skipped)})" if skipped else ""
         print(f"{out}: entry {entry}, {len(members)} modules{extra}, {total:,} bytes")
     return out
 

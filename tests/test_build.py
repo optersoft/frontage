@@ -229,3 +229,47 @@ def test_an_author_declaration_wins_and_is_not_duplicated():
 
 def test_declare_leaves_a_page_with_no_boot_tag_alone():
     assert build.declare("<p>nothing here</p>", ["chart=./x.js"]) == "<p>nothing here</p>"
+
+
+def test_only_the_components_the_app_imports_are_shipped(tmp_path, monkeypatch):
+    """Installed is not the same question as used.
+
+    Without this, a developer with five components installed ships five: an app with no chart
+    downloads uPlot, registers it as a JavaScript module and links its stylesheet. The extra
+    ones work perfectly, so nothing fails — the page is just bigger, which is the exact
+    opposite of the rule the component design rests on.
+    """
+    app = write_app(tmp_path, counter="import frontage_chart\n" + APP)
+    chart = make_component(tmp_path, name="frontage_chart")
+    table = make_component(tmp_path, name="frontage_table")
+    table.name = "table"
+
+    monkeypatch.setattr(build, "discover", lambda: [chart, table])
+    out = build.build(app, tmp_path / "out", quiet=True)
+    assert (out / "_frontage" / "components" / "chart").is_dir()
+    assert not (out / "_frontage" / "components" / "table").exists()
+    page = (out / "index.html").read_text()
+    assert "chart=" in page and "table=" not in page
+
+
+def test_a_component_pulls_in_the_component_it_imports_itself(tmp_path, monkeypatch):
+    """A table built out of layout's container needs layout, whatever the app said."""
+    app = write_app(tmp_path, counter="import frontage_table\n" + APP)
+    layout = make_component(tmp_path, name="frontage_layout")
+    layout.name = "layout"
+    table = make_component(tmp_path, name="frontage_table")
+    table.name = "table"
+    (table.package / "grid.py").write_text("from frontage_layout import container\n")
+
+    monkeypatch.setattr(build, "discover", lambda: [layout, table])
+    out = build.build(app, tmp_path / "out", quiet=True)
+    assert (out / "_frontage" / "components" / "layout").is_dir()
+    assert (out / "_frontage" / "components" / "table").is_dir()
+
+
+def test_an_explicit_component_bypasses_the_scan(tmp_path):
+    """`--component` is for developing one, which usually means before the app imports it."""
+    app = write_app(tmp_path, counter=APP)
+    component = make_component(tmp_path)
+    out = build.build(app, tmp_path / "out", quiet=True, components=[component])
+    assert (out / "_frontage" / "components" / "chart").is_dir()
