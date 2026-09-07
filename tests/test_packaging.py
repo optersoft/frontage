@@ -14,7 +14,6 @@ PACKAGES = [
     ("chart", "frontage_chart"),
     ("table", "frontage_table"),
     ("map", "frontage_map"),
-    ("supabase", "frontage_supabase"),
 ]
 
 
