@@ -169,11 +169,16 @@ eighty. Frontage's should be proportional and lazy:
 | a table | +~60 KB | virtualised grid, sort, filter, column config |
 | a map | +46 KB | Leaflet: points, popups, and a viewport the app reads |
 | a rich chart | +~100 KB | ECharts tree-shaken: pie, radar, sankey, heatmap, gauge |
-| analytics | +~3.2 MB | DuckDB-wasm: SQL over Parquet, multi-GB, opt-in |
+| analytics | +7.0 MB | DuckDB-wasm: SQL over Parquet, multi-GB, opt-in |
 
 A dashboard with charts and a grid lands near 800 KB and boots in well under a second. Only an
-app that genuinely wants SQL over a Parquet file pays the 3.2 MB, and even that is a fraction
-of stlite's floor.
+app that genuinely wants SQL over a Parquet file pays the 7 MB.
+
+That last figure is measured and it is **more than double what this document estimated**, which
+is the second time an estimate here has been wrong in the same direction — see the map row. The
+correction matters because 7 MB is not "a heavier tier", it is eleven times the entire
+framework, and it changes when the answer is right rather than merely available. §6 item 8 says
+where that leaves it.
 
 **The rule this encodes**: a component is a dependency, not a feature of the framework. It
 ships separately, versions separately, and costs nothing until imported.
@@ -290,6 +295,32 @@ runtime or a server, and §8 says why we let those go.
    gzipped, opt-in, on the engine the fleet already runs.
 8. **`frontage-data`** (DuckDB-wasm). SQL over Parquet and CSV, in the browser, over files the
    user drops in. This is the one that goes somewhere Streamlit cannot follow without a server.
+   **Not started, and it should not be next.** Measured on the newest stable release, 1.32.0,
+   in the shape an app actually ships — feature-detect, then fetch one engine:
+
+   | | raw | transferred |
+   |---|---|---|
+   | `duckdb-eh.wasm` | 34.2 MB | **6.76 MB** |
+   | `duckdb-browser-eh.worker.js` | 773 KB | 189 KB |
+   | `duckdb-browser.mjs` | 32 KB | 8.5 KB |
+
+   About **7.0 MB**, against this document's earlier guess of 3.2 MB. The older `mvp` build,
+   for browsers without wasm exception handling, is 7.7 MB on its own; ship both unconditionally
+   and it is 14.6 MB.
+
+   Three things follow. First, it is **eleven times the whole framework**, so it is not a
+   component a dashboard adds casually — it is the entire point of the app or it is the wrong
+   tool. Second, **threading needs cross-origin isolation**: `frontage serve` already sends
+   `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`
+   (`cli/serve.py:361`), but a static host does not, so a component that is fast in development
+   and single-threaded on GitLab Pages would be a trap unless the docs say so first. Third, the
+   §7b answers — PostgREST/Supabase, and Turso at 3.6 MB — already cover the data cases that
+   have a database behind them, at a fraction of the cost.
+
+   What is genuinely only DuckDB's: a Parquet or CSV file the user drags in, queried locally,
+   with nothing uploaded anywhere. That is a real and defensible niche. It is a worse first
+   answer to "how does a frontage app get data" than either §7b option, which is why it is
+   last on this list rather than first.
 
 A `frontage.widgets` pass belongs alongside: date, time, colour, file upload, multiselect,
 toggle. Those are plain HTML controls and cost nothing.
