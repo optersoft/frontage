@@ -520,6 +520,21 @@ a server, and both are constraints we chose.
         out as `application/octet-stream` and the browser refused all three — silently, because
         a rejected stylesheet is not an error, just a page with no rules. `guess_type()` is the
         API. Production was unaffected; only the dev server lied.
+- [x] The components are on GitHub at **`optersoft/frontage-component`** (public, Apache-2.0,
+      CI green) and release **per package on a tag**: `frontage-chart-v0.1.0` publishes only
+      that one, because a shared version would force a pointless release of the other two. CI
+      checks the tag against the package's own version, and asserts the wheel actually carries
+      `_browser/index.js` — the failure that installs and imports perfectly and then does
+      nothing in a page, which no test run from the source tree can catch.
+- [ ] `[human]` **Register three PyPI trusted publishers**, or nothing ships:
+      <https://pypi.org/manage/account/publishing/> — provider GitHub, owner `optersoft`,
+      repository `frontage-component`, workflow `ci.yml`, environment `pypi`, for the projects
+      `frontage-layout`, `frontage-chart` and `frontage-table`. **All three names were unclaimed
+      on 2026-09-07**, which will not stay true forever. Until they exist,
+      `pip install frontage-chart` — the first line of `COMPONENTS.md` and of the components'
+      README — is a promise rather than a fact. A missing publisher fails `422
+      invalid-publisher` and uploads nothing, so the version stays claimable and a re-run
+      succeeds once it is registered.
 - [ ] `frontage-postgrest`. **Correction to an earlier claim**: database dashboards are *not*
       out of reach. Browsers have no raw sockets, but PostgREST generates an HTTP API from a
       Postgres schema and enforces **row-level security**, so the policy lives next to the data
