@@ -34,9 +34,11 @@ rule — a component may never phone home (§2b).
 
 **And what we let go is named rather than left silent.** Model-inference demos need 100 MB to
 1 GB of weights. LLM chat apps are blocked by the API key, not by compute. Both are real
-limits. But the third one I had wrong: database dashboards are *not* out of reach — PostgREST
-or Neon put row-level security between the browser and the data, and **Turso puts the database
-in the page**, which buys offline-first apps that Streamlit cannot build at any price (§7b).
+limits. But the third one I had wrong: database dashboards are *not* out of reach, and it is
+not even a procurement question, because Optersoft already has both halves. **Supabase** puts
+row-level security between the browser and the data and pushes changes over Realtime, which
+answers Streamlit's live-dashboard case without a server of ours. **Turso Cloud** puts the
+database *in the page*, which buys offline-first apps Streamlit cannot build at any price (§7b).
 
 ## 1. What the prototype already shows
 
@@ -247,11 +249,12 @@ runtime or a server, and §8 says why we let those go.
 4. **`frontage-map`** (MapLibre). `st.map` and `st.pydeck_chart`'s common case.
 5. **`frontage-echarts`**. Pie, radar, sankey, heatmap, gauge, treemap — the long tail, behind
    one bigger dependency that only apps needing it pay for.
-6. **`frontage-postgrest`**. A `Resource` per table, typed filters, and errors that say when
-   row-level security refused rather than when the network did. See §7b: this is the piece that
-   turns "internal tool over a database" from out of reach into ordinary, and the academy
-   already teaches the server half. A Neon variant is the same component with a different
-   transport.
+6. **`frontage-supabase`**. A `Resource` per table, typed filters, errors that say when
+   row-level security refused rather than when the network did, and **Realtime as a signal** —
+   the database pushes, one chart redraws. Because Supabase's data API is PostgREST, the same
+   component serves a self-hosted PostgREST by changing a URL. §7b: this is what turns
+   "internal tool over a database" from out of reach into ordinary, and the academy teaches
+   both halves already.
 7. **`frontage-turso`**. The database in the page: OPFS persistence, sync to Turso Cloud, and
    therefore **offline-first data apps**, which is a category Streamlit cannot enter. 3.6 MB
    gzipped, opt-in, on the engine the fleet already runs.
@@ -305,6 +308,10 @@ I wrote earlier that database dashboards were out of reach because a browser has
 sockets. That is true about sockets and wrong about the conclusion, and the correction matters
 because "internal tool over a database" is a large share of what Streamlit is used for.
 
+**The short answer is that Optersoft already owns both halves, so this is not a procurement
+decision: Supabase for hosted data, Turso Cloud for offline-first.** The rest of this section
+is why, and why not Neon.
+
 **For data: PostgREST.** It generates an HTTP API from a Postgres schema, and it is a finished
 piece of software you deploy rather than a server you write. A frontage app talks to it with
 `Resource` and `fetch`, like any other API.
@@ -323,14 +330,33 @@ authentication and realtime bolted on — so the pairing has teaching material b
 users. A `frontage-postgrest` component (typed queries, a `Resource` per table, RLS-aware
 errors) is a strong candidate for the catalogue in §6.
 
-**Neon is the same idea with less to run.** Neon RLS pairs a JWT from any auth provider with
-the `pg_session_jwt` extension, so `auth.user_id()` is available inside a policy and, in Neon's
-own words, developers *"can build applications that are entirely client-side, without needing a
-server or backend"*. Its serverless driver is a 0.43 MB package that speaks Postgres over HTTP.
-Against PostgREST: nothing to deploy, because Neon hosts it. In PostgREST's favour: it is
-self-hostable and the academy already teaches it. Either works, and the choice is operational
-rather than architectural — **one caution common to both**, from Neon's own documentation: the
-connection role must not hold `BYPASSRLS`, or the whole guarantee evaporates silently.
+**Supabase is PostgREST with the missing halves attached, and we have it.** Its data API *is*
+PostgREST, so one frontage component serves both: point it at a self-hosted PostgREST or at a
+Supabase project and nothing above the transport changes. What Supabase adds is exactly what a
+browser-only app needs and PostgREST alone does not provide — an authentication service that
+issues the JWT, and Realtime.
+
+**Realtime is the part worth dwelling on**, because it answers Streamlit's live-dashboard case
+outright. Streamlit's answer to changing data is to re-run the script, on a timer if need be.
+With Supabase the database pushes over a websocket, one signal takes the value, and one chart
+redraws. No server of ours, no polling, and the fine-grained graph doing what it was built for.
+
+The client is 0.64 MB unpacked. And the teaching material is not thin: **Supabase appears in 48
+academy files**, with sections of its own under `cloud/` and `kotlin/`, and
+`data/postgres/row-level-security` is a chapter referenced across the curriculum. The concept
+this whole section rests on is already taught.
+
+**Neon: no.** Technically fine — Neon RLS with `pg_session_jwt` supports apps that are, in
+their words, *"entirely client-side, without needing a server or backend"*, and the driver is a
+0.43 MB package. But it solves what Supabase already solves here, adds a third vendor, and
+still needs a separate auth provider (Clerk, Auth0) to issue the JWT that Supabase issues
+itself. Worth revisiting only if an app needs Postgres branching or scale-to-zero badly enough
+to pay for the extra moving part.
+
+**One caution common to every option above**, and it is the way this goes wrong quietly: the
+connection role must not hold `BYPASSRLS`. Neon documents it plainly, and it applies equally to
+Supabase's service key, which bypasses row-level security by design and must never reach a
+browser. The anonymous key is the one that ships.
 
 **Turso is a different answer, and the interesting one.** Not "reach a database over HTTP" but
 *put the database in the page*. `@tursodatabase/database-wasm` is SQLite compiled to

@@ -492,11 +492,22 @@ a server, and both are constraints we chose.
       gotchas (immature planner, rowid reuse, FKs off) apply unchanged. ⚠ Our own README says
       *"alpha-grade engine"* and the browser package is BETA — fine behind an opt-in dependency,
       not fine as a default.
-- [ ] Neon is PostgREST's alternative with less to run: Neon RLS + `pg_session_jwt` lets an app
-      be *"entirely client-side, without needing a server"*, and the serverless driver is a
-      0.43 MB package. Nothing to deploy because Neon hosts it; PostgREST wins on being
-      self-hostable and already taught. ⚠ Both share one failure mode, from Neon's own docs: a
-      connection role holding `BYPASSRLS` silently voids the entire guarantee.
+- **Decided, because we already own both halves**: **Supabase** for hosted data, **Turso Cloud**
+      for offline-first. Not a procurement question.
+      - Supabase's data API *is* PostgREST, so one component serves both — point it at a
+        self-hosted PostgREST or a Supabase project and only the URL changes. What Supabase adds
+        is what a browser-only app actually lacks: the service that issues the JWT, and
+        **Realtime**. Realtime answers Streamlit's live-dashboard case outright — the database
+        pushes, one signal takes it, one chart redraws, where Streamlit re-runs the script on a
+        timer. Client is 0.64 MB unpacked, and **Supabase appears in 48 academy files** with its
+        own `cloud/` and `kotlin/` sections; `data/postgres/row-level-security` is already a
+        chapter.
+      - **Neon: no.** Technically fine, but it solves what Supabase solves, adds a third vendor,
+        and still needs a separate auth provider to issue the JWT that Supabase issues itself.
+        Revisit only for Postgres branching or scale-to-zero.
+      - ⚠ One failure mode common to all of them, and it is silent: the connection role must not
+        hold `BYPASSRLS`. Supabase's **service key bypasses RLS by design and must never reach a
+        browser** — the anonymous key is the one that ships.
 - [ ] The one thing a browser truly cannot do is hold an API key. For LLM apps that is ~20
       lines of Cloudflare Worker in front, and the site already deploys to Pages. We do not
       write a server or make frontage aware of one; both answers are off-the-shelf things an
