@@ -76,6 +76,19 @@ def by_hour(borough: str = "all"):
 
 
 @src.query
+def cumulative(borough: str = "all"):
+    """Revenue, cumulative, per hour of the year: ~8,800 points, which is why the page asks for
+    it as `series` — binary float64 the chart draws directly — rather than as a frame."""
+    return (
+        _where(borough)
+        .group_by((pl.col("day") * 24 + pl.col("hour")).alias("h"))
+        .agg(pl.col("fare").sum().alias("revenue"))
+        .sort("h")
+        .with_columns(pl.col("revenue").cum_sum())
+    )
+
+
+@src.query
 def trips(borough: str = "all"):
     return _where(borough).select("id", "date", "hour", "borough", "distance_km", "fare", "passengers")
 

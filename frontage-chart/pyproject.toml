@@ -1,6 +1,6 @@
 [project]
 name = "frontage-chart"
-version = "0.1.0"
+version = "0.1.1"
 description = "Charts for frontage, on uPlot: line, area, bar and scatter, to ~100k points"
 readme = "README.md"
 license = "Apache-2.0"

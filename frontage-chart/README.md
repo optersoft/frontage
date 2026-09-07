@@ -33,3 +33,8 @@ tail — pie, sankey, radar, treemap — belongs behind a separate, heavier depe
 
 uPlot is vendored (MIT, see `frontage_chart/_browser/uplot.js`), so a build needs no network
 and an app has no CDN in its critical path.
+
+## Typed arrays
+
+`draw` takes plain lists from Python, or `Float64Array`s that arrived from a server — what
+`frontage-polars`' `series` hands back — and draws those as they are, with no copy.

@@ -224,3 +224,49 @@ def test_changed_reaches_an_open_event_stream(sources):
                 if line.startswith("data:"):
                     data = json.loads(line[5:])
             assert data == {"source": "people"}
+
+
+# --- series ---------------------------------------------------------------------------------
+
+
+def _decode(body):
+    import struct
+
+    columns, height = struct.unpack_from("<II", body, 0)
+    return [list(struct.unpack_from(f"<{height}d", body, 8 + c * height * 8)) for c in range(columns)], height
+
+
+def test_series_is_float64_columns_behind_an_8_byte_header(client):
+    response = client.get("/api/series/people?columns=qty,ratio&team=north")
+    assert response.status_code == 200 and response.headers["content-type"] == "application/octet-stream"
+    assert response.headers["access-control-allow-origin"] == "*"
+    data, height = _decode(response.content)
+    assert height == 2 and len(response.content) == 8 + 2 * 2 * 8
+    assert data[0] == [1200.0, 340.0] and data[1] == [0.5, 2.0]
+
+
+def test_series_sends_null_and_nan_as_nan_and_a_date_as_a_number(client):
+    import math
+
+    data, _ = _decode(client.get("/api/series/people?columns=qty,ratio,born&team=south").content)
+    assert data[0][0] == 70.0 and math.isnan(data[0][1])  # a null
+    assert math.isnan(data[1][0]) and data[1][1] == 1.0  # a NaN
+    assert data[2][0] == (date(1906, 12, 9) - date(1970, 1, 1)).days  # a Date is days since the epoch
+
+
+def test_series_refuses_a_text_column_an_unknown_one_and_no_columns(client):
+    assert client.get("/api/series/people?columns=name&team=north").status_code == 400
+    assert "not a number" in client.get("/api/series/people?columns=name&team=north").json()["detail"]
+    assert client.get("/api/series/people?columns=salary&team=north").status_code == 400
+    assert client.get("/api/series/people?team=north").status_code == 400
+    assert client.get("/api/series/nope?columns=qty").status_code == 404
+
+
+def test_series_is_capped_like_a_frame(sources):
+    src = Sources(max_rows=3)
+
+    @src.query
+    def people():
+        return PEOPLE
+
+    assert TestClient(src.app()).get("/api/series/people?columns=qty").status_code == 413

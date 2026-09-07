@@ -13,9 +13,11 @@ function paths(kind) {
   return undefined; // line and area use the default line path
 }
 
-/** Draw or update a chart in `node`. `series` is [x[], y1[], y2[]…]. */
+/** Draw or update a chart in `node`. `series` is [x[], y1[], y2[]…] — plain arrays from
+ * Python, or Float64Arrays that arrived from a server (`frontage-polars`' `series`), which are
+ * drawn as they are: no copy, and Python never held a value. */
 export function draw(node, series, options) {
-  const data = series.map((column) => Float64Array.from(column));
+  const data = Array.from(series, (column) => (column instanceof Float64Array ? column : Float64Array.from(column)));
   const existing = charts.get(node);
   if (existing && existing.kind === options.kind && existing.chart.series.length === data.length) {
     existing.chart.setData(data);

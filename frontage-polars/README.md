@@ -65,6 +65,7 @@ sorts or searches, and the page gets a few dozen rows back.
 | route | answer |
 |---|---|
 | `GET /frame/{name}?params` | the whole result, column-oriented JSON, capped at `max_rows` (100,000) — past that it answers 413, because a frame that size is the dataset, not an answer |
+| `GET /series/{name}?columns=a,b&params` | the named columns as float64, binary, behind an 8-byte header: what a chart draws. The page's JavaScript hands the typed arrays to the canvas and **no value ever passes through Python** |
 | `GET /rows/{name}?offset&limit&sort&desc&search&params` | one window of rows, sorted and searched on the server; `limit` is capped at 1,000 |
 | `GET /events` | Server-Sent Events: `changed(name)` on the server tells every open page to refetch that query |
 
@@ -75,6 +76,32 @@ scrolling never re-runs the query. `src.changed(name)` drops the cache for that 
 notifies the pages; `src.changed()` drops everything. Every response answers CORS, so
 `frontage serve` on another port during development works, and so does the site's
 opaque-origin runner.
+
+## A big series for a chart
+
+```python
+cumulative = api.series("cumulative", "h", "revenue", borough=borough)   # a Resource of a Series
+line_chart(lambda: cumulative().data)                                     # Float64Arrays, drawn as they are
+```
+
+`query` answers JSON, which MicroPython parses into lists that then cross into JavaScript for
+the canvas. For a few hundred points that is nothing; for 8,784 points it measures 11 ms per
+redraw (6 ms of parsing, 5 ms of lists and crossing) and 152 KB. `series` asks for exactly the
+columns a chart needs as float64: 140 KB, decoded in 0.007 ms by the JavaScript half into
+typed arrays the chart uses without a copy, and Python holds a handle, not a value. Nulls are
+NaN, a Date is days since the epoch, and a text column is a 400 — cast it in the query.
+
+## Developing with two servers
+
+```sh
+uvicorn server:app --app-dir examples/trips --port 8000           # the server half
+frontage serve examples/trips --proxy /api=http://127.0.0.1:8000    # the page, with module swap
+```
+
+`frontage serve --proxy` (frontage ≥ 0.9.1) forwards `/api` to uvicorn from the page's own
+origin and streams the event stream through, so a save swaps the app's modules in place while
+the data keeps coming from polars. Without it, the router's CORS headers make two origins work
+too; in production one FastAPI app serves both.
 
 ## When the data changes
 

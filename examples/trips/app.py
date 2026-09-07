@@ -1,7 +1,8 @@
 """Half a million taxi trips that never leave the server.
 
-The page holds one signal, the borough, and asks the server four questions about it: a
-summary, a daily series, an hourly histogram and a window of rows. Each answer is a few
+The page holds one signal, the borough, and asks the server five questions about it: a
+summary, a daily series, an hourly histogram, a cumulative series (8,800 points, as binary
+float64 the chart draws directly) and a window of rows. Each answer is a few
 kilobytes; the 500,000-row frame stays in polars. Change the borough and four requests go
 out, four answers come back, and the metrics, the two charts and the grid update in place.
 Scroll the grid and it asks for the next block; sort or search and the server does it.
@@ -27,6 +28,8 @@ search = Signal("")
 summary = api.query("summary", borough=borough)
 daily = api.query("daily", borough=borough)
 hourly = api.query("by_hour", borough=borough)
+# 8,800 points: `series` brings them as float64 typed arrays the chart draws as they are.
+cumulative = api.series("cumulative", "h", "revenue", borough=borough)
 
 BOROUGHS = [("all", "All boroughs"), "Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]
 COLUMNS = [
@@ -71,6 +74,7 @@ def app():
             lambda: columns(
                 line_chart(lambda: daily().series("day", "trips"), labels=["trips per day"], height=220),
                 bar_chart(lambda: hourly().series("hour", "trips"), labels=["trips per hour"], height=220),
+                line_chart(lambda: cumulative().data, labels=["revenue, cumulative"], height=220),
             ),
         ),
         table(api.rows("trips", borough=borough), columns=COLUMNS, search=search, height=360, id="grid"),

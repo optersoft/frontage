@@ -18,14 +18,16 @@ def test_the_dashboard_fills_from_the_server_and_a_signal_reasks(trips, page: Pa
     expect(page.locator("#grid .fr-table-footer")).to_have_text("500,000 rows")
     expect(page.locator("#grid .fr-tr:not(.fr-head)").first).to_contain_text("2024-")
 
-    # Four questions, none of them the dataset.
+    # Five questions, none of them the dataset; the 8,800-point series arrives as binary.
     asked = [u.split("/api/")[1] for u in requests]
     assert sorted(a.split("?")[0] for a in asked if not a.startswith("events")) == [
         "frame/by_hour",
         "frame/daily",
         "frame/summary",
         "rows/trips",
+        "series/cumulative",
     ]
+    assert page.locator("canvas").count() == 3
     assert any(a.startswith("events") for a in asked)
 
     # A borough: the four refetch with the new argument and the page updates in place.

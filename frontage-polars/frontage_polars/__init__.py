@@ -4,6 +4,6 @@ The browser half is `client` (`remote`, `Frame`, `RowSource`); the server half i
 (`Sources`), which imports polars and FastAPI and is never imported in a page.
 """
 
-from .client import Frame, Remote, RemoteError, RowSource, remote
+from .client import Frame, Remote, RemoteError, RowSource, Series, remote
 
-__all__ = ["Frame", "Remote", "RemoteError", "RowSource", "remote"]
+__all__ = ["Frame", "Remote", "RemoteError", "RowSource", "Series", "remote"]

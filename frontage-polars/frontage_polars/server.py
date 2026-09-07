@@ -16,6 +16,9 @@ Three routes, all `GET`, all answering CORS so `frontage serve` on another port 
 opaque-origin runner both work:
 
     /frame/{name}?params          the whole result, column-oriented, capped at `max_rows`
+    /series/{name}?columns=a,b&params
+                                  the named columns as float64, binary, for a chart: the page's
+                                  JavaScript hands them to the canvas and Python never sees a value
     /rows/{name}?offset&limit&sort&desc&search&params
                                   a window of rows for a grid: the server pages, sorts, searches
     /events                       Server-Sent Events; `changed(name)` tells every page to refetch
@@ -29,9 +32,11 @@ cached frame, so scrolling a grid never re-runs the query. `changed(name)` drops
 that name and notifies the pages; `changed()` with no name drops everything.
 """
 
+import array
 import asyncio
 import inspect
 import json
+import struct
 import threading
 from collections import OrderedDict
 from datetime import date, datetime, time, timedelta
@@ -254,6 +259,35 @@ class Sources:
                 "data": df.to_dict(as_series=False),
             }
             return Response(_dumps(payload), media_type="application/json", headers=CORS)
+
+        @router.get("/series/{name}")
+        def series(name: str, request: Request, columns: str = ""):
+            """The named columns as little-endian float64, column after column, behind an
+            8-byte header (uint32 columns, uint32 rows). A chart wants exactly this and nothing
+            else: no names, no parsing, no Python in the way. Nulls are NaN. A column that is
+            not a number (a string, a list) is a 400 — cast it in the query."""
+            source = sources._sources.get(name)
+            if source is None:
+                raise HTTPException(404, f"no query named {name!r}")
+            names = [c for c in columns.split(",") if c]
+            if not names:
+                raise HTTPException(400, "series wants ?columns=a,b: the columns to send")
+            query = {k: v for k, v in request.query_params.items() if k != "columns"}
+            df = sources.frame(name, **source.arguments(query))
+            if df.height > sources._max_rows:
+                raise HTTPException(
+                    413, f"{name} has {df.height:,} rows, more than {sources._max_rows:,}: aggregate it"
+                )
+            parts = [struct.pack("<II", len(names), df.height)]
+            for column in names:
+                if column not in df.columns:
+                    raise HTTPException(400, f"{name} has no column {column!r}")
+                dtype = df.schema[column]
+                if not (dtype.is_numeric() or dtype.is_temporal() or dtype == pl.Boolean):
+                    raise HTTPException(400, f"{name}.{column} is {dtype}, not a number: cast it in the query")
+                values = df[column].cast(pl.Float64).fill_null(float("nan")).to_list()
+                parts.append(array.array("d", values).tobytes())
+            return Response(b"".join(parts), media_type="application/octet-stream", headers=CORS)
 
         @router.get("/rows/{name}")
         def rows(

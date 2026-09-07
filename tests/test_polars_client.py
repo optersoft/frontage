@@ -7,8 +7,10 @@ URL Python builds and what it does with the answer: the only part this package o
 import asyncio
 import json
 
+import pytest
 from frontage import Loading, RecordingRenderer, Signal, h, mount
-from frontage_polars import Frame, RemoteError, remote
+from frontage_polars import Frame, RemoteError, Series, remote
+from frontage_polars.client import decode_series
 
 FRAME = {
     "columns": ["hour", "trips"],
@@ -179,5 +181,72 @@ def test_the_browser_half_never_imports_the_server_half():
         del sys.modules[name]
     import frontage_polars
 
-    assert set(frontage_polars.__all__) == {"Frame", "Remote", "RemoteError", "RowSource", "remote"}
+    assert set(frontage_polars.__all__) == {"Frame", "Remote", "RemoteError", "RowSource", "Series", "remote"}
     assert "frontage_polars.server" not in sys.modules, "the page would try to import polars"
+
+
+# --- series ---------------------------------------------------------------------------------
+
+
+def _series_bytes(*columns):
+    import struct
+
+    height = len(columns[0])
+    out = struct.pack("<II", len(columns), height)
+    for column in columns:
+        out += struct.pack(f"<{height}d", *column)
+    return out
+
+
+def test_decode_series_reads_the_header_and_one_float64_block_per_column():
+    data, height = decode_series(_series_bytes([0.0, 1.0, 2.0], [5.5, 6.5, 7.5]))
+    assert height == 3 and data == [[0.0, 1.0, 2.0], [5.5, 6.5, 7.5]]
+
+
+def test_series_is_a_resource_of_typed_columns_asked_for_by_name():
+    async def scenario():
+        urls = []
+
+        async def fetch_bytes(url):
+            urls.append(url)
+            await asyncio.sleep(0)
+            return 200, _series_bytes([1.0, 2.0], [10.0, 20.0])
+
+        api = remote("/api", fetch_bytes=fetch_bytes)
+        borough = Signal("Bronx")
+        s = api.series("cumulative", "h", "revenue", borough=borough)
+        await settle()
+        assert urls == ["/api/series/cumulative?borough=Bronx&columns=h%2Crevenue"]
+        value = s()
+        assert isinstance(value, Series) and value.columns == ["h", "revenue"] and len(value) == 2
+        assert value.data == [[1.0, 2.0], [10.0, 20.0]]  # what `line_chart(lambda: s().data)` draws
+        borough.set("Queens")
+        await settle()
+        assert urls[-1].endswith("borough=Queens&columns=h%2Crevenue")
+
+    asyncio.run(scenario())
+
+
+def test_series_without_columns_is_a_type_error_and_a_bad_answer_is_a_remote_error():
+    api = remote("/api", events=False)
+    with pytest.raises(TypeError, match="columns"):
+        api.series("cumulative")
+
+    async def scenario():
+        async def fetch_bytes(url):
+            return 400, b'{"detail":"cumulative has no column \'nope\'"}'
+
+        s = remote("/api", fetch_bytes=fetch_bytes).series("cumulative", "nope")
+        await settle()
+        assert s.state() == "errored" and "no column" in s.error().message
+
+    asyncio.run(scenario())
+
+
+def test_series_on_cpython_without_a_binary_transport_says_so():
+    async def scenario():
+        s = remote("/api", events=False).series("cumulative", "h")
+        await settle()
+        assert s.state() == "errored" and "fetch_bytes" in s.error().message
+
+    asyncio.run(scenario())

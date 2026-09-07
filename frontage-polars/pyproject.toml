@@ -1,6 +1,6 @@
 [project]
 name = "frontage-polars"
-version = "0.1.0"
+version = "0.2.0"
 description = "Big datasets for frontage apps: polars on the server, small answers in the page"
 readme = "README.md"
 license = "Apache-2.0"

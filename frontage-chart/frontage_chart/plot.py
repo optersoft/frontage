@@ -30,7 +30,9 @@ def _chart(kind, data, cls=None, **options):
 
 
 def line_chart(data, **options):
-    """`data` is an accessor returning `[x[], y1[], …]`; the first list is the x axis."""
+    """`data` is an accessor returning `[x[], y1[], …]`; the first list is the x axis. Lists
+    from Python, or the typed arrays a `frontage_polars` `Series` carries (`lambda: s().data`),
+    which reach the canvas with no copy."""
     return _chart("line", data, **options)
 
 
