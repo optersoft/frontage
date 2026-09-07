@@ -473,7 +473,7 @@ a server, and both are constraints we chose.
         never reached the page and its assets 404'd. **Disk now wins over synthesis**;
         synthesis is what happens when nothing is built, which is the dev loop.
 - [x] `frontage-chart` and `frontage-layout` (2026-09-07), in a new sibling repo
-      **`~/optersoft/frontage-components`** — one repo, a package each, the way `hive/` and
+      **`~/optersoft/frontage-component`** — one repo, a package each, the way `hive/` and
       `turso/` hold several crates. 38 tests, lint clean, `frontage check` clean.
       - `frontage-layout`: columns, tabs, expander, container, metric, progress, spinner,
         divider. **Pure Python and 2.5 KB of CSS**, no JavaScript, no dependency — about a third
@@ -497,8 +497,20 @@ a server, and both are constraints we chose.
       Quickview is blocked *only* by `scipy.signal` and `gwpy`: the FFT and filtering are the
       app, one buffer in and a spectrogram out, exactly the coarse boundary the 1.00 µs
       crossing rewards. It is also the most impressive thing on the list to run with no server.
-- [ ] `frontage-table`: a virtualised grid. Second thing every data app reaches for, and
-      virtualisation is the whole trick.
+- [x] `frontage-table` (2026-09-07): a virtualised, sortable grid in **pure Python — no
+      JavaScript at all**, which is the surprise. A grid is where libraries reach for 200 KB,
+      but the expensive part is *not* drawing the rows nobody is looking at, and a fine-grained
+      framework already does that. Measured on a 50,000-row dashboard: **235 ms cold to drawn,
+      623 KB, and 21 row elements in the DOM** — still 21 after scrolling to row 40,000.
+      - Sorting compares the **raw value**, never the formatted text: correct (`"1,200"` sorts
+        before `"70"` as a string) and **111 ms against 914 ms** for 50,000 rows on MicroPython.
+        Mixed types fall back to the text form.
+      - ⚠ Found on the way, and it is a `serve` bug not a table one: **`extensions_map` in
+        modern Python holds only compression extensions** (`.Z`, `.bz2`, `.gz`, `.xz`), not MIME
+        types. `_send_runtime` used `extensions_map.get()`, so every component stylesheet went
+        out as `application/octet-stream` and the browser refused all three — silently, because
+        a rejected stylesheet is not an error, just a page with no rules. `guess_type()` is the
+        API. Production was unaffected; only the dev server lied.
 - [ ] `frontage-postgrest`. **Correction to an earlier claim**: database dashboards are *not*
       out of reach. Browsers have no raw sockets, but PostgREST generates an HTTP API from a
       Postgres schema and enforces **row-level security**, so the policy lives next to the data

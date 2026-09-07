@@ -273,8 +273,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         try:
             on_disk = Path(self.translate_path(f"{prefix}{RUNTIME_PREFIX.strip('/')}/{name}"))
             if on_disk.is_file():
-                kind = self.extensions_map.get(on_disk.suffix, "application/octet-stream")
-                self._send_bytes(on_disk.read_bytes(), kind)
+                self._send_bytes(on_disk.read_bytes(), self.guess_type(str(on_disk)))
                 return
             if name == "app.tar":
                 # The directory the request came from, never a configured root: one server can
@@ -288,8 +287,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if "/" in name or not asset.is_file():
                 self.send_error(404)
                 return
-            kind = self.extensions_map.get(asset.suffix, "application/octet-stream")
-            self._send_bytes(asset.read_bytes(), kind)
+            # `guess_type`, not `extensions_map.get`: that dict is a few overrides, not a mime
+            # database, and a `.css` served as octet-stream is silently refused by the browser.
+            self._send_bytes(asset.read_bytes(), self.guess_type(str(asset)))
         except OSError:
             self.send_error(404)
 
