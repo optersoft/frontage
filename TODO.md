@@ -586,15 +586,57 @@ a server, and both are constraints we chose.
       - ⚠ One failure mode common to all of them, and it is silent: the connection role must not
         hold `BYPASSRLS`. Supabase's **service key bypasses RLS by design and must never reach a
         browser** — the anonymous key is the one that ships.
+- [x] **`frontage-polars`** (2026-09-07), in `~/optersoft/frontage-component`: **polars on the
+      server, small answers in the page.** The case §7b did not cover: a dataset too big to ship
+      and a transform that is Python, not SQL. An author registers ordinary functions returning
+      a polars frame (`@src.query`) behind a FastAPI router; the browser asks for them by name
+      with parameters from signals, and gets column-oriented JSON for a chart or one window of
+      rows for the grid. Nothing from the browser is evaluated — no expression, no SQL — and a
+      frame past `max_rows` answers 413 rather than shipping the dataset. HTTP for the queries,
+      **Server-Sent Events for push** (`src.changed(name)` bumps one version signal per query
+      name in every open page and only the readers refetch), **no WebSocket**: each interaction
+      is one query and one answer, and a session per client is Streamlit's model, the thing
+      the static-files property exists to avoid. Measured on the `examples/trips` dashboard,
+      500,000 synthetic rows, four queries and a grid over all of them: **94 ms cold to drawn,
+      780 KB for the page, and ~10 KB of answers** (204 B, 274 B, 5.9 KB, 4.1 KB) for a frame
+      that is 30 MB in memory; a borough change is four requests and **15 ms** to the updated
+      metric. What it needed elsewhere: **`frontage-table` takes a windowed
+      source** (`key()` + `async window(...)`, so PostgREST could be one too), fetches the
+      block it is scrolled to in `For`'s index mode, and leaves sorting and search to the
+      server; and `Sources.frame` caches the collected result so scrolling never re-runs a
+      query. 22 server tests through FastAPI's client, 11 client tests with the transport
+      faked, 5 remote-grid tests, and **3 browser tests against a real uvicorn** — the first in
+      the component repo, because a MicroPython awaiting a `fetch` and an event stream
+      reaching a page are the things CPython cannot stand in for. Both worked first time:
+      MicroPython's `await` on a JS promise, and cancellation aborting the request.
+      - ⚠ **This revises the "no server" rule, and the revision is narrow.** The *framework*
+        ships none and knows of none; a *component* may ship an opt-in server half
+        (`pip install "frontage-polars[server]"`), the way `frontage-turso` would ship a
+        database. `COMPONENTS.md` §7b and §8 say so now. The property that mattered survives:
+        `frontage build` still writes a directory of static files, and it is the app that
+        points at a server, not the page that needs one.
+      - ⚠ Two MicroPython facts met on the way: **`"{:,.0f}".format(x)` ignores the comma on a
+        float** (an int formats fine), and **Chromium serialises a large inline
+        `translateY` as `1.27996e+07px`**, which is the browser, not Python — a test must parse
+        the value rather than match it.
+      - Not done: the binary column path (the server writing float64 columns the chart's
+        JavaScript takes straight from `fetch`, never touching MicroPython — the 10,000-point
+        series today parses ~400 KB of JSON in Python); `frontage serve --proxy` for the dev
+        loop (today: the FastAPI app mounts the built directory, or CORS across two ports);
+        a fleet deployment path for a Python process (every service under `hive` is a Rust
+        binary); the academy chapter; and the fourth PyPI trusted publisher, environment
+        `frontage-polars`, without which the tag publishes nothing.
 - [ ] The one thing a browser truly cannot do is hold an API key. For LLM apps that is ~20
       lines of Cloudflare Worker in front, and the site already deploys to Pages. We do not
-      write a server or make frontage aware of one; both answers are off-the-shelf things an
-      app points at.
+      write a server into the framework; both answers are off-the-shelf things an app points
+      at (and `frontage-polars` is the opt-in exception a component may make, above).
 - [ ] A `frontage-wasm` template (wasm-pack, glue, Python wrapper, the `data-fr-js` line) so
       calling your own Rust is a fifteen-minute exercise. Streamlit has no answer to this: its
       Python is on a server, where the wasm cannot go.
 - Not doing, deliberately: pandas/scikit-learn/matplotlib (that is stlite, at 13.8 MB before
-      app code), copying `st.*` names onto reactive semantics, or a server.
+      app code), copying `st.*` names onto reactive semantics, or a server *in the framework*
+      (a component's opt-in server half, `frontage-polars`, is the one exception, and it is
+      named as such in `COMPONENTS.md` §8).
 - The research found an argument we had not thought to make (`COMPONENTS.md` §2b), and it may
       be the strongest one: **a frontage app has nothing to leave open.** Streamlit had no
       authentication until `st.login` in February 2025, asked for on the 2019 launch thread; a

@@ -417,9 +417,20 @@ API key. An LLM chat app needs perhaps twenty lines in front of it that add the 
 the request. The site already deploys to Cloudflare Pages, so a Pages Function is the
 path of least resistance and costs nothing at this scale.
 
-**What we still do not do is write that server ourselves, or make frontage aware of it.** Both
-answers above are off-the-shelf things an app points at. The framework stays a directory of
-static files, which is the whole point.
+**The framework does not write that server or know of it.** Both answers above are
+off-the-shelf things an app points at, and `frontage build` writes a directory of static files
+whichever one it is; that is the whole point.
+
+**One case the answers above do not cover, and a component does (2026-09-07): the dataset is
+too big to ship and the transform is Python, not SQL.** That is `frontage-polars`, in the
+component repo: an author registers ordinary functions that return a polars frame behind a
+FastAPI router, the page asks for them by name with parameters from its signals, and what
+comes back is an aggregate as columns or one window of rows — never the frame. Nothing the
+browser sends is evaluated, a result past a cap answers 413, and push is a Server-Sent Events
+stream rather than a WebSocket, because a session per client is Streamlit's model and the
+reason to avoid one has not changed. The server half is an extra (`[server]`) the page never
+imports; the browser half is 0.6 KB of JavaScript. It is a *component's* server, opt-in, the
+way `frontage-turso` would be a component's database — the framework still ships none.
 
 ## 8. What we will not do
 
@@ -428,9 +439,11 @@ static files, which is the whole point.
   position. Say so plainly in the docs rather than half-supporting it.
 - **Copy `st.*` names.** Frontage is reactive; Streamlit is a re-run. An API that looks the
   same but behaves differently is worse than one that looks different.
-- **A server.** The constraint that produced the 96 ms boot is the constraint that says no.
-  Two whole gallery categories go with it, and it is more honest to name them than to pretend
-  they are coming. **LLM chat apps** — the fastest-growing category — are blocked not by
+- **A server in the framework.** The constraint that produced the 96 ms boot is the
+  constraint that says no. A *component* may ship an opt-in server half — `frontage-polars`
+  does, §7b — but the framework knows of none, and a page built without one is still a
+  directory of static files. Two whole gallery categories still go with the rule, and it is
+  more honest to name them than to pretend they are coming. **LLM chat apps** — the fastest-growing category — are blocked not by
   compute but by the API key: calling a model provider from the browser exposes it, and hiding
   it is exactly what Streamlit's server does — see §7b, which says what to put there instead.
 - **Model inference.** Face-GAN, YOLO and the image-model explorers need TensorFlow or PyTorch
