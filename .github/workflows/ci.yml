@@ -1,5 +1,5 @@
 # Tests every component against the frontage checked out beside this one, and publishes the
-# four packages to PyPI on a tag.
+# five packages to PyPI on a tag.
 #
 # Publishing uses trusted publishing (OIDC): no token is stored anywhere. It needs **one**
 # publisher per package registered at https://pypi.org/manage/account/publishing/, one per package:
@@ -8,7 +8,7 @@
 #   owner       optersoft
 #   repository  frontage-component
 #   workflow    ci.yml
-#   env         frontage-layout | frontage-chart | frontage-table | frontage-map  <- one each, see below
+#   env         frontage-layout | frontage-chart | frontage-table | frontage-map | frontage-supabase  <- one each, see below
 #
 # ⚠ **The environment must differ per package, and that is not decoration.** A *pending*
 # publisher is unique on `(owner, repo, workflow, environment)`, so registrations that
@@ -71,13 +71,13 @@ jobs:
         working-directory: frontage-component
       # The rule that a component can break while installing and importing perfectly: its
       # Python must be written in the subset MicroPython runs in the browser.
-      - run: uv run --project ../frontage python -m frontage check frontage-layout frontage-chart frontage-table frontage-map tests
+      - run: uv run --project ../frontage python -m frontage check frontage-layout frontage-chart frontage-table frontage-map frontage-supabase tests
         working-directory: frontage-component
 
   target:
     # Which package does this tag release? Its own job because `publish` needs the answer to
     # choose its `environment:`, and a job's environment can read `needs` but not its own steps.
-    # A tag names the package: `frontage-chart-v0.1.0`. One repo, four packages, four
+    # A tag names the package: `frontage-chart-v0.1.0`. One repo, five packages, five
     # cadences — a shared version would force a pointless release of the others.
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest

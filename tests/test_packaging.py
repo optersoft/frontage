@@ -14,7 +14,7 @@ PACKAGES = [
     ("chart", "frontage_chart"),
     ("table", "frontage_table"),
     ("map", "frontage_map"),
-    ("schema", "frontage_schema"),
+    ("supabase", "frontage_supabase"),
 ]
 
 
@@ -26,9 +26,15 @@ def test_each_package_declares_its_entry_point(name, package):
 
 @pytest.mark.parametrize(("name", "package"), PACKAGES)
 def test_each_package_ships_a_browser_entry_module(name, package):
-    import importlib
+    """Located, not imported — the same rule `build.discover()` follows, and for the same
+    reason: a component's Python is written for the browser, so importing it here runs it on the
+    wrong interpreter. `frontage_chart` opens with `import chart`, which exists only in a page,
+    so this test used to pass only when a file that stubs `chart` had run first."""
+    from importlib import util
 
-    browser = Path(importlib.import_module(package).__file__).parent / "_browser"
+    spec = util.find_spec(package)
+    assert spec is not None and spec.origin, f"{package} is not installed"
+    browser = Path(spec.origin).parent / "_browser"
     assert (browser / "index.js").is_file(), "build declares _browser/index.js in data-fr-js"
 
 
