@@ -12,9 +12,8 @@ are for David.
 ## 1. The decision
 
 Frontage is a **clean-room implementation**, Optersoft's own code, of a fine-grained
-reactive web framework for Python in the browser. The PuePy fork on `main` moves to the
-the tag history and serves as an acceptance test until the rewrite passes its
-examples. Reasons (ownership of copyright, license and story) are in draft 1 and hold.
+reactive web framework for Python in the browser. Reasons (ownership of copyright, license
+and story) are in draft 1 and hold.
 
 What carries over untouched: the name, the PyPI plan, `pyproject.toml`, the uv/ruff/ty
 toolchain, `ci.yml` with the OIDC publisher, the Cloudflare Pages site, `Makefile.py`.
@@ -135,8 +134,8 @@ it is measured.
 ## 4. Non-goals for 0.x
 
 A live rendering server (prerendering as a build step shipped in 0.4.0, and is the only server
-rendering planned); a component library; PuePy import compatibility; PyScript releases older
-than the pinned one.
+rendering planned); a component library; PyScript, which 0.9.0 replaced with a direct
+WebAssembly boot (§6).
 
 ## 5. Clean-room rules
 
@@ -145,10 +144,6 @@ than the pinned one.
   "fine-grained reactivity" guide); PuePy's browser tests as an acceptance specification.
 - **Do not copy:** source, tests, docstrings or prose from any of them. Code is written from
   `SPEC.md` (section 13) with no reference repository open.
-- **Old tree:** deleted on 2026-09-07, long after 0.1.0. It needed no preserving: the fork is
-  this repository's own root, so the tree the rewrite replaced is an ancestor of `main` and is
-  contained in thirteen release tags. `puepy-reference` was a bookmark on that ancestor, not a
-  separate lineage — the "never merged" this line used to claim was never true.
 - **Every PR states** it was written from the spec without reference source open.
 
 ## 6. Platform

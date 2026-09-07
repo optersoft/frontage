@@ -12,8 +12,7 @@ accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
 
 ## M0 (in progress)
 
-- [x] Fork tree removed from `main`. (The `puepy-reference` bookmark went on 2026-09-07;
-      it pointed at an ancestor of `main`, so nothing needed keeping.)
+- [x] Fork tree removed from `main`.
 - [x] Skeleton: `runtime`, `errors`, `renderer` (seam + `HtmlRenderer` + `RecordingRenderer`),
       `view` (`h` builder, call and `with` forms, `render_to_string`).
 - [x] `SPEC.md` with milestone tags.
@@ -436,5 +435,4 @@ ships as source and costs about two milliseconds to compile in the VM. Plan in
 - [x] DNS: frontage.optersoft.com is live (2026-09-06).
 - [x] Connect the Pages project to the GitHub repo (2026-09-06; `mk site.deploy` stays as the
       fallback).
-- [x] Email PuePy's author about the fork and the rewrite (courtesy; nothing is owed).
 - [x] Check `frontage.dev`.

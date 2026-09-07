@@ -6,5 +6,6 @@ trademark rights (section 6); a derivative work must use a different name.
 
 Frontage's reactive model follows Solid (MIT) and Leptos (MIT); the project
 began on 2026-09-05 as a fork of PuePy (Apache 2.0), which was replaced by a
-clean-room rewrite. None of their code is included; the fork is preserved on
-the `puepy-reference` branch under its own notice.
+clean-room rewrite. None of their code is included. The fork is this
+repository's own first commit, so it remains in the published history under
+its own notice.

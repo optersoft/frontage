@@ -7,10 +7,7 @@ the WebAssembly boot, the framework as precompiled bytecode, a dev server that s
 into the running page, C/Rust libraries as plain imports — after M9's prerendering with
 hydration, transitions and async memos). **PyScript is gone from the browser path** and
 `export` keeps it alive only through 0.9.x, for the academy's chapter repos. `origin` is
-`github.com/optersoft/frontage` (GitHub, because PyPI publishing needs Actions). The PuePy fork
-is this repository's own root — `a38cd5c "First commit!!1"` is PuePy's — so the tree the
-rewrite replaced is reachable from `main` and from every release tag; the `puepy-reference`
-branch that used to bookmark it was deleted on 2026-09-07, per `DESIGN.md` §5.
+`github.com/optersoft/frontage` (GitHub, because PyPI publishing needs Actions).
 
 ## Read first
 
