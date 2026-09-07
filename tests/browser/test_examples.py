@@ -264,3 +264,25 @@ def test_the_runner_shows_a_traceback_instead_of_a_blank_frame(server, page: Pag
         f'<iframe id="f" src="{_runner(server, payload)}" width="500" height="200" sandbox="allow-scripts"></iframe>'
     )
     expect(page.frame_locator("#f").locator("#fr-error")).to_contain_text("a teaching mistake", timeout=30_000)
+
+
+def test_a_chart_library_becomes_an_importable_component(server, page: Page):
+    """uPlot wrapped as a frontage component: 40 lines of JavaScript, 20 of Python, declared
+    with `data-fr-js`. The evidence behind COMPONENTS.md, and the guard that keeps the
+    component pattern working on a real third-party library rather than a toy one."""
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{server}/examples/chart/index.html")
+    expect(page.locator("canvas").first).to_be_visible(timeout=30_000)
+    expect(page.locator("#count")).to_have_text("2000 points per series")
+
+    # A slider moves one signal; the memo rebuilds; the canvas redraws. Nothing remounts.
+    page.evaluate("document.querySelector('canvas').dataset.keep = '1'")
+    page.evaluate("""() => {
+        const s = document.querySelectorAll('input[type=range]')[0];
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        set.call(s, '10000'); s.dispatchEvent(new Event('input', {bubbles: true}));
+    }""")
+    expect(page.locator("#count")).to_have_text("10000 points per series")
+    assert page.evaluate("document.querySelector('canvas').dataset.keep") == "1"
+    assert errors == []

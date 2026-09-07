@@ -441,10 +441,17 @@ wins on boot, size and interaction, and loses on *surface* — Streamlit ships ~
 input elements, frontage ships nine form controls, so an app that shows data has nothing to
 show it with.
 
-- [x] Prototype, measured: a dashboard with two sliders and a live uPlot chart, wired through
-      `data-fr-js`. **946 KB over 10 requests, 96 ms cold to a drawn chart**, redraw 6/22/38/68
-      ms at 2k/5k/10k/20k points per series. stlite's playground downloads ~50 MB and starts in
-      tens of seconds. The component is 40 lines of JavaScript and 20 of Python.
+- [x] `examples/chart/`, measured and committed: a dashboard with two sliders and a live uPlot
+      chart, wired through `data-fr-js`. **946 KB over 10 requests, 96 ms cold to a drawn
+      chart**, redraw 6/22/38/68 ms at 2k/5k/10k/20k points per series. stlite's playground
+      downloads ~50 MB and starts in tens of seconds. The component is 40 lines of JavaScript
+      and 20 of Python; `plot.py` is the pattern any library follows.
+      - It lives in `examples/`, **not a sibling repo**, on purpose. `examples/` is the browser
+        suite's material, so it is tested on every push and cannot rot; a sibling repo would be
+        untested, and this project already carries nine chapter repos whose sync is a standing
+        cost. Vendoring uPlot's minified ESM build costs 80 KB against the 446 KB interpreter
+        already committed. When the component protocol lands, the chart moves out to its own
+        package and this example becomes a consumer of it.
 - [ ] The `frontage-component` protocol in `build`: discover installed components by entry
       point, copy their `_browser/` assets, extend `data-fr-js`, and pack their Python into
       `app.tar`. Everything it needs exists — this is discovery and packing, not new machinery.

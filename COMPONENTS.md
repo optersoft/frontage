@@ -1,9 +1,7 @@
 # Beating Streamlit: the component strategy
 
-**Status: a plan, 2026-09-07. The numbers in §1 are measured, from a working prototype built
-in `build/chart/` — which is gitignored and therefore gone; §5 says what replaces it. The
-measurements are real and were taken on the boot this repository ships. Everything from §4 on
-is unbuilt.**
+**Status: a plan, 2026-09-07. The numbers in §1 are measured, and the thing they were measured
+on is committed: `examples/chart/`, with a browser test. Everything from §4 on is unbuilt.**
 
 Streamlit owns "a Python developer wants a data app by Friday". This document is about taking
 that, and it argues the way in is not to copy Streamlit's surface but to attack the one thing
@@ -88,7 +86,7 @@ ships separately, versions separately, and costs nothing until imported.
 
 ## 5. `frontage-component`: the protocol
 
-The prototype works but wires everything by hand — vendored `.js` beside the app, a
+`examples/chart/` works but wires everything by hand — vendored `.js` beside the app, a
 `data-fr-js` attribute typed by the author, the Python half copied in. That does not scale to
 a catalogue. What is missing is a way to `pip install` a component and have it just work.
 
@@ -127,7 +125,7 @@ Nothing else.
 `registerJsModule` makes it a real Python import; `build` already copies and packs. The work
 is discovery and packing, not new machinery — call it a week, not a milestone.
 
-**The component author's contract**, which the prototype already demonstrates: a `NodeRef` for
+**The component author's contract**, which `examples/chart/plot.py` already demonstrates: a `NodeRef` for
 the element the library owns, an `Effect` that redraws when its data accessor changes, and an
 `on_cleanup` that lets the library go. Twenty lines. Compare Streamlit's component model,
 which is a React project, a build step, an iframe and a bidirectional message protocol.
