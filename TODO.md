@@ -543,6 +543,13 @@ decides, all in 0.10.0:
       merges entry by entry now. Nothing tests `mk site.build`, which is why this shipped;
       the cheapest guard would be a line in the task itself that fails when
       `www/gallery/<first app>/index.html` is missing.
+- [x] **The site deploy raced its own release, twice** (2026-09-08). `frontage build` fetches
+      the `fpy` binary from the release matching its version; the deploy that Cloudflare starts
+      on the version-bump push runs while that release's assets are still uploading. The
+      0.10.2 fix — fall back to `releases/latest` — does not help, because a release exists
+      from the moment its tag is pushed: during a release, `latest` **is** the incomplete one,
+      so the build asked twice and got the same 404. It now walks the releases list and takes
+      the first one that actually carries the asset.
 - [ ] `[human]` The academy still describes 0.9 in `python/frontage/polars.md`'s measurements
       and in any `.ca`/`.es` variant of these pages, if one is ever cut. Re-measure the polars
       binary-vs-JSON numbers on this runtime when that page next changes.

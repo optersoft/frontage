@@ -383,3 +383,38 @@ def test_without_the_flag_nothing_tailwind_happens(tmp_path, monkeypatch):
     assert not (out / build.TAILWIND_OUTPUT).exists()
     assert not (app / build.TAILWIND_INPUT).exists()
     assert "tailwind" not in (out / "index.html").read_text()
+
+
+# --- finding the compiler ------------------------------------------------------------------
+
+
+def test_the_compiler_falls_back_to_a_release_that_actually_has_the_asset(monkeypatch):
+    """A release exists from the moment its tag is pushed and its assets arrive minutes
+    later, so during a release `releases/latest` is the incomplete one — which is how the
+    site's own deploy failed on the push that bumped the version."""
+    import io
+    import json
+
+    releases = [
+        {"tag_name": "v9.9.9", "assets": []},  # tagged, still uploading: what `latest` is
+        {
+            "tag_name": "v9.9.8",
+            "assets": [{"name": "fpy-linux-x64", "browser_download_url": "https://example/v9.9.8/fpy-linux-x64"}],
+        },
+    ]
+    monkeypatch.setattr(
+        frontage_rt.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(json.dumps(releases).encode())
+    )
+    urls = list(frontage_rt._asset_urls("fpy-linux-x64", quiet=True))
+    assert urls[0].endswith(f"v{frontage_rt.__version__}/fpy-linux-x64")
+    assert urls[1].endswith("releases/latest/download/fpy-linux-x64")
+    assert urls[2] == "https://example/v9.9.8/fpy-linux-x64"
+
+
+def test_a_github_that_cannot_be_reached_is_not_an_error_by_itself(monkeypatch):
+    def refuse(*args, **kwargs):
+        raise OSError("no network")
+
+    monkeypatch.setattr(frontage_rt.urllib.request, "urlopen", refuse)
+    urls = list(frontage_rt._asset_urls("fpy-linux-x64", quiet=True))
+    assert len(urls) == 2  # the two direct guesses; the caller reports the failure

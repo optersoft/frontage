@@ -5,6 +5,7 @@ never in the browser (the package's browser files are the top-level modules only
     python -m frontage prerender APP [--out DIR] [--route /path ...] [--entry app.py]
     python -m frontage tailwind [--input tailwind.css] [--output tailwind.out.css] [--watch] [--minify]
     python -m frontage check PATH...
+    python -m frontage schema MODULE:Model... [--json FILE] [--ref POINTER] [-o FILE]
     python -m frontage lsp [--stdio]
     python -m frontage runtime
     python -m frontage serve [DIR] [--port 8000] [--watch DIR] [--open]
@@ -23,6 +24,7 @@ commands:
   prerender  build, then write each route as finished HTML that the browser hydrates
   tailwind   run the Tailwind CSS standalone CLI over the project (downloaded once)
   check      flag code a template will reject (lambda in a t-string, html(f"…"))
+  schema     Pydantic models or a JSON Schema in, a `frontage.schema` module out
   lsp        the language server: what an editor knows about html(t"…")
   serve      serve a directory and swap the page's modules whenever a file changes
   runtime    where the runtime's files and its compiler are (fetching the compiler)

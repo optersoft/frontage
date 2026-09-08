@@ -28,6 +28,7 @@ MANIFEST = "manifest.json"
 FRAMEWORK = "framework.json"  # every framework module, for a page that runs a typed program
 RELEASES = "https://github.com/optersoft/frontage/releases/download"
 LATEST = "https://github.com/optersoft/frontage/releases/latest/download"
+API = "https://api.github.com/repos/optersoft/frontage"
 
 _compiled = {}  # path -> (mtime, bytes)
 
@@ -88,12 +89,11 @@ def fpy(quiet=False):
     path = cache_dir("fpy", __version__) / name
     if path.exists():
         return path
-    # This version's asset first, then the latest release's: a checkout can sit at a version
-    # whose tag does not exist yet — bumped by hand, or tagged minutes ago and still building
-    # — and the compiler reads the same Python and writes the same `.fbc` either way.
-    urls = [f"{RELEASES}/v{__version__}/{name}", f"{LATEST}/{name}"]
+    # This version's asset first, then any release that actually has one: a checkout can sit
+    # at a version whose tag does not exist yet, or whose assets are still uploading, and the
+    # compiler reads the same Python and writes the same `.fbc` either way.
     data, last = None, None
-    for url in urls:
+    for url in _asset_urls(name, quiet=quiet):
         if not quiet:
             print(f"fetching {url}")
         try:
@@ -111,6 +111,32 @@ def fpy(quiet=False):
     partial.chmod(partial.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     os.replace(partial, path)
     return path
+
+
+def _asset_urls(name, quiet=False):
+    """Where to look for the compiler, in order: this version's release, then whichever
+    release actually carries this asset.
+
+    `releases/latest` is not that second answer, which is what this cost to learn: a release
+    exists from the moment its tag is pushed, and its assets arrive minutes later, so during
+    every release `latest` **is** the incomplete one. A build that starts in that window — the
+    site's own, on the push that bumps the version — asked for the new asset, fell back to
+    `latest`, and got the same 404 twice.
+    """
+    yield f"{RELEASES}/v{__version__}/{name}"
+    yield f"{LATEST}/{name}"
+    try:
+        with urllib.request.urlopen(f"{API}/releases?per_page=20", timeout=60) as answer:
+            releases = json.load(answer)
+    except (OSError, ValueError) as exc:
+        if not quiet:
+            print(f"cannot list releases ({exc})")
+        return
+    for release in releases:
+        for asset in release.get("assets") or []:
+            if asset.get("name") == name and asset.get("browser_download_url"):
+                yield asset["browser_download_url"]
+                break
 
 
 def compile_module(path):
