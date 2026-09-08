@@ -1,0 +1,56 @@
+"""The stylesheet, as a string, so a test can assert every class this package emits exists.
+
+It is also written to `_browser/index.css` at build time, which is what `frontage build` links
+from the page. Two copies would drift, so the file is generated from this one — see `mk style`.
+"""
+
+STYLESHEET = """\
+/* frontage-layout. Tokens first, so an app can restyle without touching a rule. */
+.fr-columns, .fr-container, .fr-metric, .fr-progress, .fr-spinner, .fr-tabs {
+  --fr-line: color-mix(in srgb, currentColor 15%, transparent);
+  --fr-muted: color-mix(in srgb, currentColor 60%, transparent);
+  --fr-accent: #b3541e;
+  --fr-up: #15803d;
+  --fr-down: #b91c1c;
+  --fr-radius: 8px;
+}
+
+.fr-columns { display: grid; align-items: start; }
+@media (max-width: 640px) { .fr-columns { grid-template-columns: 1fr !important; } }
+
+.fr-container { border: 1px solid var(--fr-line); border-radius: var(--fr-radius); padding: 1rem; }
+.fr-divider { border: 0; border-top: 1px solid var(--fr-line); margin: 1rem 0; }
+
+.fr-expander { border: 1px solid var(--fr-line); border-radius: var(--fr-radius); padding: .25rem .75rem; }
+.fr-expander-label { cursor: pointer; padding: .5rem 0; font-weight: 600; }
+
+.fr-metric { display: flex; flex-direction: column; gap: .15rem; }
+.fr-metric-label { font-size: .85rem; color: var(--fr-muted); }
+.fr-metric-value { font-size: 1.9rem; font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.fr-metric-delta { font-size: .85rem; font-variant-numeric: tabular-nums; }
+.fr-metric-delta.fr-up { color: var(--fr-up); }
+.fr-metric-delta.fr-down { color: var(--fr-down); }
+
+.fr-progress-label { font-size: .85rem; color: var(--fr-muted); margin-bottom: .25rem; }
+.fr-progress-track { height: .5rem; border-radius: 999px; background: var(--fr-line); overflow: hidden; }
+.fr-progress-fill { height: 100%; background: var(--fr-accent); transition: width .2s ease; }
+
+.fr-spinner { display: inline-flex; align-items: center; gap: .5rem; }
+.fr-spinner-ring {
+  width: 1rem; height: 1rem; border-radius: 50%;
+  border: 2px solid var(--fr-line); border-top-color: var(--fr-accent);
+  animation: fr-spin .7s linear infinite;
+}
+.fr-spinner-label { color: var(--fr-muted); font-size: .9rem; }
+@keyframes fr-spin { to { transform: rotate(360deg); } }
+/* A ring that never stops is a problem for some readers; hold it still if they ask. */
+@media (prefers-reduced-motion: reduce) { .fr-spinner-ring { animation-duration: 3s; } }
+
+.fr-tab-strip { display: flex; gap: .25rem; border-bottom: 1px solid var(--fr-line); }
+.fr-tab {
+  font: inherit; cursor: pointer; padding: .5rem .9rem; border: 0; border-bottom: 2px solid transparent;
+  background: none; color: var(--fr-muted);
+}
+.fr-tab.fr-active { color: inherit; border-bottom-color: var(--fr-accent); font-weight: 600; }
+.fr-tab-panel { padding-top: 1rem; }
+"""

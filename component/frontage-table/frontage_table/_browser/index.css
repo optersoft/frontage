@@ -1,0 +1,40 @@
+/* frontage-table. The viewport scrolls; the rows are absolutely placed inside a spacer whose
+   height is the full row count, which is what makes scrolling feel like a real table while
+   only a screenful of elements exists. */
+.fr-table {
+  --fr-line: color-mix(in srgb, currentColor 15%, transparent);
+  --fr-muted: color-mix(in srgb, currentColor 60%, transparent);
+  --fr-hover: color-mix(in srgb, currentColor 5%, transparent);
+  --fr-accent: #b3541e;
+  border: 1px solid var(--fr-line);
+  border-radius: 8px;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+.fr-tr { display: flex; align-items: center; }
+.fr-head { border-bottom: 1px solid var(--fr-line); font-weight: 600; }
+
+.fr-th {
+  font: inherit; font-weight: 600; cursor: pointer; background: none; border: 0;
+  padding: .55rem .75rem; color: var(--fr-muted); text-align: inherit; min-width: 0;
+}
+.fr-th:hover { color: inherit; }
+.fr-th.fr-sorted { color: var(--fr-accent); }
+
+.fr-viewport { overflow-y: auto; overflow-x: hidden; position: relative; }
+.fr-rows { position: relative; }
+.fr-viewport .fr-tr { position: absolute; top: 0; left: 0; right: 0; will-change: transform; }
+.fr-viewport .fr-tr:hover { background: var(--fr-hover); }
+
+.fr-td {
+  padding: 0 .75rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.fr-table-footer {
+  border-top: 1px solid var(--fr-line); padding: .4rem .75rem;
+  font-size: .8rem; color: var(--fr-muted);
+}
+
+/* A windowed source is fetching the block the viewport moved into. */
+.fr-table.fr-loading .fr-rows { opacity: .7; transition: opacity .15s; }

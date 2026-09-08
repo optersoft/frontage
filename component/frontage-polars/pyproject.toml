@@ -1,0 +1,36 @@
+[project]
+name = "frontage-polars"
+version = "0.2.1"
+description = "Big datasets for frontage apps: polars on the server, small answers in the page"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Optersoft, S.L.", email = "david@optersoft.com" }]
+requires-python = ">=3.12"
+keywords = ["frontage", "webassembly", "micropython", "components", "polars", "fastapi", "dataframe"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Environment :: WebAssembly",
+    "Framework :: FastAPI",
+    "Programming Language :: Python :: Implementation :: MicroPython",
+]
+# The browser half has no dependency: `frontage build` packs `frontage_polars` into the app and
+# the page imports it. The server half is an extra, so the package installs where the page is
+# built without dragging polars along.
+dependencies = []
+
+[project.optional-dependencies]
+# `frontage` too: the package's browser half imports it at import time, and the server
+# imports the package. Without it a server with only this extra installed fails at
+# `from frontage_polars.server import Sources` (found deploying the trips example).
+server = ["polars>=1.0", "fastapi>=0.110", "uvicorn>=0.29", "frontage>=0.9.1"]
+
+[project.entry-points."frontage.components"]
+remote = "frontage_polars"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["frontage_polars"]
