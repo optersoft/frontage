@@ -27,6 +27,7 @@ from . import PROG
 RELOAD_PATH = "/__frontage/reload"
 MODULE_PATH = "/__frontage/module/"
 OVERLAY_PATH = "/__frontage/overlay.js"
+DEVTOOLS_PATH = "/__frontage/devtools.fbc"
 RUNTIME_PREFIX = "/_frontage/"
 
 # The error overlay: what a failed edit looks like. It is a module of its own rather than more
@@ -87,6 +88,17 @@ RELOAD_SCRIPT = (
 SWAP_SCRIPT = """<script type="module" data-fr-reload>
 import {{ ready }} from "{boot}";
 import {{ show, hide }} from "{overlay}";
+// The devtools panel: compiled on the server, run in the page, installed by its own top
+// level. Ctrl+Shift+D shows it. A failure here is not worth a word — a page that cannot
+// have devtools still has to run the app.
+ready
+  .then(async (rt) => {{
+    const response = await fetch("{devtools}");
+    // `runDetached`, not `run`: a script that became `__main__` would displace the app's
+    // own entry, and a swap could no longer find the state it keeps by qualified name.
+    if (response.ok) rt.runDetached(new Uint8Array(await response.arrayBuffer()));
+  }})
+  .catch(() => {{}});
 const stream = new EventSource("{reload}");
 stream.onmessage = async (event) => {{
   let message;
@@ -201,7 +213,13 @@ def dev_script(html):
     src = _SRC.search(tag.group(0)) if tag else None
     if src is None:
         return RELOAD_SCRIPT
-    return SWAP_SCRIPT.format(boot=src.group(1), reload=RELOAD_PATH, module=MODULE_PATH, overlay=OVERLAY_PATH)
+    return SWAP_SCRIPT.format(
+        boot=src.group(1),
+        reload=RELOAD_PATH,
+        module=MODULE_PATH,
+        overlay=OVERLAY_PATH,
+        devtools=DEVTOOLS_PATH,
+    )
 
 
 def inject(html):
@@ -313,6 +331,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if route == RELOAD_PATH:
             self._stream()
             return
+        if route == DEVTOOLS_PATH:
+            self._send_devtools()
+            return
         if route == OVERLAY_PATH:
             self._send_bytes(OVERLAY_JS.encode(), "text/javascript")
             return
@@ -355,6 +376,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_devtools(self):
+        """`frontage/devtools.py` as bytecode. The page runs it (`rt.run`), which installs the
+        panel; it is never in a build, never in an app's closure, and never in the manifest."""
+        from . import frontage_rt
+
+        source = frontage_rt.ROOT / "frontage" / "devtools.py"
+        if not source.is_file():
+            self.send_error(404)
+            return
+        try:
+            self._send_bytes(frontage_rt.compile_module(source), "application/octet-stream")
+        except SystemExit as exc:
+            self.send_error(500, str(exc))
 
     def _send_module(self, name):
         """One app module as bytecode, by module name, for a swap. A module that does not

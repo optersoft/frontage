@@ -598,8 +598,16 @@ decides, all in 0.10.0:
       win over the live one (reload for that). ⚠ `frontage.store` is imported *defensively*
       there: a page holds only the modules its app imports, so an app with no Store has no
       `frontage.store` to import, and an unguarded import broke every swap.
-- [ ] **Development, still**: a template-only edit patches templates in place, and a devtools
-      page in `serve` over `reactive.tree()`.
+- [x] **A devtools panel** (2026-09-08): Ctrl+Shift+D in any `frontage serve` page, listing
+      every mount and the ownership tree under it. `frontage/devtools.py` is compiled by the
+      dev server and run in the page; it uses the document directly, so it stays out of the
+      tree it shows, and its imports are absolute because the runtime runs it as a script.
+      ⚠ It needed a runtime change: `rt.run` makes the code it runs `__main__`, which
+      displaced the app's own entry and quietly broke the state-preserving swap. The new
+      `run_detached` (`vm.run_detached`, exported through glue as `rt.runDetached`) runs a
+      script in a module of its own — the general answer for anything the page runs beside
+      the app.
+- [ ] **Development, still**: a template-only edit patches templates in place.
 - [x] **Head management** (2026-09-08): `frontage/head.py` — `Title`, `Meta`, and
       `Route(title=)`. A stack per slot, so leaving a route puts the outer title back; the
       prerenderer takes its snapshot *before* the mount is disposed, because the entries go

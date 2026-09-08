@@ -2294,6 +2294,20 @@ impl Vm {
         self.run_code(code, dict, dict)
     }
 
+    /// Run `code` in a module of its own, leaving `sys.modules` alone.
+    ///
+    /// `run_main` above is for the *app*: it claims `__main__`, which is what an entry is. A
+    /// tool the page runs beside the app — the dev server's devtools panel — must not, or the
+    /// app's own module is no longer reachable under that name and a dev swap can no longer
+    /// find the state it was keeping.
+    pub fn run_detached(&mut self, code: Rc<Code>, filename: &str) -> PyResult {
+        let module = self.new_module(filename);
+        let dict = self.module_dict(module);
+        let f = self.str(filename);
+        self.dict_set_str(dict, "__file__", f);
+        self.run_code(code, dict, dict)
+    }
+
     /// Format an escaped exception the way a traceback reads.
     pub fn format_exception(&mut self, exc: Value) -> String {
         let mut out = String::new();

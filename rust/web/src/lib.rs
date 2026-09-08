@@ -186,6 +186,25 @@ pub extern "C" fn add_js_module(name_ptr: *mut u8, name_len: usize, handle: u32)
     js::register_js_module(vm, &name, handle);
 }
 
+/// Bytecode run in a module of its own: `sys.modules["__main__"]` stays the app's entry.
+/// What the dev server's devtools panel arrives as. 0 ran, 1 raised.
+#[no_mangle]
+pub extern "C" fn run_detached(ptr: *mut u8, len: usize) -> u32 {
+    let bytes = unsafe { take(ptr, len) };
+    let vm = vm();
+    let code = match frontage_vm::fbc::load(vm, &bytes) {
+        Ok(c) => c,
+        Err(e) => {
+            vm.host.write_stderr(&format!("frontage: bad bytecode: {e}\n"));
+            return 1;
+        }
+    };
+    let filename = code.filename.to_string();
+    let r = vm.run_detached(code, &filename);
+    let _ = vm.dom_flush();
+    finish(vm, r)
+}
+
 /// Run bytecode as `__main__`. 0 on success, 1 after printing the traceback.
 #[no_mangle]
 pub extern "C" fn run(ptr: *mut u8, len: usize) -> u32 {

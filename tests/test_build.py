@@ -220,7 +220,7 @@ def test_discover_finds_the_builtin_components_without_importing_anything():
 
     before = set(sys.modules)
     found = build.discover()
-    assert [c.name for c in found] == ["chart", "layout", "map", "remote", "schema", "supabase", "table"]
+    assert [c.name for c in found] == ["chart", "chat", "layout", "map", "remote", "schema", "supabase", "table"]
     assert all(c.import_name == f"frontage.{c.name}" for c in found)
     names = {c.name for c in found}
     imported = [m for m in set(sys.modules) - before if m.startswith("frontage.") and m.split(".")[1] in names]

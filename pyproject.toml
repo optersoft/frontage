@@ -32,6 +32,9 @@ dependencies = []
 # The server half of `frontage.remote` (polars on the server, the answers in the page):
 # `pip install "frontage[polars]"`. Nothing else in the package needs a dependency.
 polars = ["polars>=1.0", "fastapi>=0.110", "uvicorn>=0.29"]
+# The server half of `frontage.chat`: the process that holds the API key and streams the
+# answer. The page never imports it. `pip install "frontage[chat]"`.
+chat = ["fastapi>=0.110", "uvicorn>=0.29"]
 
 [project.scripts]
 frontage = "frontage.cli:script"

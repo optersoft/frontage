@@ -436,6 +436,15 @@ export async function load(source, options = {}) {
       pump();
       return code;
     },
+    /// Like `run`, but the code does not become `__main__`: the app's entry keeps that name.
+    /// What a tool running beside the app wants (the dev server's devtools panel).
+    runDetached(fbc) {
+      const p = put(fbc);
+      const code = ex.run_detached(p, fbc.length);
+      flushAll();
+      pump();
+      return code;
+    },
     /// Resolves when the asyncio loop has nothing left to do.
     idle() {
       return new Promise((done) => {

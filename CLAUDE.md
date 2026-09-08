@@ -34,6 +34,7 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
 | `frontage/view.py` | `Element`/`Text`, the `h` builder, Template compile/clone, holes and the insert rules, floating holes, `mount` |
 | `frontage/template.py` | `html(t"…")`: the template-string parser, cached per call site |
 | `frontage/flow.py` | `Show`, `For`, `Switch`/`Match`, `Loading`, `Errored`, `Dynamic`, `Portal` |
+| `frontage/devtools.py` | the panel `frontage serve` runs in the page (Ctrl+Shift+D): every mount and the ownership tree under it. Compiled by the dev server, run with `rt.runDetached`, never in a build; absolute imports, because it runs as a script |
 | `frontage/a11y.py` | what a screen reader cannot see happen: `announce` (one polite live region at the end of the body) and `focus` (a selector, made focusable, no scroll). The router calls both |
 | `frontage/head.py` | what the page says about itself: `Title`, `Meta`, and what `Route(title=)` writes. A stack per slot, so the innermost wins and leaving it puts the outer one back; off the browser it records instead and `prerender` writes it into `<head>` |
 | `frontage/chunks.py` | code splitting: `load`/`prefetch`/`loaded` and the `component` behind `Route(lazy=…)`. A chunk is a module `frontage build` left out of the first payload; the page fetches it and its own imports through `window.frontage.loadChunk`, named by the manifest |
@@ -144,6 +145,11 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
   defensively.** `from .store import Store` at the top of a helper broke every swap in an app
   that has no Store. Anything the swap path reaches for beyond `reactive` and `view` needs a
   guard or a line in the dev manifest.
+- **A page can run a script without becoming it.** `rt.run` makes its bytecode `__main__`,
+  which is right for an app's entry and wrong for anything running beside it: the devtools
+  panel displaced the entry that way and quietly broke the state-preserving swap, which finds
+  module-level state under `__main__`. `rt.runDetached` (`vm.run_detached`) is the one to use
+  for a tool the page runs.
 - **`window.frontage` is the runtime object, and the boot assigns it.** Anything a dev script
   hangs on that name is gone the moment the runtime is ready — which is how the error
   overlay's hooks disappeared. The overlay uses `window.frontageDevError` instead.
