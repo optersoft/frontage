@@ -108,8 +108,10 @@ jobs:
     strategy:
       matrix:
         include:
+          # The Intel macOS binary is cross-compiled from the arm64 runner: GitHub's macos-13
+          # image is on its way out and a queued job there blocks the publish behind it.
           - { os: macos-14, asset: fpy-macos-arm64 }
-          - { os: macos-13, asset: fpy-macos-x64 }
+          - { os: macos-14, asset: fpy-macos-x64, target: x86_64-apple-darwin }
           - { os: ubuntu-latest, asset: fpy-linux-x64 }
           - { os: ubuntu-24.04-arm, asset: fpy-linux-arm64 }
           - { os: windows-latest, asset: fpy-windows-x64.exe }
@@ -119,9 +121,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo build --profile native -p fpy
+        with:
+          targets: ${{ matrix.target || '' }}
+      - run: cargo build --profile native -p fpy ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
         working-directory: rust
-      - run: cp rust/target/native/fpy${{ runner.os == 'Windows' && '.exe' || '' }} ${{ matrix.asset }}
+      - run: cp rust/target/${{ matrix.target && format('{0}/', matrix.target) || '' }}native/fpy${{ runner.os == 'Windows' && '.exe' || '' }} ${{ matrix.asset }}
         shell: bash
       - uses: softprops/action-gh-release@v2
         with:
