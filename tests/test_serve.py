@@ -103,27 +103,29 @@ def test_the_dev_script_swaps_only_when_the_page_boots_from_wasm():
     from frontage.cli.serve import dev_script
 
     wasm = dev_script('<script data-fr-boot src="./_frontage/boot.js" data-fr-entry="app"></script>')
-    assert "import { ready }" in wasm and './_frontage/boot.js"' in wasm and "frontage.dev" in wasm
+    assert "import { ready }" in wasm and './_frontage/boot.js"' in wasm and "rt.swap(" in wasm
     # A PyScript page has no boot tag and can only reload.
     plain = dev_script("<p>hi</p>")
     assert "location.reload()" in plain and "import" not in plain
 
 
-def test_the_archives_the_dev_server_synthesises(tmp_path):
-    """Nothing is built in dev: both archives come off disk on request, so an edit is live."""
-    import tarfile
+def test_what_the_dev_server_synthesises(tmp_path):
+    """Nothing is built in dev: the manifest and each module come off disk on request, so an
+    edit is live. The closure is the entry's, so a module nothing imports is not in it."""
+    import json
 
-    from frontage.cli.serve import app_archive, framework_archive
+    from frontage.cli import frontage_rt
 
-    (tmp_path / "app.py").write_text("x = 1\n")
+    (tmp_path / "app.py").write_text("from frontage import Signal\nimport helpers\nx = 1\n")
     (tmp_path / "helpers.py").write_text("y = 2\n")
-    (tmp_path / "index.html").write_text("<p>ignored</p>")
-    with tarfile.open(fileobj=__import__("io").BytesIO(app_archive(tmp_path))) as tf:
-        assert sorted(tf.getnames()) == ["app.py", "helpers.py"]
-    with tarfile.open(fileobj=__import__("io").BytesIO(framework_archive())) as tf:
-        names = tf.getnames()
-    assert "frontage/view.py" in names and "frontage/dev.py" in names
-    assert all(n.startswith("frontage/") for n in names)
+    (tmp_path / "unused.py").write_text("z = 3\n")
+    names = [n for n, _ in frontage_rt.closure(tmp_path, "app")]
+    assert "app" in names and "helpers" in names and "unused" not in names
+    assert "frontage.reactive" in names and "frontage.router" not in names
+    manifest = json.loads(frontage_rt.manifest(names, "app"))
+    assert "app" not in manifest["modules"] and "helpers" in manifest["modules"]
+    assert frontage_rt.module_file("frontage.view", tmp_path).name == "view.py"
+    assert frontage_rt.module_file("helpers", tmp_path) == tmp_path / "helpers.py"
 
 
 # --- --proxy --------------------------------------------------------------------------------

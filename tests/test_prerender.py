@@ -39,7 +39,7 @@ def test_markers_fence_every_hole_and_keep_bindings():
 
 def test_prerender_counter(tmp_path):
     out = tmp_path / "counter"
-    results = prerender(ROOT / "examples" / "counter", out, bundle_pyscript=False)
+    results = prerender(ROOT / "examples" / "counter", out)
     assert [r.path for r in results] == ["/"]
     page = (out / "index.html").read_text()
     assert '<div id="app" data-fr-hydrate>' in page
@@ -47,18 +47,18 @@ def test_prerender_counter(tmp_path):
     assert "Value: <!--h--><!--[-->0<!--h-->, doubled: <!--h--><!--[-->0<!--h-->" in page
     assert "__frontage_replay" in page and page.index("__frontage_replay") < page.index("<body>")
     assert "data-fr-data" not in page  # no resources, no data block
-    # The wasm shape: the app's source beside the page, the framework as one precompiled
-    # archive, and no loose `frontage/*.py` for the browser to fetch and compile.
+    # The built shape: the app's source beside the page, the modules as bytecode, and no
+    # loose `frontage/*.py` for the browser to fetch.
     assert (out / "counter.py").exists()
-    assert (out / "_frontage" / "frontage.tar").exists()
-    assert (out / "_frontage" / "micropython.wasm").exists()
+    assert (out / "_frontage" / "counter.fbc").exists()
+    assert (out / "_frontage" / "frontage.wasm").exists()
     assert not (out / "frontage").exists()
     assert 'data-fr-entry="counter"' in page
 
 
 def test_prerender_waits_for_resources_and_writes_their_values(tmp_path):
     out = tmp_path / "fetch"
-    results = prerender(ROOT / "examples" / "fetch", out, bundle_pyscript=False)
+    results = prerender(ROOT / "examples" / "fetch", out)
     selector, inner, values = results[0].mounts[0]
     assert selector == "#app"
     assert values["resources"] == [{"id": 1, "name": "Ada Lovelace"}]
@@ -75,7 +75,7 @@ def test_prerender_routes(tmp_path):
     app.mkdir()
     (app / "index.html").write_text(
         '<!DOCTYPE html>\n<html><head><link rel="stylesheet" href="./style.css"></head>\n'
-        '<body><main id="app">Loading…</main>\n<script type="mpy" src="./app.py" config="./pyscript.json"></script></body></html>\n'
+        '<body><main id="app">Loading…</main>\n</body></html>\n'
     )
     (app / "app.py").write_text(
         "from frontage import A, Route, Router, h, mount\n"
@@ -83,21 +83,21 @@ def test_prerender_routes(tmp_path):
         "                root=lambda children: h.div(A('/about', 'about', id='link'), children), mode='history')\n"
         "mount(router, '#app')\n"
     )
-    results = prerender(app, tmp_path / "out", routes=("/", "/about"), bundle_pyscript=False)
+    results = prerender(app, tmp_path / "out", routes=("/", "/about"))
     assert [r.path for r in results] == ["/", "/about"]
     home = (tmp_path / "out" / "index.html").read_text()
     about = (tmp_path / "out" / "about" / "index.html").read_text()
     assert '<h1 id="home">home' in home and 'href="/about"' in home
     assert '<h1 id="about">about' in about and 'id="home"' not in about
     # A page one directory down reaches the app's files through `../`.
-    assert 'src="../app.py"' in about and 'href="../style.css"' in about and 'config="../pyscript.json"' in about
-    assert 'src="./app.py"' in home
+    assert 'src="../_frontage/boot.js"' in about and 'href="../style.css"' in about
+    assert 'src="./_frontage/boot.js"' in home
 
 
 def test_prerender_reports_a_failed_resource(tmp_path):
     app = tmp_path / "bad"
     app.mkdir()
-    (app / "index.html").write_text('<div id="app"></div><script type="mpy" src="./app.py"></script>')
+    (app / "index.html").write_text('<div id="app"></div>')
     (app / "app.py").write_text(
         "from frontage import Loading, Resource, h, mount\n"
         "async def boom():\n    raise RuntimeError('no data')\n"
@@ -105,7 +105,7 @@ def test_prerender_reports_a_failed_resource(tmp_path):
         "mount(app, '#app')\n"
     )
     with pytest.raises(RuntimeError, match="no data"):
-        prerender(app, tmp_path / "out", bundle_pyscript=False)
+        prerender(app, tmp_path / "out")
 
 
 def test_import_app_registers_mounts_and_restores_the_flag(tmp_path):
@@ -159,31 +159,6 @@ def test_only_the_boot_tag_needs_relocating_at_depth():
     assert 'data-fr-entry="app"' in relocate(page, 2)  # a module name, not a path
 
 
-def test_prerender_can_still_write_a_pyscript_page(tmp_path):
-    """0.9.x only: the academy's nine chapter repos boot that way until they move.
-
-    The input is a PyScript-shaped app, not an example: `examples/` boots from WebAssembly
-    now, so feeding one to `--boot pyscript` would assert nothing about a PyScript page.
-    """
-    app = tmp_path / "app"
-    app.mkdir()
-    (app / "index.html").write_text(
-        "<!DOCTYPE html>\n<html><head>\n"
-        '<script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>\n'
-        '</head><body><div id="app">Loading…</div>\n'
-        '<script type="mpy" src="./app.py" config="./pyscript.json"></script></body></html>\n'
-    )
-    (app / "app.py").write_text("from frontage import h, mount\n\nmount(lambda: h.p('hi'), '#app')\n")
-    out = tmp_path / "out"
-    prerender(app, out, bundle_pyscript=False, boot="pyscript")
-    page = (out / "index.html").read_text()
-    assert (out / "frontage" / "view.py").exists() and (out / "pyscript.json").exists()
-    assert not (out / "_frontage").exists()
-    assert '<script type="mpy" src="./app.py"' in page  # the PyScript boot survived
-    assert '<div id="app" data-fr-hydrate>' in page  # hydration is the same either way
-    assert "<p>hi<!--h--></p>" in page  # rendered, with the fence hydration reads
-
-
 def test_check_flags_html_the_browser_rewrites():
     found = check.check_source('from frontage import html\nx = html(t"<p><div>{name}</div></p>")\n')
     assert len(found) == 1 and "<div> inside <p>" in found[0][2]
@@ -195,7 +170,7 @@ def test_check_flags_html_the_browser_rewrites():
 
 def test_prerender_tracker_routes_and_the_memo_loaded_detail(tmp_path):
     out = tmp_path / "tracker"
-    results = prerender(ROOT / "examples" / "tracker", out, routes=("/", "/issues", "/issues/1"), bundle_pyscript=False)
+    results = prerender(ROOT / "examples" / "tracker", out, routes=("/", "/issues", "/issues/1"))
     assert [r.path for r in results] == ["/", "/issues", "/issues/1"]
     dashboard = (out / "index.html").read_text()
     assert 'id="open"' in dashboard and "loading" not in dashboard.lower()

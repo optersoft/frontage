@@ -247,8 +247,9 @@ index signals, `Store` proxies, and the DOM op stream of §4. Plus one thing §3
 because it was not known to be needed: **row operations over Python objects** —
 
 ```python
-from frontage._core import sort, filter, group   # stable; key called once per element
-sort(rows, key=column.value, reverse=True)       # 10,000 ordered floats: 269 ms → ~2 ms
+from frontage._core import sort, filter, group  # stable; key called once per element
+
+sort(rows, key=column.value, reverse=True)  # 10,000 ordered floats: 269 ms → ~2 ms
 ```
 
 — a stable merge sort that decorates once, a filter that calls a predicate at 24 ns a row,

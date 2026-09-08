@@ -8,8 +8,8 @@ and `SPEC.md` is meant to have exactly one reading.
 
 Three rules today:
 
-- A `lambda` inside a template string's braces is a SyntaxError on MicroPython: name the
-  function. Fatal, and invisible until the page loads. Only the *parenthesised* form reaches
+- A `lambda` inside a template string's braces: name the function. A rule from before the
+  runtime, whose compiler accepts it; kept because a named function reads better in a hole. Only the *parenthesised* form reaches
   this rule: CPython 3.14 rejects a bare `{lambda ev: None}` itself (the `:` opens a format
   spec), and that is reported as the parse error it is, which also names the lambda.
 - `html(f"…")` builds a string, not a template: it wants a t-string.
@@ -249,7 +249,7 @@ def findings(source, path="<string>", line_offset=0):
                 ):
                     add(
                         part,
-                        "lambda inside a template string's braces: MicroPython rejects it, name the function",
+                        "lambda inside a template string's braces: name the function",
                         "lambda-in-template",
                     )
         elif isinstance(node, ast.Call) and node.args and isinstance(node.args[0], ast.JoinedStr):

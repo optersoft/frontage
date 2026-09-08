@@ -10,6 +10,7 @@ mod js;
 
 use frontage_vm::host::{Host, ModuleSource};
 use frontage_vm::jshooks::Slot;
+use frontage_vm::value::Value;
 use frontage_vm::vm::Vm;
 use std::collections::HashMap;
 
@@ -95,6 +96,8 @@ pub extern "C" fn init() -> u32 {
         }
     }
     let mut vm = Vm::new(Box::new(host));
+    #[cfg(feature = "compiler")]
+    frontage_compile::install(&mut vm);
     vm.js_hooks = Some(&js::HOOKS);
     vm.browser = true;
     vm.builtin_modules.insert("js", js::mod_js);
@@ -114,6 +117,63 @@ pub extern "C" fn add_module(name_ptr: *mut u8, name_len: usize, ptr: *mut u8, l
             vm().host.add_module(&name, bytes);
         } else {
             (*core::ptr::addr_of_mut!(PENDING)).push((name, bytes));
+        }
+    }
+}
+
+/// Compile `source` and run it as `__main__` (the `compiler` feature): 0 ran, 1 raised (the
+/// traceback went to stderr), 2 + n on `sys.exit(n)`.
+#[cfg(feature = "compiler")]
+#[no_mangle]
+pub extern "C" fn run_source(ptr: *mut u8, len: usize) -> u32 {
+    let source = unsafe { String::from_utf8_lossy(&take(ptr, len)).into_owned() };
+    let vm = vm();
+    let code = match frontage_compile::compile(vm, &source, "<program>") {
+        Ok(c) => c,
+        Err(e) => {
+            vm.host.write_stderr(&format!("SyntaxError: {e}\n"));
+            return 1;
+        }
+    };
+    let r = vm.run_main(code, "<program>");
+    let _ = vm.dom_flush();
+    finish(vm, r)
+}
+
+/// A dev swap: `entry` re-run as `__main__` after `names` (comma-separated) were replaced
+/// with `add_module`. 0 ran, 1 raised.
+#[no_mangle]
+pub extern "C" fn swap(entry_ptr: *mut u8, entry_len: usize, names_ptr: *mut u8, names_len: usize) -> u32 {
+    let entry = unsafe { String::from_utf8_lossy(&take(entry_ptr, entry_len)).into_owned() };
+    let names = unsafe { String::from_utf8_lossy(&take(names_ptr, names_len)).into_owned() };
+    let vm = vm();
+    let r = (|| {
+        let dev = vm.import_module("frontage.dev")?;
+        let key = vm.intern("swap");
+        let f = vm.get_attr(dev, key)?;
+        let e = vm.str(&entry);
+        let items: Vec<Value> = names.split(',').filter(|s| !s.is_empty()).map(|s| vm.str(s)).collect();
+        let list = vm.list(items);
+        vm.call(f, &[e, list], &[])
+    })();
+    let _ = vm.dom_flush();
+    finish(vm, r)
+}
+
+/// The exit code of a run: 0, 1 with the traceback printed, 2 + n on `sys.exit(n)`.
+fn finish(vm: &mut Vm, r: Result<Value, Value>) -> u32 {
+    match r {
+        Ok(_) => 0,
+        Err(exc) => {
+            let se = vm.t.system_exit;
+            if vm.exc_matches(exc, se) {
+                let code = vm.exc_value(exc);
+                let n = vm.as_i64(code).unwrap_or(if code.is_none() { 0 } else { 1 });
+                return 2 + n.clamp(0, 250) as u32;
+            }
+            let text = vm.format_exception(exc);
+            vm.host.write_stderr(&text);
+            1
         }
     }
 }

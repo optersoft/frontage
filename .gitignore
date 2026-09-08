@@ -14,7 +14,6 @@ test-results/
 .vscode/
 .DS_Store
 /www/
-/tools/pyscript/
 .wrangler/
 /build/
 node_modules/

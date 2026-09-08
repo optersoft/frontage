@@ -188,7 +188,7 @@ def test_playground_runs_and_shares(server, page: Page):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(f"{server}/playground/index.html")
-    expect(page.locator("#status")).to_contain_text("ran on micropython", timeout=30_000)
+    expect(page.locator("#status")).to_contain_text("ran on frontage", timeout=30_000)
     page.click("#app button:nth-of-type(2)")  # the counter's +
     expect(page.locator("#app span")).to_have_text(" 1 ")
     page.select_option("#example", "state")
@@ -207,7 +207,7 @@ def test_playground_tailwind(server, page: Page):
     """The playground loads Tailwind's browser build from jsdelivr (this test needs the network)
     without preflight, and it styles the DOM Frontage inserts."""
     page.goto(f"{server}/playground/index.html")
-    expect(page.locator("#status")).to_contain_text("ran on micropython", timeout=30_000)
+    expect(page.locator("#status")).to_contain_text("ran on frontage", timeout=30_000)
     page.select_option("#example", "tailwind")
     expect(page.locator("#app button")).to_have_text("Count")
     page.wait_for_function("getComputedStyle(document.querySelector('#app button')).borderRadius !== '0px'")

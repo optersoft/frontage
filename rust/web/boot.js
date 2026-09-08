@@ -3,8 +3,9 @@
 //
 //     <script type="module" src="./_frontage/boot.js" data-fr-boot data-fr-entry="counter"></script>
 //
-// Everything resolves from `import.meta.url`, as the MicroPython `boot.js` does, so a page at
-// any depth finds its runtime.
+// `data-fr-compiler` on the tag loads `frontage-compiler.wasm` instead, the same runtime with
+// the compiler in it, for a page that runs a program someone types (the playground).
+// Everything resolves from `import.meta.url`, so a page at any depth finds its runtime.
 
 import { load } from "./glue.js";
 
@@ -16,22 +17,48 @@ async function bytes(url) {
   return new Uint8Array(await response.arrayBuffer());
 }
 
+const console_io = {
+  stdout: (s) => console.log(s.replace(/\n$/, "")),
+  stderr: (s) => console.error(s.replace(/\n$/, "")),
+};
+
+/**
+ * The runtime with the compiler in it and no application: for a page that holds its program
+ * in a URL fragment or a text box (the runner, the playground) and has nothing to fetch.
+ * `rt.runSource(code)` runs it as `__main__`. Deliberately touches nothing in the document.
+ */
+export async function startRuntime() {
+  const [rt, framework] = await Promise.all([
+    load(asset("frontage-compiler.wasm"), console_io),
+    fetch(asset("framework.json")).then((r) => r.json()),
+  ]);
+  await addModules(rt, framework.modules);
+  return rt;
+}
+
+async function addModules(rt, names) {
+  const modules = await Promise.all(names.map(async (name) => [name, await bytes(asset(`${name}.fbc`))]));
+  for (const [name, fbc] of modules) rt.addModule(name, fbc);
+}
+
 async function boot() {
   const tag = document.querySelector("script[data-fr-boot]");
   if (!tag) {
+    // Not an error: a page may import this module for `startRuntime` alone.
     console.warn("frontage: no <script data-fr-boot> on the page, so nothing was mounted");
     return null;
   }
   const entry = tag.dataset.frEntry || "app";
-  const [rt, manifest] = await Promise.all([
-    load(asset("frontage.wasm"), {
-      stdout: (s) => console.log(s.replace(/\n$/, "")),
-      stderr: (s) => console.error(s.replace(/\n$/, "")),
-    }),
+  // A page that runs a typed program (`data-fr-compiler`) gets the whole framework, since
+  // the program may import any of it; a built app gets its entry's import closure.
+  const compiler = tag.dataset.frCompiler !== undefined;
+  const [rt, manifest, framework] = await Promise.all([
+    load(asset(compiler ? "frontage-compiler.wasm" : "frontage.wasm"), console_io),
     fetch(asset("manifest.json")).then((r) => r.json()),
+    compiler ? fetch(asset("framework.json")).then((r) => r.json()) : { modules: [] },
   ]);
-  const modules = await Promise.all(manifest.modules.map(async (name) => [name, await bytes(asset(`${name}.fbc`))]));
-  for (const [name, fbc] of modules) rt.addModule(name, fbc);
+  const names = [...new Set([...framework.modules, ...manifest.modules])];
+  await addModules(rt, names);
   // JavaScript modules the app asked for (`data-fr-js="name=./lib.js, ./other.js"`): the
   // glue around a C or Rust library compiled to WebAssembly. Named ones become Python
   // modules. Resolved from `../` of this file, the app's own directory in every layout.

@@ -10,6 +10,12 @@ crate-type = ["cdylib"]
 
 [dependencies]
 frontage-vm = { path = "../vm" }
+frontage-compile = { path = "../compile", optional = true }
+
+[features]
+# The compiler in the page: `exec`/`compile` and `run_source`, for the playground and the
+# runner. Off for a built app, which runs bytecode the host compiled.
+compiler = ["dep:frontage-compile"]
 
 [build-dependencies]
 frontage-vm = { path = "../vm" }

@@ -26,7 +26,7 @@ from pathlib import Path
 
 from frontage._exports import EXPORTS
 
-from . import micropython as mp
+from . import frontage_rt
 
 FRAMEWORK = "frontage"
 
@@ -69,10 +69,10 @@ class Graph:
             self.modules[name] = path
             self.app_modules.add(name)
 
-        package = Path(framework) if framework else mp.RUNTIME_DIR.parent
+        package = Path(framework) if framework else frontage_rt.ROOT / "frontage"
         self.modules[FRAMEWORK] = package / "__init__.py"
         self.framework_modules.add(FRAMEWORK)
-        for path in mp.browser_modules(package):
+        for path in frontage_rt.browser_modules(package):
             if path.name == "__init__.py":
                 continue
             name = f"{FRAMEWORK}.{path.stem}"

@@ -2,13 +2,11 @@
 never in the browser (the package's browser files are the top-level modules only).
 
     python -m frontage build APP [--out DIR] [--entry NAME]
-    python -m frontage export APP [--out DIR] [--no-pyscript] [--pyscript DIR]
     python -m frontage prerender APP [--out DIR] [--route /path ...] [--entry app.py]
     python -m frontage tailwind [--input tailwind.css] [--output tailwind.out.css] [--watch] [--minify]
     python -m frontage check PATH...
     python -m frontage lsp [--stdio]
-    python -m frontage runtime fetch|image|all [--dest DIR]
-    python -m frontage pyscript [--dest DIR]
+    python -m frontage runtime
     python -m frontage serve [DIR] [--port 8000] [--watch DIR] [--open]
 """
 
@@ -21,15 +19,13 @@ PROG = "python -m frontage"
 USAGE = """usage: {prog} <command> [options]
 
 commands:
-  build      copy an app and the WebAssembly runtime into a directory that runs anywhere
-  export     the same for a PyScript page (0.9.x only; `build` replaces it)
-  prerender  export, then write each route as finished HTML that the browser hydrates
+  build      compile an app and copy it with the runtime into a directory that runs anywhere
+  prerender  build, then write each route as finished HTML that the browser hydrates
   tailwind   run the Tailwind CSS standalone CLI over the project (downloaded once)
-  check      flag code MicroPython or a template will reject (lambda in a t-string, html(f"…"))
+  check      flag code a template will reject (lambda in a t-string, html(f"…"))
   lsp        the language server: what an editor knows about html(t"…")
-  serve      serve a directory and reload the page whenever a file changes
-  runtime    fetch the pinned interpreter, or rebuild the framework image
-  pyscript   fetch PyScript's offline bundle (0.9.x only)
+  serve      serve a directory and swap the page's modules whenever a file changes
+  runtime    where the runtime's files and its compiler are (fetching the compiler)
   version    print the package version
 
 `{prog} <command> --help` for each command's options."""
@@ -59,8 +55,6 @@ def main(argv=None):
         return 0
     if command == "build":
         from .build import main as run
-    elif command == "export":
-        from .export import main as run
     elif command == "prerender":
         from .prerender import main as run
     elif command == "tailwind":
@@ -70,9 +64,7 @@ def main(argv=None):
     elif command == "lsp":
         from frontage.lsp.server import main as run
     elif command == "runtime":
-        from .micropython import main as run
-    elif command == "pyscript":
-        from .pyscript import main as run
+        from .frontage_rt import main as run
     elif command == "serve":
         from .serve import main as run
     elif command == "schema":

@@ -22,11 +22,9 @@ import argparse
 import re
 import shutil
 import sys
-import tarfile
 from pathlib import Path
 
 from . import PROG
-from . import micropython as mp
 
 IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", "_frontage", "*.tar")
 
@@ -128,7 +126,7 @@ class Component:
 def builtin():
     """Frontage's own components: every subpackage that ships a `_browser/` directory —
     `frontage.chart`, `frontage.table`, `frontage.map`, … (one distribution since 0.10)."""
-    package = mp.RUNTIME_DIR.parent
+    package = Path(__file__).resolve().parent.parent
     found = []
     for sub in sorted(package.iterdir()):
         if sub.is_dir() and (sub / BROWSER_DIR / COMPONENT_ENTRY).is_file():
@@ -216,21 +214,6 @@ def find_entry(app):
     raise SystemExit(f"error: cannot tell which module mounts the app ({', '.join(sorted(names))}); pass --entry")
 
 
-def app_image(app, out, components=()):
-    """`app.tar`: the app's modules at the root, each component's under its package name."""
-    members = [(path.name, path) for path in sorted(app.glob("*.py"))]
-    for component in components:
-        members.extend(component.modules())
-    with tarfile.open(out, "w", format=tarfile.USTAR_FORMAT) as tf:
-        for name, path in members:
-            info = tarfile.TarInfo(name)
-            info.size = path.stat().st_size
-            info.mtime = 0
-            with path.open("rb") as fh:
-                tf.addfile(info, fh)
-    return members
-
-
 _BOOT_TAG = re.compile(r"<script[^>]*\bdata-fr-boot\b[^>]*>", re.I)
 _FR_JS = re.compile(r"""\s*data-fr-js\s*=\s*["\']([^"\']*)["\']""", re.I)
 
@@ -256,19 +239,9 @@ def declare(html, declarations):
     return html[: match.start()] + f'{merged} data-fr-js="{", ".join(names)}">' + html[match.end() :]
 
 
-def framework_image(dest, quiet=False):
-    """The vendored `frontage.tar`, rebuilt first when we are running from a checkout."""
-    source = mp.RUNTIME_DIR / mp.IMAGE_NAME
-    checkout = (mp.RUNTIME_DIR.parent.parent / "pyproject.toml").exists()
-    if checkout or not source.exists():
-        mp.image(quiet=quiet)
-    shutil.copy2(source, dest / mp.IMAGE_NAME)
-
-
-def build(app, out="", entry="", quiet=False, components=None, runtime=""):
+def build(app, out="", entry="", quiet=False, components=None):
     from . import frontage_rt
 
-    target = frontage_rt.selected(runtime)
     app = Path(app).resolve()
     if not app.is_dir():
         raise SystemExit(f"error: {app} is not a directory")
@@ -281,19 +254,13 @@ def build(app, out="", entry="", quiet=False, components=None, runtime=""):
         shutil.rmtree(out)
     shutil.copytree(app, out, ignore=IGNORE)
 
-    runtime_dir = out / "_frontage"
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-    if target == frontage_rt.MICROPYTHON:
-        mp.fetch(quiet=quiet)  # a no-op once the wheel's copy is in place
-        for name in mp.WANTED + ("boot.js",):
-            shutil.copy2(mp.RUNTIME_DIR / name, runtime_dir / name)
-        framework_image(runtime_dir, quiet=quiet)
-    else:
-        if not frontage_rt.available():
-            raise SystemExit("error: the frontage runtime is not built: see rust/README.md")
-        for name in frontage_rt.ASSETS:
-            shutil.copy2(frontage_rt.WEB / name, runtime_dir / name)
-    runtime = runtime_dir  # the name the rest of this function has always used
+    runtime = out / "_frontage"
+    runtime.mkdir(parents=True, exist_ok=True)
+    if not frontage_rt.available():
+        raise SystemExit("error: the runtime is missing from frontage/_runtime: run `mk runtime.build`")
+    for name in frontage_rt.ASSETS:
+        if name != "frontage-compiler.wasm":  # a built app never compiles in the page
+            shutil.copy2(frontage_rt.RUNTIME_DIR / name, runtime / name)
 
     # Components: assets beside the runtime, Python in the archive, a line in the boot tag.
     if components is None:
@@ -309,15 +276,12 @@ def build(app, out="", entry="", quiet=False, components=None, runtime=""):
         declarations.append(f"{component.name}=./_frontage/components/{component.name}/{COMPONENT_ENTRY}")
         if (assets / COMPONENT_STYLE).is_file():
             styles.append(f'<link rel="stylesheet" href="./_frontage/components/{component.name}/{COMPONENT_STYLE}">')
-    if target == frontage_rt.MICROPYTHON:
-        members = app_image(app, runtime / "app.tar", installed)
-    else:
-        # Frontage's own runtime: the entry's import closure, each module as bytecode, and a
-        # manifest naming them; nothing the page does not reach is shipped.
-        members = frontage_rt.closure(app, entry, installed)
-        for name, path in members:
-            (runtime / f"{name}.fbc").write_bytes(frontage_rt.compile_module(path))
-        (runtime / frontage_rt.MANIFEST).write_bytes(frontage_rt.manifest([n for n, _ in members], entry))
+    # The entry's import closure, each module as bytecode, and a manifest naming them;
+    # nothing the page does not reach is shipped.
+    members = frontage_rt.closure(app, entry, installed)
+    for name, path in members:
+        (runtime / f"{name}.fbc").write_bytes(frontage_rt.compile_module(path))
+    (runtime / frontage_rt.MANIFEST).write_bytes(frontage_rt.manifest([n for n, _ in members], entry))
 
     page = out / "index.html"
     if page.exists():
@@ -357,7 +321,6 @@ def main(argv=None):
         metavar="NAME=PATH",
         help="a component package not installed yet, for developing one (repeatable)",
     )
-    parser.add_argument("--runtime", default="", help="frontage (its own runtime, from rust/) or micropython")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
     local = []
@@ -370,7 +333,7 @@ def main(argv=None):
     try:
         # An explicit --component replaces discovery, so a component under development is
         # tested as itself rather than alongside an older installed copy of the same name.
-        build(args.app, args.out, args.entry, quiet=args.quiet, components=local or None, runtime=args.runtime)
+        build(args.app, args.out, args.entry, quiet=args.quiet, components=local or None)
     except SystemExit as exc:
         print(exc, file=sys.stderr)
         return 2

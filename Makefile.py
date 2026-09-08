@@ -2,10 +2,8 @@
 
     mk sync                 .venv with every dependency group
     mk test                 unit tests (no browser)
-    mk test --browser       the examples in Chromium, on MicroPython in WebAssembly
-    mk runtime.wasm         compile the interpreter (frontage's variant) into frontage/_runtime/
-    mk runtime.fetch        the fallback: upstream's micropython.mjs + .wasm, no Docker needed
-    mk runtime.build        cross-compile the framework into frontage/_runtime/frontage.tar
+    mk test --browser       the examples in Chromium, on the runtime in WebAssembly
+    mk runtime.build        build the runtime from rust/ into frontage/_runtime/ (cargo, wasm-opt)
     mk pyscript.fetch       PyScript's offline bundle (core + both interpreters) into tools/pyscript/
     mk lint [--fix]         ruff check + ruff format, as CI runs them
     mk types                ty
@@ -59,21 +57,15 @@ def sync() -> None:
 def test(*paths: str, browser: bool = False, verbose: bool = False) -> None:
     """Run the tests. Unit tests by default; the browser suite with --browser.
 
-    The browser suite needs `mk runtime.fetch` once, and a Chromium once:
-    `uv run playwright install chromium`.
+    The browser suite needs the runtime's compiler (`cargo build --profile native -p fpy` in
+    rust/, or a release's binary) and a Chromium once: `uv run playwright install chromium`.
 
     Args:
-        browser: run tests/browser (Playwright, MicroPython in wasm) instead of the unit tests
+        browser: run tests/browser (Playwright, the runtime in wasm) instead of the unit tests
         verbose: show each test name
     """
     target = list(paths) or (["tests/browser", "--browser", "chromium"] if browser else [])
     sh("uv", "run", "--frozen", "pytest", "-q", *target, *(["-v"] if verbose else []))
-
-
-@task(name="pyscript.fetch", requires=["uv"])
-def pyscript_fetch() -> None:
-    """Unpack PyScript's offline bundle into tools/pyscript/<version>/ (a no-op once present)."""
-    sh("uv", "run", "--frozen", "python", "tools/fetch_pyscript.py")
 
 
 @task(requires=["uv"])
@@ -101,41 +93,41 @@ def check() -> None:
     note("lint, types and unit tests passed")
 
 
-@task(name="runtime.fetch", requires=["uv"])
-def runtime_fetch() -> None:
-    """The fallback: download the upstream MicroPython WebAssembly build into frontage/_runtime/.
-
-    A no-op once the runtime is in place. The build a release ships is `mk runtime.wasm`,
-    frontage's own variant; this one is PyScript's build, bigger and slower, for a checkout
-    without Docker.
-    """
-    sh("uv", "run", "--frozen", "python", "-m", "frontage", "runtime", "fetch")
-
-
-@task(name="runtime.wasm", requires=["uv", "docker"])
-def runtime_wasm() -> None:
-    """Compile the interpreter: upstream MicroPython at the pinned tag with frontage's variant.
-
-    `tools/micropython/variant/` applied out of tree to `ports/webassembly`, built in the
-    pinned `emscripten/emsdk` image (FASTER.md §2: 108 KB of brotli instead of 170, a Python
-    call 0.05 µs instead of 0.25). The pin is `frontage/cli/micropython.py:UPSTREAM_TAG`;
-    bumping it is that line, this task, and a browser run. Commit the two files it writes.
-    """
-    sh("uv", "run", "--frozen", "python", "-m", "frontage", "runtime", "build")
-
-
-@task(name="runtime.build", requires=["uv"], needs=[runtime_fetch])
+@task(name="runtime.build", requires=["cargo", "wasm-opt"])
 def runtime_build() -> None:
-    """Cross-compile the framework to bytecode and pack frontage/_runtime/frontage.tar.
+    """Build the runtime from rust/ and vendor it into frontage/_runtime/.
 
-    Needs mpy-cross (the dev group). The tar is reproducible -- mtimes are pinned to 0 -- so
-    CI rebuilds it and compares bytes rather than trusting a timestamp a wheel install
-    flattens. Run this after any change to a top-level module in frontage/.
-    """
-    sh("uv", "run", "--frozen", "python", "-m", "frontage", "runtime", "image")
+    Two wasms — `frontage.wasm` (no parser in the page) and `frontage-compiler.wasm` (with
+    the compiler, for the playground and the runner) — through `cargo build -p frontage-web
+    --profile wasms` and `wasm-opt -Os`, the two scripts beside them, and the compiler `fpy`
+    for this machine (`--profile native`). Commit the four files: a wheel ships them,
+    `frontage build` copies them, `frontage serve` serves them."""
+    rust = ROOT / "rust"
+    dest = ROOT / "frontage" / "_runtime"
+    dest.mkdir(parents=True, exist_ok=True)
+    built = rust / "target" / "wasm32-unknown-unknown" / "wasms" / "frontage_web.wasm"
+    for name, features in (("frontage.wasm", []), ("frontage-compiler.wasm", ["--features", "compiler"])):
+        sh(
+            "cargo",
+            "build",
+            "-p",
+            "frontage-web",
+            "--profile",
+            "wasms",
+            "--target",
+            "wasm32-unknown-unknown",
+            *features,
+            cwd=rust,
+        )
+        sh("wasm-opt", "-Os", "--all-features", str(built), "-o", str(dest / name))
+    sh("cargo", "build", "--profile", "native", "-p", "fpy", cwd=rust)
+    for name in ("glue.js", "boot.js"):
+        shutil.copy2(rust / "web" / name, dest / name)
+    for name in ("frontage.wasm", "frontage-compiler.wasm"):
+        print(f"{dest / name}: {(dest / name).stat().st_size:,} bytes")
 
 
-@task(requires=["uv"], needs=[runtime_fetch])
+@task(requires=["uv"])
 def serve(*, port: int = 8000) -> None:
     """Serve the examples, reading ./frontage live; the page reloads when a file changes.
 
@@ -156,7 +148,7 @@ def dist_build() -> None:
     )
 
 
-@task(requires=["uv"], needs=[runtime_build])
+@task(requires=["uv"])
 def build(app: str, *, out: str = "", entry: str = "") -> None:
     """Build one app directory into static files that boot from WebAssembly.
 
@@ -177,27 +169,6 @@ def build(app: str, *, out: str = "", entry: str = "") -> None:
 
 
 @task(requires=["uv"])
-def export(app: str, *, out: str = "", no_pyscript: bool = False) -> None:
-    """Export one app directory as static files that run without this repo, PyPI or a CDN.
-
-    Args:
-        app: the app directory (it has an index.html and the .py files)
-        out: destination directory (default build/<app name>)
-        no_pyscript: link PyScript from pyscript.net instead of bundling the local copy
-    """
-    args = ["-m", "frontage", "export", app]
-    if out:
-        args += ["--out", out]
-    if no_pyscript:
-        args.append("--no-pyscript")
-    else:
-        bundles = sorted((ROOT / "tools" / "pyscript").glob("*/pyscript"))
-        if bundles:
-            args += ["--pyscript", str(bundles[-1])]
-    sh("uv", "run", "--frozen", "python", *args)
-
-
-@task(requires=["uv"], needs=[runtime_fetch])
 def gallery(*, out: str = "", quick: bool = False, css: bool = False) -> None:
     """Build every gallery app, measure it in Chromium, and write www/gallery/.
 
@@ -264,26 +235,36 @@ def site_build() -> None:
     if keep.exists():
         shutil.move(str(keep), str(WWW / "gallery"))
     runtime = ROOT / "frontage" / "_runtime"
-    if not (runtime / "micropython.wasm").exists():
-        raise MakeError("no runtime: run `mk runtime.fetch` first")
-    shutil.copytree(runtime, WWW / "playground" / "_frontage")
-    # A second copy at the site root, for `runner.html`. Not shared with the playground's:
-    # `boot.js` finds `app.tar` beside itself, and the runner has no app to find, so one copy
-    # cannot serve both without breaking the rule that makes nested routes work.
-    shutil.copytree(runtime, WWW / "_frontage")
-    # The playground's own source is its app, packed the way `build` packs one.
-    import tarfile
-
-    with tarfile.open(WWW / "playground" / "_frontage" / "app.tar", "w", format=tarfile.USTAR_FORMAT) as archive:
-        for module in sorted((ROOT / "web" / "playground").glob("*.py")):
-            info = tarfile.TarInfo(module.name)
-            info.size = module.stat().st_size
-            info.mtime = 0
-            with module.open("rb") as handle:
-                archive.addfile(info, handle)
-    # The wheel, so a pyscript.json can name it by URL with no PyPI hop. Every wheel ever
-    # released stays at its URL: the academy chapters and their repos pin one by version, and
-    # a deploy must not break them.
+    if not (runtime / "frontage-compiler.wasm").exists():
+        raise MakeError("no runtime: run `mk runtime.build` first")
+    # The playground is an app: built the way any app is, then given the compiler build and
+    # every framework module, since a typed program may import any of it. A second copy at
+    # the site root, for `runner.html`: `boot.js` finds its files beside itself, and the
+    # runner has no app directory, so one copy cannot serve both.
+    sh(
+        "uv",
+        "run",
+        "--frozen",
+        "python",
+        "-m",
+        "frontage",
+        "build",
+        "web/playground",
+        "--out",
+        str(WWW / "playground"),
+        "--quiet",
+    )
+    sh(
+        "uv",
+        "run",
+        "--frozen",
+        "python",
+        "-c",
+        "from frontage.cli.frontage_rt import site_files; site_files('www/playground/_frontage'); site_files('www/_frontage')",
+    )
+    # The wheel, so a page can name it by URL with no PyPI hop. Every wheel ever released
+    # stays at its URL: the academy chapters and their repos pin one by version, and a deploy
+    # must not break them.
     sh("uv", "build", "--wheel", "--out-dir", str(WWW / "dist"))
     _released_wheels(WWW / "dist")
     files = sum(1 for f in WWW.rglob("*") if f.is_file())

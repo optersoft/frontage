@@ -1,7 +1,7 @@
 """The local server every browser test needs: examples at /examples/, the package at
-/frontage/, and the WebAssembly runtime under every directory at `<dir>/_frontage/`.
-Session-scoped and autouse, so any single test can run alone. Skips the whole directory when
-the runtime has not been fetched."""
+/frontage/, and the runtime under every directory at `<dir>/_frontage/`. Session-scoped and
+autouse, so any single test can run alone. Skips the whole directory when the runtime is not
+vendored or its compiler cannot be found."""
 
 import socket
 import subprocess
@@ -23,13 +23,12 @@ def _free_port():
 
 @pytest.fixture(scope="session", autouse=True)
 def server():
-    import os
 
-    if os.environ.get("FRONTAGE_RUNTIME") in ("frontage", "rs", "rust"):
-        if not (ROOT / "rust" / "web" / "frontage.wasm").exists():
-            pytest.skip("frontage's runtime is not built: see rust/README.md")
-    elif not (RUNTIME / "micropython.wasm").exists():
-        pytest.skip("no MicroPython runtime: run `mk runtime.fetch`")
+    from frontage.cli import frontage_rt
+
+    if not frontage_rt.available():
+        pytest.skip("the runtime is missing from frontage/_runtime: run `mk runtime.build`")
+    frontage_rt.fpy(quiet=True)  # the compiler, or a message that says how to get one
     port = _free_port()
     proc = subprocess.Popen(
         [sys.executable, str(ROOT / "tools" / "serve.py"), "--port", str(port), "--quiet"],

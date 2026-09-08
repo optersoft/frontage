@@ -4,7 +4,7 @@
 
 **A fine-grained reactive UI framework for Python in the browser.** Signals, memos and
 effects; templates that clone once and bind only their holes; a keyed `For`; a nested
-router; running on MicroPython compiled to WebAssembly, with the framework delivered as
+router; running on its own Python runtime compiled to WebAssembly, with the framework delivered as
 precompiled bytecode. No JavaScript, no Node, no bundler: you write Python and the browser
 runs it.
 
@@ -115,9 +115,9 @@ The repo uses [uv](https://docs.astral.sh/uv/) and [mkrun](https://github.com/op
 ```sh
 mk sync                 # .venv with every dependency group
 mk check                # lint, types, unit tests: the gate
-mk runtime.fetch        # the pinned micropython.mjs + .wasm into frontage/_runtime/
+mk runtime.build        # build the runtime from rust/ into frontage/_runtime/ (cargo, wasm-opt)
 mk serve                # examples and playground at http://127.0.0.1:8000/, package read live, reload on save
-mk test --browser       # every example in Chromium, on MicroPython in WebAssembly
+mk test --browser       # every example in Chromium, on the runtime in WebAssembly
 mk build examples/todo  # a static directory that boots from WebAssembly
 mk site.deploy          # publish frontage.optersoft.com by hand (Cloudflare Pages): landing page, gallery, playground, wheels
 ```

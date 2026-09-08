@@ -9,9 +9,8 @@
   the academy's `::: frontage`, a docs sample, a bug report — can be an <iframe> pointing here
   with the program in the URL fragment, and nothing more.
 
-  Why a served file rather than a `srcdoc`: the same reason the academy's PyScript runner is
-  one. An inlined document's URL is `about:srcdoc`, and a loader that resolves anything
-  against its own location has nowhere to stand.
+  Why a served file rather than a `srcdoc`: an inlined document's URL is `about:srcdoc`, and
+  a loader that resolves anything against its own location has nowhere to stand.
 
   Why a fragment: it is part of `src`, so the frame runs without a handshake with the parent
   page and without waiting for hydration; re-running is a `src` re-assignment; and a fragment
@@ -63,21 +62,22 @@ try {
   const { code, markup } = program();
   if (markup) document.getElementById("fr-body").innerHTML = markup;
 
-  const mp = await startRuntime();
-  mp.globals.set("__fr_code", code);
-  // `exec` against runPython's own globals, so the program sees __name__ == "__main__" and
-  // behaves as it would in a built app. `format_exception` is frontage's own, so a traceback
-  // here reads the way one does in the framework's error page.
-  mp.runPython(
+  const rt = await startRuntime();
+  // The program runs as `__main__`, so an app that guards on __name__ behaves as it would in
+  // a built app. `format_exception` is frontage's own, so a traceback here reads the way one
+  // does in the framework's error page.
+  const wrapper =
+    "import json as _json\n" +
+    "_code = _json.loads(" + JSON.stringify(JSON.stringify(code)) + ")\n" +
     "try:\n" +
-    "    exec(__fr_code)\n" +
+    "    exec(_code, {'__name__': '__main__'})\n" +
     "except Exception as _e:\n" +
     "    from frontage.errors import format_exception\n" +
     "    import js\n" +
     "    _b = js.document.getElementById('fr-error')\n" +
     "    _b.textContent = format_exception(_e)\n" +
-    "    _b.hidden = False\n"
-  );
+    "    _b.hidden = False\n";
+  if (rt.runSource(wrapper) === 1) fail("frontage: the program could not be compiled; see the console");
 } catch (error) {
   fail("frontage: " + (error && error.message ? error.message : String(error)));
 }

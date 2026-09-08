@@ -14,9 +14,8 @@ def test_package_imports_in_the_browser(server, page: Page):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(f"{server}/examples/hello/index.html")
-    # MicroPython is the only supported interpreter since 0.9.0. `frontage.platform` still
-    # reports which one it found, and this asserts it found the right one.
-    expect(page.locator("#app")).to_contain_text(re.compile(r"Frontage \S+ on (micropython|frontage)"), timeout=30_000)
+    # `frontage.platform` reports the runtime it found, and this asserts it is frontage's own.
+    expect(page.locator("#app")).to_contain_text(re.compile(r"Frontage \S+ on frontage"), timeout=30_000)
     expect(page.locator("#app")).to_contain_text("<p>Hello from the string renderer</p>")
     expect(page.locator("#app")).to_contain_text("reactive: [2, 42] store: ['Ann', 'Bob']")
     assert errors == []

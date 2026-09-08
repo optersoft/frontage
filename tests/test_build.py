@@ -1,12 +1,11 @@
 """`python -m frontage build` and the runtime image behind it (no network, no browser)."""
 
-import tarfile
+import json
 from pathlib import Path
 
 import pytest
 
-from frontage.cli import build
-from frontage.cli import micropython as mp
+from frontage.cli import build, frontage_rt
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -25,46 +24,13 @@ def write_app(tmp_path, **files):
 
 
 def test_browser_modules_are_the_top_level_ones_without_dunder_main():
-    names = {p.name for p in mp.browser_modules()}
+    names = {p.name for p in frontage_rt.browser_modules()}
     assert "__main__.py" not in names
     # debug.py ships: an app imports it to get the hydration report. The old pyscript.json
     # listed fifteen modules and left it out, which is why this is asserted rather than counted.
     assert "debug.py" in names
     assert {"reactive.py", "view.py", "dom.py", "runtime.py", "version.py"} <= names
     assert not any("/" in n for n in names)
-
-
-def test_the_vendored_runtime_is_present_and_is_the_pinned_build():
-    for name in mp.WANTED + ("boot.js", mp.IMAGE_NAME):
-        assert (mp.RUNTIME_DIR / name).exists(), f"{name} missing: run `mk runtime.fetch`"
-    # The pin is a single line; if it moves, the image and the tests move with it.
-    assert mp.UPSTREAM_TAG.startswith("v1.29.")
-    wasm = (mp.RUNTIME_DIR / "micropython.wasm").read_bytes()
-    # Frontage's own variant, not the upstream npm build: a third smaller, and with wasm
-    # exception handling in place of the JavaScript `invoke_*` longjmp trampolines that
-    # upstream imports (FASTER.md §2). A fetched fallback build fails both.
-    assert 200_000 < len(wasm) < 300_000, "run `mk runtime.wasm`"
-    assert b"invoke_" not in wasm, "the upstream build, not frontage's variant: run `mk runtime.wasm`"
-
-
-def test_the_framework_image_holds_every_browser_module(tmp_path):
-    out, compiled = mp.image(tmp_path, quiet=True)
-    with tarfile.open(out) as tf:
-        members = tf.getnames()
-    assert len(members) == len(mp.browser_modules())
-    assert all(m.startswith("frontage/") for m in members)
-    stems = {Path(m).stem for m in members}
-    assert stems == {p.stem for p in mp.browser_modules()}
-    if compiled:
-        assert all(m.endswith(".mpy") for m in members)
-
-
-def test_the_framework_image_is_reproducible(tmp_path):
-    # mtime is pinned to 0 so the same sources give the same bytes; CI compares them rather
-    # than trusting a timestamp, which a wheel install flattens anyway.
-    first, _ = mp.image(tmp_path / "a", quiet=True)
-    second, _ = mp.image(tmp_path / "b", quiet=True)
-    assert first.read_bytes() == second.read_bytes()
 
 
 # --- choosing the entry ----------------------------------------------------------------
@@ -106,8 +72,14 @@ def test_build_writes_a_page_that_boots_from_wasm(tmp_path):
     app = write_app(tmp_path, counter=APP)
     out = build.build(app, tmp_path / "out", quiet=True)
 
-    for name in ("boot.js", "micropython.mjs", "micropython.wasm", "frontage.tar", "app.tar"):
+    for name in ("boot.js", "glue.js", "frontage.wasm", "manifest.json", "counter.fbc", "frontage.reactive.fbc"):
         assert (out / "_frontage" / name).exists()
+    # The page fetches the entry by its own name; the manifest lists the rest, and only what
+    # the entry reaches (the router is not imported here).
+    manifest = json.loads((out / "_frontage" / "manifest.json").read_text())
+    assert "counter" not in manifest["modules"] and "frontage.reactive" in manifest["modules"]
+    assert "frontage.router" not in manifest["modules"]
+    assert (out / "_frontage" / "frontage.wasm").read_bytes()[:4] == b"\0asm"
 
     page = (out / "index.html").read_text()
     assert 'data-fr-entry="counter"' in page and "data-fr-boot" in page
@@ -117,16 +89,23 @@ def test_build_writes_a_page_that_boots_from_wasm(tmp_path):
     assert not (out / "pyscript.json").exists()
 
 
-def test_the_app_image_holds_the_app_modules_as_source(tmp_path):
+def test_a_module_the_entry_does_not_import_is_not_shipped(tmp_path):
     app = write_app(tmp_path, counter=APP, helpers="X = 1\n")
     out = build.build(app, tmp_path / "out", quiet=True)
-    with tarfile.open(out / "_frontage" / "app.tar") as tf:
-        assert sorted(tf.getnames()) == ["counter.py", "helpers.py"]
-        member = tf.extractfile("helpers.py")
-        assert member is not None
-        assert member.read() == b"X = 1\n"
+    assert (out / "_frontage" / "counter.fbc").exists()
+    assert not (out / "_frontage" / "helpers.fbc").exists()
     # The sources stay readable in the output too, which is the point of a teaching framework.
-    assert (out / "counter.py").exists()
+    assert (out / "helpers.py").exists()
+
+
+def test_the_vendored_runtime_is_present():
+    for name in frontage_rt.ASSETS:
+        assert (frontage_rt.RUNTIME_DIR / name).is_file(), f"{name} missing: run `mk runtime.rs`"
+    wasm = (frontage_rt.RUNTIME_DIR / "frontage.wasm").read_bytes()
+    assert wasm[:4] == b"\0asm" and 400_000 < len(wasm) < 1_000_000
+    # The built app never compiles in the page; only the playground and the runner do.
+    compiler = (frontage_rt.RUNTIME_DIR / "frontage-compiler.wasm").read_bytes()
+    assert compiler[:4] == b"\0asm" and len(compiler) > len(wasm)
 
 
 def test_an_existing_page_keeps_its_markup_and_gains_the_tag(tmp_path):
@@ -212,10 +191,10 @@ def test_a_component_ships_its_assets_its_python_and_a_declaration(tmp_path):
     assert 'data-fr-js="chart=./_frontage/components/chart/index.js"' in page
     assert '<link rel="stylesheet" href="./_frontage/components/chart/index.css">' in page
 
-    # A third-party component's Python travels under its package name, so `import frontage_chart` works in the page.
-    with tarfile.open(out / "_frontage" / "app.tar") as tf:
-        names = sorted(tf.getnames())
-    assert names == ["counter.py", "frontage_chart/__init__.py", "frontage_chart/plot.py"]
+    # A third-party component's Python travels under its package name, as bytecode, so
+    # `import frontage_chart` works in the page — when the app imports it.
+    assert not (out / "_frontage" / "frontage_chart.fbc").exists()
+    assert not (out / "_frontage" / "app.tar").exists()
 
 
 def test_a_private_module_stays_on_cpython(tmp_path):

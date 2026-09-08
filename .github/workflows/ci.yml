@@ -43,14 +43,29 @@ jobs:
       - run: uv run --frozen ruff check
       - run: uv run --frozen ruff format --check .
       - run: uv run --frozen ty check
+      # The runtime's compiler, for `frontage build`; and the runtime's own tests against
+      # CPython (rust/py/tests), which the venv above provides.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - run: cargo build --profile native -p fpy
+        working-directory: rust
+      - run: cargo test --profile native
+        working-directory: rust
       - run: uv run --frozen pytest -q
 
-  # The examples in a real browser under both interpreters, against a local PyScript
-  # bundle (no CDN), so the job is reproducible. Slower, so separate.
+  # The examples in a real browser on the runtime. Slower, so separate.
   browser:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - run: cargo build --profile native -p fpy
+        working-directory: rust
       - uses: astral-sh/setup-uv@v5
         with:
           version: ${{ env.UV_VERSION }}
@@ -86,8 +101,34 @@ jobs:
       - run: uv run --frozen playwright install --with-deps ${{ matrix.browser }}
       - run: uv run --frozen pytest -q tests/browser --browser ${{ matrix.browser }}
 
+  # The compiler, one binary per platform, attached to the release: `frontage build` fetches
+  # the one for its machine on first use (cli/frontage_rt.py), so the wheel stays pure Python.
+  compiler:
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      matrix:
+        include:
+          - { os: macos-14, asset: fpy-macos-arm64 }
+          - { os: macos-13, asset: fpy-macos-x64 }
+          - { os: ubuntu-latest, asset: fpy-linux-x64 }
+          - { os: ubuntu-24.04-arm, asset: fpy-linux-arm64 }
+          - { os: windows-latest, asset: fpy-windows-x64.exe }
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --profile native -p fpy
+        working-directory: rust
+      - run: cp rust/target/native/fpy${{ runner.os == 'Windows' && '.exe' || '' }} ${{ matrix.asset }}
+        shell: bash
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}
+
   publish:
-    needs: [test, browser]
+    needs: [test, browser, compiler]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: pypi
@@ -107,12 +148,12 @@ jobs:
       # packaging mistake would ship a release that installs fine and boots nothing.
       - run: |
           uv run --isolated --no-project --with dist/*.whl -- python -c "
-          import frontage.cli.micropython as mp
-          for name in mp.WANTED + ('boot.js', mp.IMAGE_NAME):
-              path = mp.RUNTIME_DIR / name
+          from frontage.cli import frontage_rt
+          for name in frontage_rt.ASSETS:
+              path = frontage_rt.RUNTIME_DIR / name
               assert path.is_file(), f'{name} missing from the wheel'
               print(f'{name}: {path.stat().st_size:,} bytes')
-          assert (mp.RUNTIME_DIR / 'micropython.wasm').stat().st_size > 200_000
+          assert (frontage_rt.RUNTIME_DIR / 'frontage.wasm').stat().st_size > 400_000
           "
       - run: uv run --isolated --no-project --with dist/*.tar.gz -- python -c "import frontage; print(frontage.__version__)"
       - run: uv publish --trusted-publishing always

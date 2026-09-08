@@ -9,9 +9,9 @@ license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "Optersoft, S.L.", email = "david@optersoft.com" }]
 # CPython is only the test and tooling host. The real constraint on the package's syntax
-# is MicroPython in the browser (no typing at runtime, no dataclasses); see CLAUDE.md.
+# is frontage's own runtime in the browser (rust/, no typing at runtime); see CLAUDE.md.
 requires-python = ">=3.12"
-keywords = ["micropython", "webassembly", "wasm", "frontend", "framework", "reactive", "spa", "pyscript"]
+keywords = ["webassembly", "wasm", "frontend", "framework", "reactive", "spa", "browser"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Web Environment",
@@ -53,7 +53,7 @@ path = "frontage/version.py"
 packages = ["frontage"]
 
 [tool.hatch.build.targets.sdist]
-include = ["frontage", "tests", "examples", "editors", "tools/serve.py", "tools/fetch_pyscript.py", "tools/lsp_probe.py", "README.md", "DESIGN.md", "SPEC.md", "LICENSE", "NOTICE"]
+include = ["frontage", "tests", "examples", "editors", "tools/serve.py", "tools/lsp_probe.py", "README.md", "DESIGN.md", "SPEC.md", "LICENSE", "NOTICE"]
 
 [dependency-groups]
 dev = [
@@ -62,10 +62,6 @@ dev = [
     "ruff>=0.16",
     # Pre-1.0 and fast-moving: pin, and expect new diagnostics on an upgrade.
     "ty>=0.0.78,<0.1",
-    # Cross-compiles the framework to bytecode for the browser image. Maintainers only: the
-    # wheel ships the built image, so nothing a user installs needs this. Pinned to the mpy
-    # ABI of the interpreter in frontage/_runtime (MicroPython 1.28 is MPY_VERSION 6).
-    "mpy-cross-v6.3>=1.1.1",
     # The components' tests: the remote server half, its HTTP client, and the Pydantic models
     # `frontage schema` compiles.
     "polars>=1.0",
@@ -81,8 +77,7 @@ line-length = 120
 # per target: PEP 758 unparenthesized excepts on 3.14) targets 3.12 for it; only the files
 # that use template strings are 3.14.
 target-version = "py312"
-# tools/micropython/variant/manifest.py is read by MicroPython's build, where `include` is a builtin.
-extend-exclude = ["tools/pyscript", "www", "typings", "tools/micropython/variant", "rust"]
+extend-exclude = ["www", "typings", "rust"]
 
 [tool.ruff.per-file-target-version]
 "tests/test_m2.py" = "py314"
@@ -103,9 +98,9 @@ ignore = ["E501"]
 include = ["frontage", "tests"]
 
 [tool.ty.environment]
-# What CI runs; the package itself claims 3.9 and MicroPython, which no checker models.
+# What CI runs; the package itself runs on its own runtime in the browser, which no checker models.
 python-version = "3.14"
-# Stubs for the browser-only modules (js, pyodide.ffi, pyscript.*), see typings/README.md.
+# Stubs for the browser-only modules (js, jsffi, _core, _dom, _view), see typings/README.md.
 extra-paths = ["typings"]
 
 [tool.pytest.ini_options]

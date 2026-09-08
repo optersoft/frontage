@@ -21,7 +21,6 @@ from pathlib import Path
 
 from . import PROG
 from . import build as build_cli
-from . import export as export_cli
 
 # Queued until `mount` hydrates, then replayed on the same targets (see DomRenderer.end_hydration).
 REPLAY = """<script>
@@ -279,24 +278,18 @@ def prerender(
     routes=("/",),
     entry=None,
     timeout=30.0,
-    bundle_pyscript=True,
-    pyscript_dir=None,
     quiet=True,
     crawl=False,
     limit=1000,
-    boot="wasm",
 ):
     """Build `app` into `out` and write its prerendered pages there; returns the outputs.
     With `crawl`, every route a rendered page links to (an `A`, a plain `<a href>`) is rendered
     too, until no new one turns up or `limit` pages are written.
 
-    `boot` is `wasm` (the loader, the framework as bytecode) or `pyscript` (0.9.x only).
-    Prerendering itself is the same either way: it runs on this CPython and writes HTML."""
+    Prerendering runs on this CPython and writes HTML; the page then boots the runtime and
+    hydrates."""
     out = Path(out).resolve() if out else Path.cwd() / "build" / Path(app).resolve().name
-    if boot == "pyscript":
-        out = export_cli.export(app, out, bundle_pyscript=bundle_pyscript, pyscript_dir=pyscript_dir, quiet=quiet)
-    else:
-        out = build_cli.build(app, out, entry=(entry or "").removesuffix(".py"), quiet=quiet)
+    out = build_cli.build(app, out, entry=(entry or "").removesuffix(".py"), quiet=quiet)
     page = (out / "index.html").read_text()
     entry = entry or find_entry(page)
     if entry is None:
@@ -348,16 +341,6 @@ def main(argv=None):
         "--crawl", action="store_true", help="also render every route a rendered page links to (A, <a href>)"
     )
     parser.add_argument("--timeout", type=float, default=30.0, help="seconds to wait for resources per route")
-    parser.add_argument(
-        "--no-pyscript", action="store_true", help="link PyScript from pyscript.net instead of bundling it"
-    )
-    parser.add_argument("--pyscript", default=None, help="an unpacked bundle (the directory with core.js) to copy")
-    parser.add_argument(
-        "--boot",
-        choices=("wasm", "pyscript"),
-        default="wasm",
-        help="how the page starts Python (default: wasm; `pyscript` is 0.9.x only)",
-    )
     args = parser.parse_args(argv)
     try:
         results = prerender(
@@ -366,11 +349,8 @@ def main(argv=None):
             routes=tuple(args.route or ["/"]),
             entry=args.entry,
             timeout=args.timeout,
-            bundle_pyscript=not args.no_pyscript,
-            pyscript_dir=args.pyscript,
             quiet=False,
             crawl=args.crawl,
-            boot=args.boot,
         )
     except (FileNotFoundError, ValueError, RuntimeError, TimeoutError) as exc:
         print(f"error: {exc}", file=sys.stderr)

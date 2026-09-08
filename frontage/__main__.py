@@ -1,4 +1,4 @@
-"""`python -m frontage`: the command line (export, tailwind, check, pyscript). Never imported
+"""`python -m frontage`: the command line (build, prerender, serve, check, tailwind). Never imported
 in the browser."""
 
 import sys

@@ -1,5 +1,6 @@
 """The playground: the code in the editor runs against the frontage package on this site; the
-URL fragment carries the code, so a link is a saved snippet. Runs on MicroPython."""
+URL fragment carries the code, so a link is a saved snippet. Boots the runtime with the
+compiler in it (`data-fr-compiler`), so `exec` works in the page."""
 
 import frontage
 from frontage import dev

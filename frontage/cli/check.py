@@ -1,7 +1,8 @@
 """`python -m frontage check PATH...`: the rules a browser interpreter enforces but a desktop
 Python does not, found before the page loads.
 
-- A `lambda` inside a template string's braces is a SyntaxError on MicroPython: name the function.
+- A `lambda` inside a template string's braces: name the function (it reads better, and the
+  rule predates the runtime, whose compiler accepts it).
 - `html(f"…")` builds text, not a template: it wants a t-string.
 - HTML the browser's parser rewrites (a block element inside `<p>`, `<tr>` straight under
   `<table>`, `<a>` inside `<a>`): the page then differs from the template, and a prerendered

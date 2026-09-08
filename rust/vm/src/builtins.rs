@@ -335,6 +335,8 @@ pub fn install(vm: &mut Vm) {
     add_builtin(vm, "oct", b_oct);
     add_builtin(vm, "bin", b_bin);
     add_builtin(vm, "globals", b_globals);
+    add_builtin(vm, "compile", b_compile);
+    add_builtin(vm, "exec", b_exec);
     add_builtin(vm, "vars", b_vars);
     add_builtin(vm, "dir", b_dir);
     add_builtin(vm, "__import__", b_import);
@@ -1498,6 +1500,52 @@ fn b_oct(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
 }
 fn b_bin(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
     radix(vm, args, "0b", |n| format!("{n:b}"))
+}
+/// `compile(source, filename, mode)`: a code object, when this runtime carries the compiler
+/// (the native runner, the playground's wasm); the page's runtime has none.
+fn b_compile(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    check_args(vm, args, 1, 3, "compile")?;
+    if args[0].is_obj() && matches!(vm.heap.get(args[0]), Obj::Code(_)) {
+        return Ok(args[0]);
+    }
+    let source = vm.expect_str(args[0], "source")?;
+    let filename = match args.get(1) {
+        Some(&f) => vm.str_of(f)?,
+        None => "<string>".to_string(),
+    };
+    let compile = match vm.compiler {
+        Some(c) => c,
+        None => return Err(vm.runtime_error("compile(): this runtime carries no compiler (the page runs bytecode)")),
+    };
+    match compile(vm, &source, &filename) {
+        Ok(code) => Ok(vm.heap.alloc(Obj::Code(code))),
+        Err(msg) => {
+            let c = vm.t.syntax_error;
+            Err(vm.exception(c, msg))
+        }
+    }
+}
+/// `exec(source_or_code, globals=None, locals=None)`.
+fn b_exec(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    check_args(vm, args, 1, 3, "exec")?;
+    let code_v = b_compile(vm, &args[..1], &[])?;
+    let code = match vm.heap.get(code_v) {
+        Obj::Code(c) => c.clone(),
+        _ => unreachable!(),
+    };
+    let globals = match args.get(1) {
+        Some(&g) if !g.is_none() => g,
+        _ => vm.frames.last().map(|f| f.globals).unwrap_or(Value::NONE),
+    };
+    let locals = match args.get(2) {
+        Some(&l) if !l.is_none() => l,
+        _ => globals,
+    };
+    vm.roots.push(code_v);
+    let r = vm.run_code(code, globals, locals);
+    vm.roots.pop();
+    r?;
+    Ok(Value::NONE)
 }
 fn b_globals(vm: &mut Vm, _args: &[Value], _k: &[(Value, Value)]) -> PyResult {
     Ok(vm.frames.last().map(|f| f.globals).unwrap_or(Value::NONE))

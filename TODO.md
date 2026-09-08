@@ -481,7 +481,7 @@ decides, all in 0.10.0:
       spike's numbers (§9) said the interpreter alone is parity and the 2× is the core; the
       user chose the runtime that can hold the core as VM types. `main` ships MicroPython
       until the runtime reaches parity with the browser suite; `rust/` is the release path
-      from here. Done the same day: `build_app.py` packs the import closure (`cli/graph.py`),
+      from here. Done the same day: the build packs the import closure (`cli/graph.py`),
       `re` over `RegExp` (`rust/vm/src/lib/re.py`, a web case in the differential suite).
 - [ ] **The native core in the runtime** (`RUNTIME.md` §3.8, `FASTER.md` step 2 landing
       here). Gate: `profile_rows` create ≤ 35 ms (2× MicroPython's 71), the 157 tests
@@ -515,12 +515,17 @@ decides, all in 0.10.0:
       read off an object (`window.FormData`) had no `.new`; hydration's cursor must stay on
       proxies and every proxy read flushes the op stream first; a floating hole's parent is
       a question, not `-marker`. Prerender + hydration work unchanged.
+- [x] **`main` ships the runtime, and only the runtime (2026-09-08, the user's call).**
+      MicroPython is gone — its interpreter, `frontage.tar`, `mpy-cross`, the variant, the
+      PyScript `export` — and `frontage/_runtime/` holds `frontage.wasm`, `frontage-compiler.wasm`
+      (the same with the compiler: the playground and the runner `exec` a program in the page),
+      `glue.js` and `boot.js`, vendored by `mk runtime.build` and shipped in the wheel. The
+      compiler `fpy` is fetched from the release's assets on first use (CI builds five, one per
+      platform, on a tag), like the Tailwind CLI. `frontage serve` swaps modules over `.fbc`.
 - [ ] Runtime gaps that the suite does not reach: `match`, metaclasses and class keywords,
       generator finalisation on collection, `__slots__`, a size test in CI (209 KB brotli
-      today), `serve`'s module swap over `.fbc` (the runtime page reloads whole), `fpy` in
-      the wheel (a native wheel per platform, or the compiler as a second wasm on the host —
-      the decision before 0.10 can ship on this runtime), the playground on the runtime
-      (needs the compiler in the page: the same decision).
+      today), the 0.10.0 release itself (FASTER.md §11's list, the chapters, the wheel's first
+      tag with binaries).
 - [ ] **`_core.sort/filter/group` as the core's first tenant, and `frontage.table` on them.**
       Found 2026-09-08: MicroPython's `sorted` pivots on the last element and calls `key` per
       comparison — **10,000 ordered floats sort in 269 ms, 1,440 ms with a key** (shuffled:

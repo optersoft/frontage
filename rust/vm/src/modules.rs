@@ -936,8 +936,26 @@ fn fr_profile_stop(vm: &mut Vm, _args: &[Value], _k: &[(Value, Value)]) -> PyRes
     }
     Ok(vm.list(out))
 }
+/// `run_module_as_main(name)`: the module's bytecode the host holds, run as `__main__` — a
+/// dev swap's last step.
+fn fr_run_module_as_main(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    let v = arg(vm, args, 0, "run_module_as_main")?;
+    let name = vm.expect_str(v, "name")?;
+    let bytes = match vm.host.find_module_code(&name) {
+        Some(b) => b,
+        None => return Err(vm.import_error(format!("No module named '{name}'"))),
+    };
+    let code = match crate::fbc::load(vm, &bytes) {
+        Ok(c) => c,
+        Err(msg) => return Err(vm.import_error(format!("bad bytecode for '{name}': {msg}"))),
+    };
+    let filename = code.filename.to_string();
+    vm.run_main(code, &filename)?;
+    Ok(Value::NONE)
+}
 fn mod_frontage(vm: &mut Vm) -> PyResult {
     let (m, d) = module_with(vm, "_frontage");
+    add_fn(vm, d, "run_module_as_main", fr_run_module_as_main);
     add_fn(vm, d, "profile_start", fr_profile_start);
     add_fn(vm, d, "profile_stop", fr_profile_stop);
     add_fn(vm, d, "sleep_ms", fr_sleep_ms);

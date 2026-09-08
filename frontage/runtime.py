@@ -1,13 +1,9 @@
 """Which Python is running us, and the bridge to the browser when there is one.
 
-Frontage runs in three places: Pyodide and MicroPython in the browser, and plain CPython on
-a server or in the tests. The names exported here are the browser globals and the FFI
-helpers on the two browser runtimes, and stand-ins on the server that say so if touched.
-Nothing else in the package imports `js`, `jsffi` or `pyodide` directly.
-
-Since 0.9.0 there is no PyScript: the browser loads `micropython.wasm` and the framework as
-precompiled bytecode, and this module talks to MicroPython's own bridge. Everything the
-package needed from PyScript was a thin wrapper over that bridge, so the change stops here.
+Frontage runs in two places: its own runtime in the browser (`rust/`, since 0.10), and plain
+CPython on a server or in the tests. The names exported here are the browser globals and the
+FFI helpers on the runtime, and stand-ins on the server that say so if touched. Nothing else
+in the package imports `js` or `jsffi` directly.
 """
 
 import sys
@@ -17,8 +13,6 @@ import sys
 __all__ = [
     "CPYTHON",
     "FRONTAGE",
-    "MICROPYTHON",
-    "PYODIDE",
     "Unavailable",
     "create_proxy",
     "document",
@@ -30,17 +24,11 @@ __all__ = [
     "window",
 ]
 
-PYODIDE = "pyodide"
-MICROPYTHON = "micropython"
 CPYTHON = "cpython"
-FRONTAGE = "frontage"  # frontage's own runtime (RUNTIME.md), in the browser
+FRONTAGE = "frontage"  # frontage's own runtime (rust/), in the browser
 
 
 def _detect():
-    if sys.platform == "emscripten":
-        return PYODIDE
-    if sys.platform == "webassembly" and sys.implementation.name == "micropython":
-        return MICROPYTHON
     if sys.implementation.name == "frontage":
         try:
             import js  # only the browser build has one, and only a page has a document
@@ -53,7 +41,7 @@ def _detect():
 
 
 platform = _detect()
-in_browser = platform in (PYODIDE, MICROPYTHON, FRONTAGE)
+in_browser = platform == FRONTAGE
 
 
 class _Prerender:
@@ -107,18 +95,11 @@ class Unavailable:
         return f"<{self._name}: unavailable outside the browser>"
 
 
-if platform in (MICROPYTHON, FRONTAGE):
-    # Upstream MicroPython's own browser bridge (and frontage's runtime, which offers the
-    # same two modules with the same names on purpose) (`ports/webassembly`: the `js` module and
-    # `modjsffi.c`). PyScript wrapped exactly these and added nothing the package used —
-    # `.new()`, which `dom` and `router` call, is upstream too — so frontage loads without it.
+if platform == FRONTAGE:
+    # The runtime's bridge: `js` is the JavaScript global scope, `jsffi` the proxies and the
+    # conversions (rust/web/src/jsffi.py).
     from js import document, window
     from jsffi import create_proxy, to_js
-elif platform == PYODIDE:
-    # Unsupported since 0.9.0: no CI, no examples, no docs. Three lines that still work is a
-    # cheaper way to keep the door open than deleting a name `frontage.platform` promises.
-    from js import document, window
-    from pyodide.ffi import create_proxy, to_js
 else:
     document = Unavailable("document")
     window = Unavailable("window")

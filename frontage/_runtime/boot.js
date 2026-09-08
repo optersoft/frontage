@@ -1,140 +1,89 @@
-// Frontage boot. MicroPython compiled to WebAssembly, the framework as precompiled bytecode,
-// the app as source. Four requests, no PyScript, nothing of the framework parsed in the page.
+// Boot a page on frontage's runtime: the wasm, the compiled modules named in
+// `manifest.json`, then the entry as `__main__`. The page declares what to run:
 //
-// The page declares what to run and this file works out the rest:
+//     <script type="module" src="./_frontage/boot.js" data-fr-boot data-fr-entry="counter"></script>
 //
-//     <script type="module" src="./_frontage/boot.js" data-fr-boot data-fr-entry="app"></script>
-//
-// Every runtime path resolves from `import.meta.url`, never from the document. That is not a
-// style choice: `micropython.mjs` locates its own `.wasm` relative to itself, so a
-// document-relative path would give one loader two different bases, and a prerendered page at
-// /about/ would silently fetch the wrong thing. It also means the prerenderer never has to
-// rewrite a runtime path when it moves a page down a directory.
+// `data-fr-compiler` on the tag loads `frontage-compiler.wasm` instead, the same runtime with
+// the compiler in it, for a page that runs a program someone types (the playground).
+// Everything resolves from `import.meta.url`, so a page at any depth finds its runtime.
 
-import { loadMicroPython } from "./micropython.mjs";
+import { load } from "./glue.js";
 
 const asset = (name) => new URL(name, import.meta.url).href;
-
-/** Members of an uncompressed USTAR archive, as [name, bytes]. */
-function untar(buffer) {
-  const files = [];
-  const bytes = new Uint8Array(buffer);
-  const text = new TextDecoder();
-  for (let at = 0; at + 512 <= bytes.length; ) {
-    const name = text.decode(bytes.subarray(at, at + 100)).replace(/\0.*$/, "");
-    if (!name) break; // the trailing zero blocks
-    const size = parseInt(text.decode(bytes.subarray(at + 124, at + 136)).replace(/[\0 ]/g, ""), 8) || 0;
-    const kind = String.fromCharCode(bytes[at + 156]);
-    at += 512;
-    if (kind === "0" || kind === "\0") files.push([name, bytes.slice(at, at + size)]);
-    at += Math.ceil(size / 512) * 512;
-  }
-  return files;
-}
 
 async function bytes(url) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`frontage: ${response.status} fetching ${url}`);
-  return response.arrayBuffer();
+  return new Uint8Array(await response.arrayBuffer());
 }
 
-function unpack(mp, archive) {
-  for (const [name, content] of untar(archive)) {
-    const slash = name.lastIndexOf("/");
-    if (slash > 0) mp.FS.mkdirTree("/lib/" + name.slice(0, slash));
-    mp.FS.writeFile("/lib/" + name, content);
-  }
-}
-
-/** `data-fr-js="name=./lib.js, ./other.js"` as [name, specifier] pairs. */
-function declaredModules(value) {
-  return (value || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map((item) => {
-      const split = item.indexOf("=");
-      if (split < 0) return ["", item];
-      return [item.slice(0, split).trim(), item.slice(split + 1).trim()];
-    });
-}
+const console_io = {
+  stdout: (s) => console.log(s.replace(/\n$/, "")),
+  stderr: (s) => console.error(s.replace(/\n$/, "")),
+};
 
 /**
- * The interpreter with the framework in it, and no application.
- *
- * Exported because not every page has an app directory to fetch. An embedded runner — the
- * academy's live-code frames, the playground — holds the program in a URL fragment or a text
- * box, and needs somewhere to run it rather than something to load:
- *
- *     const mp = await startRuntime();
- *     mp.globals.set("__src", program);
- *     mp.runPython("exec(__src)");
- *
- * It deliberately does not touch the document. A frame can call it from an opaque origin,
- * where there is no boot tag and nothing to query.
+ * The runtime with the compiler in it and no application: for a page that holds its program
+ * in a URL fragment or a text box (the runner, the playground) and has nothing to fetch.
+ * `rt.runSource(code)` runs it as `__main__`. Deliberately touches nothing in the document.
  */
 export async function startRuntime() {
-  // `/lib` is already on MicroPython's sys.path, so nothing has to edit it.
-  const [mp, framework] = await Promise.all([
-    loadMicroPython({ url: asset("micropython.wasm") }), // heapsize/pystack: upstream defaults
-    bytes(asset("frontage.tar")),
+  const [rt, framework] = await Promise.all([
+    load(asset("frontage-compiler.wasm"), console_io),
+    fetch(asset("framework.json")).then((r) => r.json()),
   ]);
-  unpack(mp, framework);
-  return mp;
+  await addModules(rt, framework.modules);
+  return rt;
+}
+
+async function addModules(rt, names) {
+  const modules = await Promise.all(names.map(async (name) => [name, await bytes(asset(`${name}.fbc`))]));
+  for (const [name, fbc] of modules) rt.addModule(name, fbc);
 }
 
 async function boot() {
   const tag = document.querySelector("script[data-fr-boot]");
   if (!tag) {
-    // Not an error. A page can import this module purely for `startRuntime` — an embedded
-    // runner holds its program in a fragment and has no app to boot. A real app that has
-    // simply lost its tag gets the warning and a page stuck on its placeholder.
+    // Not an error: a page may import this module for `startRuntime` alone.
     console.warn("frontage: no <script data-fr-boot> on the page, so nothing was mounted");
     return null;
   }
   const entry = tag.dataset.frEntry || "app";
-
-  const [mp, app] = await Promise.all([startRuntime(), bytes(asset("app.tar"))]);
-  unpack(mp, app);
-
-  // JavaScript modules the app asked for — the glue around a C or Rust library compiled to
-  // WebAssembly is exactly this shape. Named ones become real Python modules, so the app
-  // writes `import mathlib` rather than reaching through `window`.
-  //
-  // Resolved from `../` of this file, which is the app's own directory in every layout:
-  // `<app>/index.html` beside `<app>/_frontage/boot.js`. That keeps them correct on a
-  // prerendered page at any depth, with nothing for the prerenderer to rewrite.
+  // A page that runs a typed program (`data-fr-compiler`) gets the whole framework, since
+  // the program may import any of it; a built app gets its entry's import closure.
+  const compiler = tag.dataset.frCompiler !== undefined;
+  const [rt, manifest, framework] = await Promise.all([
+    load(asset(compiler ? "frontage-compiler.wasm" : "frontage.wasm"), console_io),
+    fetch(asset("manifest.json")).then((r) => r.json()),
+    compiler ? fetch(asset("framework.json")).then((r) => r.json()) : { modules: [] },
+  ]);
+  const names = [...new Set([...framework.modules, ...manifest.modules])];
+  await addModules(rt, names);
+  // JavaScript modules the app asked for (`data-fr-js="name=./lib.js, ./other.js"`): the
+  // glue around a C or Rust library compiled to WebAssembly. Named ones become Python
+  // modules. Resolved from `../` of this file, the app's own directory in every layout.
   const appRoot = new URL("../", import.meta.url);
-  for (const [name, specifier] of declaredModules(tag.dataset.frJs)) {
+  for (const item of (tag.dataset.frJs || "").split(",")) {
+    const spec = item.trim();
+    if (!spec) continue;
+    const eq = spec.indexOf("=");
+    const name = eq > 0 ? spec.slice(0, eq).trim() : "";
+    const specifier = eq > 0 ? spec.slice(eq + 1).trim() : spec;
     const namespace = await import(new URL(specifier, appRoot).href);
-    if (name) mp.registerJsModule(name, namespace);
+    if (name) rt.registerJsModule(name, namespace);
   }
-
-  // The entry runs as __main__, the way `<script type="mpy" src>` ran it, so an app that
-  // guards on __name__ behaves the same. runPython already executes in __main__ and
-  // MicroPython cannot construct a module object, so exec against its own globals is both
-  // the simplest and the only route.
-  mp.globals.set("__fr_entry", entry);
-  mp.runPython(
-    "with open('/lib/' + __fr_entry + '.py') as _f: _src = _f.read()\n" +
-      "del __fr_entry\n" +
-      "exec(_src)\n" +
-      "del _src\n"
-  );
-  return mp;
+  const main = await bytes(asset(`${entry}.fbc`));
+  window.frontage = rt;
+  const code = rt.run(main);
+  if (code === 1) console.error("frontage: the entry raised; see above");
+  return rt;
 }
 
-// A parsed document, always. With every asset warm in cache the interpreter can otherwise
-// outrun the parser, and mount() then finds no target — or worse, finds the target but not
-// the prerendered data block, and quietly refetches everything the server already sent.
 const parsed =
   document.readyState === "loading"
     ? new Promise((done) => document.addEventListener("DOMContentLoaded", done, { once: true }))
     : Promise.resolve();
 
-// Rethrow out of band. A rejected promise is not reliably reported to window.onerror or to a
-// test runner's page-error hook, and a boot failure that shows up as nothing at all is the
-// worst thing this file could do.
 export const ready = parsed.then(boot);
 ready.catch((error) => {
   setTimeout(() => {

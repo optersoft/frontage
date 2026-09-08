@@ -60,7 +60,7 @@ PAGE = """<!DOCTYPE html>
   <span class="text-2xl tracking-tight text-muted dark:text-muted-dark">gallery</span>
 </header>
 
-<p class="mt-4 max-w-2xl text-muted dark:text-muted-dark">Python in the browser, on MicroPython
+<p class="mt-4 max-w-2xl text-muted dark:text-muted-dark">Python in the browser, on its own runtime
 compiled to WebAssembly. Every app below is a directory of static files: no server, no build
 step, no JavaScript toolchain. The numbers are measured, not claimed — they come from loading
 each page in Chromium with a cold cache.</p>

@@ -507,7 +507,7 @@ def test_prerender_crawl_renders_the_routes_the_pages_link_to(tmp_path):
         ")\n"
         "mount(router, '#app')\n"
     )
-    results = prerender(app, tmp_path / "out", bundle_pyscript=False, crawl=True)
+    results = prerender(app, tmp_path / "out", crawl=True)
     assert [r.path for r in results] == ["/", "/about", "/team"]
     assert (tmp_path / "out" / "team" / "index.html").exists()
     assert "team" in (tmp_path / "out" / "team" / "index.html").read_text()
@@ -526,8 +526,8 @@ def test_console_script_is_declared_and_runs(monkeypatch, capsys):
     cli.PROG = "python -m frontage"
     exe = Path(sys.executable).parent / "frontage"
     if exe.exists():
-        run = subprocess.run([str(exe), "export", "--help"], capture_output=True, text=True)
-        assert run.returncode == 0 and "usage: frontage export" in run.stdout
+        run = subprocess.run([str(exe), "build", "--help"], capture_output=True, text=True)
+        assert run.returncode == 0 and "usage: frontage build" in run.stdout
 
 
 # --- the debug module -------------------------------------------------------------------------------

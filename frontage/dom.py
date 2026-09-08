@@ -1,4 +1,4 @@
-"""The browser renderer: the `Renderer` seam over the real DOM, through `pyscript`.
+"""The browser renderer: the `Renderer` seam over the real DOM, through the runtime's op stream.
 
 Every method here is a bridge crossing from Python to JavaScript. Events are delegated: one
 document listener per bubbling event type, dispatching to the handler registered for the
@@ -17,7 +17,7 @@ except ImportError:
 
 
 class _NoDom:
-    """Stands in for `_dom` where the runtime has no op stream (MicroPython, Pyodide)."""
+    """Stands in for `_dom` outside the runtime (CPython imports this module for `Hydration`)."""
 
     available = False
 
@@ -275,7 +275,11 @@ class Hydration:
         return None
 
 
-class DomRenderer(Renderer):
+class _ProxyRenderer(Renderer):
+    """The DOM through JavaScript proxies, one crossing per operation: what hydration walks
+    (its cursor moves over real nodes), and the base the streaming renderer falls back to for
+    a node that came from JavaScript."""
+
     def __init__(self):
         if not in_browser:
             raise RuntimeError("DomRenderer needs a browser; use HtmlRenderer on the server")
@@ -512,8 +516,8 @@ def _set_current_target(ev, node):
         pass
 
 
-class StreamRenderer(DomRenderer):
-    """`DomRenderer` over the runtime's op stream: a node is an integer id in the glue's array,
+class StreamRenderer(_ProxyRenderer):
+    """The renderer a page uses, over the runtime's op stream: a node is an integer id in the glue's array,
     every operation is appended to a buffer the glue executes in one crossing (at the end of
     a batch of effects, before a question about the document, when control returns to
     JavaScript), and delegated events are walked in JavaScript, which calls one Python
@@ -700,8 +704,9 @@ class StreamRenderer(DomRenderer):
         _dom.teardown()
 
 
+DomRenderer = StreamRenderer
+
 if _dom.available:
-    DomRenderer = StreamRenderer  # ty: ignore[invalid-assignment]
     if _view is not None and _view.available:
         # The native template path needs the view's classes and its Python fallbacks.
         from . import view as _view_module

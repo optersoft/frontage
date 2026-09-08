@@ -11,13 +11,11 @@ scroll position. Stdlib only; `python -m http.server` with a watcher."""
 import argparse
 import functools
 import http.server
-import io
 import json
 import os
 import queue
 import re
 import sys
-import tarfile
 import threading
 import time
 import urllib.error
@@ -47,22 +45,16 @@ stream.onmessage = async (event) => {{
   try {{ message = JSON.parse(event.data); }} catch {{ return location.reload(); }}
   if (message.type !== "swap") return location.reload();
   try {{
-    const mp = await ready;
+    const rt = await ready;
     for (const name of message.modules) {{
-      const source = await (await fetch("{module}" + name + ".py")).text();
-      mp.FS.writeFile("/lib/" + name + ".py", source);
+      const response = await fetch("{module}" + name + ".fbc");
+      if (!response.ok) return location.reload();  // the compile failed: the page keeps the last good version
+      rt.addModule(name, new Uint8Array(await response.arrayBuffer()));
     }}
-    mp.globals.set("__fr_entry", message.entry);
-    mp.globals.set("__fr_names", message.modules.join(","));
-    // One line, semicolons rather than newlines: this string travels through a Python
-    // formatter into an HTML page into a JavaScript literal, and every newline in it is one
-    // more chance for a layer to eat a backslash. One of them already did.
-    mp.runPython("import frontage.dev as _d; _d.swap(__fr_entry, __fr_names.split(','))");
+    if (rt.swap(message.entry, message.modules) !== 0) console.error("frontage: the swap raised; see above");
   }} catch (error) {{
-    // Deliberately no reload. The usual failure here is a half-typed file, and `dev.swap`
-    // compiles before it tears anything down, so the page on screen is still the last one
-    // that worked. Reloading would replace it with the broken source and a blank page.
-    console.error("frontage: swap failed, page left as it was", error);
+    console.error("frontage: swap failed, reloading", error);
+    location.reload();
   }}
 }};
 </script>"""
@@ -149,12 +141,9 @@ class Watcher(threading.Thread):
 
 def dev_script(html):
     """The script this page needs: a module swap if it boots from wasm, else a page reload."""
-    from . import frontage_rt
-
     tag = _BOOT_SRC.search(html)
     src = _SRC.search(tag.group(0)) if tag else None
-    if src is None or frontage_rt.selected() == frontage_rt.FRONTAGE:
-        # Frontage's own runtime reloads whole for now: its swap over `.fbc` is not written.
+    if src is None:
         return RELOAD_SCRIPT
     return SWAP_SCRIPT.format(boot=src.group(1), reload=RELOAD_PATH, module=MODULE_PATH)
 
@@ -169,34 +158,6 @@ def inject(html):
         if i >= 0:
             return html[:i] + script + html[i:]
     return html + script
-
-
-def _tar(members):
-    """`[(name, bytes)]` as an uncompressed USTAR archive, the shape `boot.js` unpacks."""
-    buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w", format=tarfile.USTAR_FORMAT) as archive:
-        for name, data in members:
-            info = tarfile.TarInfo(name)
-            info.size = len(data)
-            info.mtime = 0
-            archive.addfile(info, io.BytesIO(data))
-    return buffer.getvalue()
-
-
-def app_archive(root):
-    """The app's modules, straight off disk. Nothing is built in dev: an edit is live."""
-    return _tar([(p.name, p.read_bytes()) for p in sorted(Path(root).glob("*.py"))])
-
-
-def framework_archive():
-    """The framework as *source*, so a checkout's edits reach the page on the next reload.
-
-    A built site gets the precompiled `frontage.tar` instead; here the loop matters more than
-    the 35 ms, and this is what `tools/serve.py` has always done with `/frontage/*.py`.
-    """
-    from . import micropython as mp
-
-    return _tar([("frontage/" + p.name, p.read_bytes()) for p in mp.browser_modules()])
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -337,85 +298,71 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send_module(self, name):
-        """One app module's source, by module name, for a swap."""
+        """One app module as bytecode, by module name, for a swap. A module that does not
+        compile answers 500 with the error, and the page keeps its last working version."""
+        from . import frontage_rt
+
         root = Path(self.app_root or self.translate_path("/"))  # a swap only runs on a single-app server
-        candidate = root / name
-        if candidate.suffix != ".py" or candidate.parent != root or not candidate.is_file():
+        if not name.endswith(".fbc"):
             self.send_error(404)
             return
-        self._send_bytes(candidate.read_bytes(), "text/x-python; charset=utf-8")
+        candidate = root / (name[:-4] + ".py")
+        if candidate.parent != root or not candidate.is_file():
+            self.send_error(404)
+            return
+        try:
+            data = frontage_rt.compile_module(candidate)
+        except SystemExit as exc:
+            self.send_error(500, str(exc))
+            return
+        self._send_bytes(data, "application/octet-stream")
 
     def _send_runtime(self, name, prefix="/"):
-        """`_frontage/*`, in one order: what is on disk, then what we can build, then the
-        package's copy.
+        """`_frontage/*`: what is on disk first, then what we can build.
 
         Disk first, because a *built* directory already holds everything — including a
-        component's assets and an `app.tar` that carries its Python. Synthesising over the top
-        would silently serve a different app than the one `build` produced, which is how the
-        first component ever built here failed to import.
+        component's assets and the `.fbc` files `build` wrote. Synthesising over the top would
+        silently serve a different app than the one `build` produced, which is how the first
+        component ever built here failed to import.
 
-        With nothing on disk we are serving sources, so the archives are made on the spot from
-        whatever is there: that is the dev loop, where an edit needs no build step.
+        With nothing on disk we are serving sources: the runtime's own files, the manifest of
+        the page's import closure, and each module compiled on request (cached by mtime), so
+        an edit needs no build step.
         """
         from . import frontage_rt
-        from . import micropython as mp
+        from .build import find_entry
 
         try:
             on_disk = Path(self.translate_path(f"{prefix}{RUNTIME_PREFIX.strip('/')}/{name}"))
             if on_disk.is_file():
                 self._send_bytes(on_disk.read_bytes(), self.guess_type(str(on_disk)))
                 return
-            if frontage_rt.selected() == frontage_rt.FRONTAGE and self.frontage_runtime_for(prefix):
-                self._send_frontage_runtime(name, prefix)
+            if name in frontage_rt.ASSETS:
+                asset = frontage_rt.RUNTIME_DIR / name
+                self._send_bytes(asset.read_bytes(), self.guess_type(str(asset)))
                 return
-            if name == "app.tar":
-                # The directory the request came from, never a configured root: one server can
-                # carry several apps, and `/examples/todo/_frontage/app.tar` must be the todo one.
-                self._send_bytes(app_archive(self.translate_path(prefix)), "application/x-tar")
+            # The directory the request came from, never a configured root: one server can
+            # carry several apps, and `/examples/todo/_frontage/…` must be the todo one.
+            app = Path(self.translate_path(prefix))
+            if name == frontage_rt.FRAMEWORK:
+                body = json.dumps({"modules": frontage_rt.framework_names()}).encode()
+                self._send_bytes(body, "application/json")
                 return
-            if name == mp.IMAGE_NAME:
-                self._send_bytes(framework_archive(), "application/x-tar")
+            if name == frontage_rt.MANIFEST:
+                entry = find_entry(app)
+                names = [n for n, _ in frontage_rt.closure(app, entry)]
+                self._send_bytes(frontage_rt.manifest(names, entry), "application/json")
                 return
-            asset = mp.RUNTIME_DIR / name
-            if "/" in name or not asset.is_file():
-                self.send_error(404)
+            if name.endswith(".fbc"):
+                source = frontage_rt.module_file(name[:-4], app)
+                if not source.is_file():
+                    self.send_error(404)
+                    return
+                self._send_bytes(frontage_rt.compile_module(source), "application/octet-stream")
                 return
-            # `guess_type`, not `extensions_map.get`: that dict is a few overrides, not a mime
-            # database, and a `.css` served as octet-stream is silently refused by the browser.
-            self._send_bytes(asset.read_bytes(), self.guess_type(str(asset)))
+            self.send_error(404)
         except OSError:
             self.send_error(404)
-
-    def frontage_runtime_for(self, prefix):
-        """Whether the app under `prefix` boots on frontage's own runtime when it is selected.
-        A subclass keeps a page on MicroPython: the playground and the runner compile Python
-        in the page, and the runtime carries no parser."""
-        return True
-
-    def _send_frontage_runtime(self, name, prefix):
-        """`_frontage/*` on frontage's own runtime: its three files, the manifest of the page's
-        import closure, and each module compiled on request (cached by mtime)."""
-        from . import frontage_rt
-        from .build import find_entry
-
-        if name in frontage_rt.ASSETS:
-            asset = frontage_rt.WEB / name
-            self._send_bytes(asset.read_bytes(), self.guess_type(str(asset)))
-            return
-        app = Path(self.translate_path(prefix))
-        if name == frontage_rt.MANIFEST:
-            entry = find_entry(app)
-            names = [n for n, _ in frontage_rt.closure(app, entry)]
-            self._send_bytes(frontage_rt.manifest(names, entry), "application/json")
-            return
-        if name.endswith(".fbc"):
-            source = frontage_rt.module_file(name[:-4], app)
-            if not source.is_file():
-                self.send_error(404)
-                return
-            self._send_bytes(frontage_rt.compile_module(source), "application/octet-stream")
-            return
-        self.send_error(404)
 
     def _stream(self):
         self.send_response(200)
@@ -539,13 +486,8 @@ def main(argv=None):
         metavar="PREFIX=URL",
         help="forward requests under PREFIX to URL, e.g. /api=http://127.0.0.1:8000 (repeatable)",
     )
-    parser.add_argument("--runtime", default="", help="frontage (its own runtime, from rust/) or micropython")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
-    if args.runtime:
-        from . import frontage_rt
-
-        os.environ["FRONTAGE_RUNTIME"] = frontage_rt.selected(args.runtime)
     proxies = []
     for spec in args.proxy:
         prefix, sep, upstream = spec.partition("=")

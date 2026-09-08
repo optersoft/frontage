@@ -2,10 +2,10 @@
 at /playground/, prerendered output at /build/. Everything else 404s. Nothing is cached, and
 the page reloads by itself when a file under examples/, frontage/ or web/ changes.
 
-The WebAssembly runtime answers under every directory, at `<dir>/_frontage/…`, which is where
-a built app's boot tag points too. `frontage.cli.serve` builds both archives on the spot from
-whatever is on disk — the framework from `frontage/*.py`, the app from that directory — so an
-edit to either shows on the next reload with nothing to rebuild.
+The runtime answers under every directory, at `<dir>/_frontage/…`, which is where a built
+app's boot tag points too. `frontage.cli.serve` compiles each module on request from whatever
+is on disk — the framework from `frontage/*.py`, the app from that directory — so an edit to
+either shows on the next reload with nothing to rebuild.
 
 One server carries many apps here, so a change reloads the page rather than swapping a module:
 a swap has to know which module mounts, and on this tree that depends on the page you happen
@@ -31,11 +31,6 @@ class Handler(LiveHandler):
         "/build/": ROOT / "build",  # `python -m frontage prerender` output, for the browser tests
         "/profile/": ROOT / "tools" / "profile",  # the rows profile page (tools/profile_rows.py)
     }
-
-    def frontage_runtime_for(self, prefix):
-        # The playground and the runner compile a program in the page; frontage's runtime has
-        # no parser there, so those two stay on MicroPython whatever runtime is selected.
-        return not prefix.startswith(("/playground/", "/web/"))
 
     def translate_path(self, path):
         path = path.split("?", 1)[0].split("#", 1)[0]
