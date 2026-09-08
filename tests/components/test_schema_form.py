@@ -100,3 +100,107 @@ def test_a_form_needs_a_record():
 
     with pytest.raises(TypeError, match="record"):
         make(text())
+
+
+# The two seams a schema reaches from core: a form's submit, and a resource's answer. -------
+
+
+def submit(view):
+    """Mount `view` and fire a submit on its form, the way the router's own tests do."""
+    from frontage import RecordingRenderer, mount
+    from frontage import view as view_module
+
+    renderer = RecordingRenderer()
+    root = renderer.inner.create_element("div")
+    mount(view, root, renderer)
+    del view_module._mounted[:]
+    root.children[0].fire("submit")
+    return root
+
+
+def test_an_action_form_checks_its_fields_and_dispatches_the_parsed_value():
+    import asyncio
+
+    from frontage import ActionForm, Signal, h
+
+    async def scenario():
+        seen = []
+
+        async def save(fields):
+            seen.append(fields)
+
+        action = Action(save)
+        errors = Signal([])
+        Ticket = record(("title", text(min=1)), ("size", integer(gt=0)))
+
+        def form():
+            return ActionForm(
+                action,
+                h.input(name="title", value="Rain"),
+                h.input(name="size", value="3"),
+                schema=Ticket,
+                errors=errors,
+            )
+
+        submit(form)
+        for _ in range(3):
+            await asyncio.sleep(0)
+        # `coerce=True`, because a form holds strings whatever the schema says.
+        assert seen == [{"title": "Rain", "size": 3}]
+        assert errors.peek() == []
+
+    asyncio.run(scenario())
+
+
+def test_a_form_that_does_not_check_out_never_reaches_the_action():
+    from frontage import ActionForm, Signal, h
+
+    seen = []
+    action = Action(lambda fields: seen.append(fields))
+    errors = Signal([])
+    Ticket = record(("title", text(min=1)), ("size", integer(gt=0)))
+
+    def form():
+        return ActionForm(
+            action,
+            h.input(name="title", value=""),
+            h.input(name="size", value="nope"),
+            schema=Ticket,
+            errors=errors,
+        )
+
+    submit(form)
+    assert seen == []
+    assert [path for path, _ in errors.peek()] == ["$.title", "$.size"]
+
+
+def test_a_resource_checks_the_answer_before_anything_reads_it():
+    import asyncio
+
+    from frontage import Resource
+    from frontage.schema import SchemaError
+
+    User = record(("name", text(min=1)), ("age", integer(ge=0)))
+
+    async def bad():
+        return {"name": "Ann", "age": "not a number"}
+
+    async def good():
+        return {"name": "Ann", "age": 3}
+
+    async def load(fetcher):
+        owner = Owner()
+        resource = run_with_owner(owner, lambda: Resource(fetcher, schema=User))
+        for _ in range(50):
+            if resource.state() in ("ready", "errored"):
+                break
+            await asyncio.sleep(0)
+        return resource
+
+    resource = asyncio.run(load(good))
+    assert resource.peek() == {"name": "Ann", "age": 3}
+
+    resource = asyncio.run(load(bad))
+    assert resource.state() == "errored"
+    error = resource.error()
+    assert isinstance(error, SchemaError) and error.errors[0][0] == "$.age"

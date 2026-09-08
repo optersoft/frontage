@@ -8,6 +8,11 @@ pending the previous value is returned; reading a failed one raises its error in
 nearest `Errored`. Create resources in component bodies, not inside holes: a hole re-runs
 when the resource changes, and a resource created there would be created again each time.
 
+`Resource(fetch, schema=User)` checks the answer before anything reads it: `frontage.schema`
+parses the value, and a shape that does not match is the resource's error, in the nearest
+`Errored`, naming the field. Without it the page finds out somewhere far away — in a hole,
+reading a key that is not there — and the traceback names the hole rather than the server.
+
 One rule: read every reactive input before the first `await`. After an `await` the tracking
 context is gone, so a signal read there is not a dependency.
 """
@@ -53,10 +58,15 @@ def _end_prerender():
 
 
 class Resource:
-    def __init__(self, fetcher, source=None, initial=None):
+    def __init__(self, fetcher, source=None, initial=None, schema=None):
         global _hydration
         self._fetcher = fetcher
         self._source = source
+        # What the answer must look like. A server that changes shape, a field that is null
+        # this once, an endpoint that answers with an error page: without this the page finds
+        # out somewhere far away, in a hole reading a key that is not there. `parse` raises
+        # `SchemaError`, and a resource's error is already routed to the nearest `Errored`.
+        self._schema = schema
         hydrated = False
         if _hydration:
             initial = _hydration.pop(0)
@@ -173,6 +183,8 @@ class Resource:
                     value = await self._fetcher(argument)
                 else:
                     value = await self._fetcher()
+                if self._schema is not None:
+                    value = self._schema.parse(value)
             except Exception as exc:
                 if generation == self._generation:
                     self._settle(None, exc)

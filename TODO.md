@@ -615,8 +615,13 @@ decides, all in 0.10.0:
       has a fourth rule: an `<img>` with no `alt`. ⚠ The announcer reads `document.title`
       rather than importing `frontage.head`, for the same reason `dev` guards its Store
       import: a page holds only the modules its app imports.
-- [ ] **The rest of the React gaps marked "yes" in `FASTER.md` §9**: form validation in core,
-      Tailwind for apps, the "from React" and "from Streamlit" chapters.
+- [x] **Form validation in core** (2026-09-08): `ActionForm(schema=, errors=)` and
+      `Resource(schema=)`. Both are seams onto `frontage.schema`, which already had the
+      checker and `Form`; neither imports it, so an app that names no schema carries none of
+      it. The form's check is `coerce=True` and dispatches the parsed value, because a form
+      holds strings whatever the schema says.
+- [ ] **The rest of the React gaps marked "yes" in `FASTER.md` §9**: Tailwind for apps, the
+      "from React" and "from Streamlit" chapters.
 - [x] Open, now closed by the runtime: there is no interpreter to trim and no second core to
       keep behind a flag; `-O2` has no meaning for `.fbc` (docstrings are dropped at compile).
 - Measured and rejected, with the number, in `FASTER.md` §10: Pyodide, Python→JS,

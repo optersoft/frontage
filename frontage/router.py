@@ -838,12 +838,35 @@ def Navigate(to, replace=True):
     return None
 
 
-def ActionForm(action, *children, **attrs):
-    """A `<form>` that submits its fields (as a dict) to `action` instead of reloading."""
+def ActionForm(action, *children, schema=None, errors=None, **attrs):
+    """A `<form>` that submits its fields (as a dict) to `action` instead of reloading.
+
+    `schema=` checks the fields before the action ever runs, with `coerce=True` because a form
+    holds strings whatever the schema says: the action is dispatched with the *parsed* value —
+    an integer where the schema says integer — and not dispatched at all when something is
+    wrong. `errors=` is a Signal you own; it holds the `(path, message)` pairs of the last
+    submit, so the form can show them, and is emptied by a submit that goes through.
+
+        problems = Signal([])
+        ActionForm(action, fields, schema=User, errors=problems)
+
+    For a form that checks as the visitor types, rather than on submit, `frontage.schema.Form`
+    holds a signal and a message per field over the same schema.
+    """
 
     def on_submit(ev):
         ev.preventDefault()
-        action.dispatch(form_data(ev.target))
+        data = form_data(ev.target)
+        if schema is not None:
+            value, found = schema.validate(data, coerce=True)
+            if errors is not None:
+                errors.set(found)
+            if found:
+                return
+            data = value
+        elif errors is not None:
+            errors.set([])
+        action.dispatch(data)
 
     return h.form(*children, on_submit=on_submit, **attrs)
 

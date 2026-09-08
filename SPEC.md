@@ -94,6 +94,7 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - A3 Reactive inputs read after the first `await` are not tracked; in debug mode a read after `await` warns. [M2]
 - A4 `Action(fn)`: `.dispatch(x)` runs `fn(x)`; `.pending`, `.value`, `.input` are accessors. [M2]
 - A5 A task spawned by a resource or action is cancelled when its owner is disposed. [M2]
+- A6 `Resource(fetch, schema=T)` parses the answer with `frontage.schema` before anything reads it; a shape that does not match is the resource's error, so it reaches the nearest `Errored` naming the field rather than surfacing far away in a hole. [0.10.6]
 
 ## 8. Router
 
@@ -117,6 +118,7 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 
 - E1 In debug mode an uncaught error renders a page naming the component and the traceback; in production the configured fallback renders and the error is logged. [M2]
 - E2 Debug warnings, once each, in the console (or stderr): a signal read inside a `Resource` fetcher or an async memo's coroutine after tracking ended (A3), naming the resource; a write to a signal inside a tracked computation, naming it; a `For` keyed by identity whose rows all failed to survive an update. Duplicate `For` keys stay an error. `mount(debug=False)` silences them. [M7]
+- U18 `ActionForm(action, …, schema=T, errors=signal)` checks the submitted fields with `coerce=True` — a form holds strings whatever the schema says — and dispatches the *parsed* value, or dispatches nothing and puts the `(path, message)` pairs in `errors`; a submit that goes through empties it. `frontage.schema.Form` is the same schema checked as the visitor types. [0.10.6]
 - U16 `Router(view_transition=True)` commits every navigation inside `document.startViewTransition`, so the browser cross-fades one page into the next and animates whatever carries a `view-transition-name`; it implies `transition=True`, because there is nothing to animate between until the new route is built in one step. `transition(fn, view=True)` does it for one call. A browser without the API commits as usual. [0.10.4]
 - U17 `Router(announce=True)`, the default, writes the new page's title — its path when it has none — into a polite live region after every navigation, so a screen reader hears that the page changed; `Router(focus="main")` also moves focus into the new content, making the element focusable if it is not, without scrolling. `frontage.a11y` is the two of them on their own. [0.10.4]
 - H1 `Title(value)` and `Meta(content, name=… | property=…)` from `frontage.head` render nothing and say what the page is: in the browser they write `document.title` and the meta tags from a render effect, so a value over a signal follows it; each is a stack, so the innermost one on the page wins and the one under it comes back when it goes. `Route(path, component, title=…)` is the same thing for a route, a string or a function of its params. Off the browser they record instead, and `frontage prerender` writes them into each page's `<head>`, replacing what the static page says and never duplicating a tag. [0.10.3]
