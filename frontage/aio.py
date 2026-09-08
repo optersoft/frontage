@@ -162,9 +162,10 @@ class Resource:
         with batch():
             self._state.set(REFRESHING if self._state.peek() == READY else PENDING)
             self._error.set(None)
-        if reactive._transition is not None and self._transition is None:
-            self._transition = reactive._transition
-            reactive._transition._track()
+        transition = reactive._current_transition()
+        if transition is not None and self._transition is None:
+            self._transition = transition
+            transition._track()
 
         async def run():
             try:

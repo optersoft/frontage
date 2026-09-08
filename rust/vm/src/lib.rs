@@ -3,6 +3,7 @@
 pub mod attr;
 pub mod builtins;
 pub mod code;
+pub mod core;
 pub mod dict;
 pub mod fbc;
 pub mod format;

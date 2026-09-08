@@ -21,6 +21,11 @@ The module is written in the MicroPython subset: no typing, no dataclasses, no c
 from .errors import NotReady
 from .runtime import warn
 
+try:  # the runtime's native graph (rust/vm/src/core.rs); CPython has none
+    import _core
+except ImportError:
+    _core = None
+
 __all__ = [
     "ERRORS",
     "LOADING",
@@ -105,10 +110,24 @@ class _MemoHydration:
         return self.values.pop(ordinal, _UNSET)
 
 
+def _on_memo_created(memo):
+    if _memo_registry is not None:
+        _memo_registry.append(memo)
+    elif _memo_hydration is not None:
+        memo._hydrated = _memo_hydration.take()
+
+
+def _sync_memo_hook():
+    if _core is not None:
+        active = _memo_registry is not None or _memo_hydration is not None
+        _core.setup(memo_created=_on_memo_created if active else None)
+
+
 def _begin_prerender():
     global _memo_registry, _memo_started
     _memo_registry = []
     _memo_started = []
+    _sync_memo_hook()
     return _memo_registry
 
 
@@ -116,12 +135,14 @@ def _end_prerender():
     global _memo_registry, _memo_started
     _memo_registry = None
     _memo_started = None
+    _sync_memo_hook()
 
 
 def _set_memo_hydration(pairs):
     """`pairs`: `[[ordinal, value], …]` from the prerendered page, or None when the mount ends."""
     global _memo_hydration
     _memo_hydration = _MemoHydration(pairs) if pairs else None
+    _sync_memo_hook()
 
 
 _open_transitions = []
@@ -131,6 +152,30 @@ def _current_owner() -> "Owner | None":
     # The typed way to read the module global; string annotations are never evaluated,
     # so MicroPython does not mind them.
     return _owner
+
+
+def _current_listener():
+    return _core.listener() if _core is not None else _listener
+
+
+def _current_transition():
+    return _core.transition() if _core is not None else _transition
+
+
+def _set_transition(t):
+    global _transition
+    if _core is not None:
+        _core.set_transition(t)
+    else:
+        _transition = t
+
+
+def set_debug(flag):
+    """Switch the development warnings; `mount(debug=…)` calls it."""
+    global DEBUG
+    DEBUG = bool(flag)
+    if _core is not None:
+        _core.set_debug(DEBUG)
 
 
 def _same(equal, a, b):
@@ -291,11 +336,12 @@ class Context:
 
 
 def provide(ctx, value):
-    if _owner is None:
+    owner = _current_owner()
+    if owner is None:
         raise RuntimeError("provide() needs an owner; call it inside a component or an Owner block")
-    if _owner._context is None:
-        _owner._context = {}
-    _owner._context[ctx] = value
+    if owner._context is None:
+        owner._context = {}
+    owner._context[ctx] = value
     return value
 
 
@@ -343,6 +389,8 @@ def spawn(coro, owner=None, name=None):
         task = _current_task() if name is not None else None
         if task is not None:
             _async_tasks[id(task)] = name
+            if _core is not None:
+                _core.async_task(1)
         try:
             await coro
         except asyncio.CancelledError:
@@ -352,6 +400,8 @@ def spawn(coro, owner=None, name=None):
         finally:
             if task is not None:
                 _async_tasks.pop(id(task), None)
+                if _core is not None:
+                    _core.async_task(-1)
 
     task = asyncio.create_task(run())
     if owner is not None:
@@ -625,6 +675,96 @@ class _Computation(Owner):
         Owner.dispose(self)
 
 
+# The async half of a Memo: plain functions, so the native Memo (rust/vm/src/core.rs) shares
+# them with the Python one below. A native memo has no Python __init__, hence the defaults.
+
+
+def _memo_read_async(self):
+    loading, failed = self._loading, self._error
+    assert loading is not None and failed is not None
+    if loading():
+        scope = lookup(_current_owner(), LOADING)
+        if scope is not None and scope not in self._scopes:
+            self._scopes.append(scope)
+            scope.add(self, self._value is not _UNSET)
+        if self._value is _UNSET:
+            raise NotReady
+        return self._value
+    error = failed._value
+    if error is not None:
+        raise error
+    return None if self._value is _UNSET else self._value
+
+
+def _memo_start(self, coro):
+    loading, failed = self._loading, self._error
+    if loading is None or failed is None:
+        loading = self._loading = Signal(False)
+        failed = self._error = Signal(None, equal=lambda a, b: a is b)
+    self._generation = getattr(self, "_generation", 0) + 1
+    generation = self._generation
+    failed._write(None)
+    if self._value is _UNSET and getattr(self, "_hydrated", _UNSET) is not _UNSET:
+        # The page already shows this value: settle with it, no run on boot.
+        self._value, self._hydrated = self._hydrated, _UNSET
+        loading._write(False)
+        coro.close()
+        return
+    loading._write(True)
+    if _memo_started is not None and self not in _memo_started:
+        _memo_started.append(self)
+    t = _current_transition()
+    if t is not None and getattr(self, "_transition", None) is None:
+        self._transition = t
+        t._track()
+    if _navigation is not None and getattr(self, "_navigation", None) is None and self._value is _UNSET:
+        self._navigation = _navigation
+        _navigation._track_load(self)
+    memo = self
+
+    async def run():
+        try:
+            value = await coro
+        except Exception as exc:
+            if generation == memo._generation:
+                memo._settle(_UNSET, exc)
+            return
+        if generation == memo._generation:
+            memo._settle(value, None)
+
+    spawn(run(), self, name=f"Memo({_name_of(self._fn)})")  # cancelled before a re-run, and on dispose
+
+
+def _memo_settle(self, value, error):
+    loading, failed = self._loading, self._error
+    assert loading is not None and failed is not None
+    _begin_batch()
+    try:
+        if error is None:
+            self._value = value
+        else:
+            failed._write(error)
+        loading._write(False)
+        for observer in list(self._observers):
+            _mark(observer, DIRTY)
+        scopes, self._scopes = self._scopes, []
+        for scope in scopes:
+            scope.remove(self)
+        self._release()
+    finally:
+        _end_batch()
+
+
+def _memo_release(self):
+    """The transition and the navigation waiting on this run, if any, stop waiting."""
+    transition, self._transition = getattr(self, "_transition", None), None
+    if transition is not None:
+        transition._done()
+    navigation, self._navigation = getattr(self, "_navigation", None), None
+    if navigation is not None:
+        navigation._load_done(self)
+
+
 class Memo(_Computation):
     """A cached derived value. Read by calling it; recomputes lazily when a dependency changed.
 
@@ -677,21 +817,7 @@ class Memo(_Computation):
             return self._read_async()
         return self._value
 
-    def _read_async(self):
-        loading, failed = self._loading, self._error
-        assert loading is not None and failed is not None
-        if loading():
-            scope = lookup(_current_owner(), LOADING)
-            if scope is not None and scope not in self._scopes:
-                self._scopes.append(scope)
-                scope.add(self, self._value is not _UNSET)
-            if self._value is _UNSET:
-                raise NotReady
-            return self._value
-        error = failed._value
-        if error is not None:
-            raise error
-        return None if self._value is _UNSET else self._value
+    _read_async = _memo_read_async
 
     def loading(self):
         """True while the coroutine of an async memo is running (False for a plain memo)."""
@@ -732,70 +858,11 @@ class Memo(_Computation):
 
     # -- async ------------------------------------------------------------------------------
 
-    def _start(self, coro):
-        loading, failed = self._loading, self._error
-        if loading is None or failed is None:
-            loading = self._loading = Signal(False)
-            failed = self._error = Signal(None, equal=lambda a, b: a is b)
-        self._generation += 1
-        generation = self._generation
-        failed._write(None)
-        if self._value is _UNSET and self._hydrated is not _UNSET:
-            # The page already shows this value: settle with it, no run on boot.
-            self._value, self._hydrated = self._hydrated, _UNSET
-            loading._write(False)
-            coro.close()
-            return
-        loading._write(True)
-        if _memo_started is not None and self not in _memo_started:
-            _memo_started.append(self)
-        if _transition is not None and self._transition is None:
-            self._transition = _transition
-            _transition._track()
-        if _navigation is not None and self._navigation is None and self._value is _UNSET:
-            self._navigation = _navigation
-            _navigation._track_load(self)
-        memo = self
+    _start = _memo_start
 
-        async def run():
-            try:
-                value = await coro
-            except Exception as exc:
-                if generation == memo._generation:
-                    memo._settle(_UNSET, exc)
-                return
-            if generation == memo._generation:
-                memo._settle(value, None)
+    _settle = _memo_settle
 
-        spawn(run(), self, name=f"Memo({_name_of(self._fn)})")  # cancelled before a re-run, and on dispose
-
-    def _settle(self, value, error):
-        loading, failed = self._loading, self._error
-        assert loading is not None and failed is not None
-        _begin_batch()
-        try:
-            if error is None:
-                self._value = value
-            else:
-                failed._write(error)
-            loading._write(False)
-            for observer in list(self._observers):
-                _mark(observer, DIRTY)
-            scopes, self._scopes = self._scopes, []
-            for scope in scopes:
-                scope.remove(self)
-            self._release()
-        finally:
-            _end_batch()
-
-    def _release(self):
-        """The transition and the navigation waiting on this run, if any, stop waiting."""
-        transition, self._transition = self._transition, None
-        if transition is not None:
-            transition._done()
-        navigation, self._navigation = self._navigation, None
-        if navigation is not None:
-            navigation._load_done(self)
+    _release = _memo_release
 
     def is_async(self):
         """True once the memo's function has returned a coroutine."""
@@ -859,14 +926,15 @@ class Effect(_Computation):
         value = self._compute()
         if value is _SKIPPED:
             return
-        if _transition is not None and self._render and not self._urgent and self._on_screen():
+        transition = _current_transition()
+        if transition is not None and self._render and not self._urgent and self._on_screen():
             # A transition: the compute has built the new state (off screen, under its own
             # owners); what waits for the commit is the effect phase, which would put it on
             # the page. `_queued` stays set so a later mark does not queue us a second time;
             # the mark still makes us DIRTY, and the commit recomputes us in that case.
             self._parked = value
             self._queued = True
-            _transition._deferred.append(self)
+            transition._deferred.append(self)
             return
         self._apply(value)
 
@@ -928,6 +996,41 @@ class RenderEffect(Effect):
     _render = True
 
 
+# --- the native core -------------------------------------------------------------------------
+
+if _core is not None:
+    # The runtime holds the graph (rust/vm/src/core.rs): the classes above are the
+    # specification and CPython's implementation; here they are the native ones, with the
+    # async half of Memo attached and the module state reached through accessors.
+    _UNSET = _core.UNSET
+    Owner = _core.Owner
+    Signal = _core.Signal
+    Memo = _core.Memo
+    Effect = _core.Effect
+    RenderEffect = _core.RenderEffect
+    Memo._start = _memo_start
+    Memo._settle = _memo_settle
+    Memo._release = _memo_release
+    Memo._read_async = _memo_read_async
+    _current_owner = _core.get_owner
+    get_owner = _core.get_owner
+    run_with_owner = _core.run_with_owner
+    on_cleanup = _core.on_cleanup
+    lookup = _core.lookup
+    route_error = _core.route_error
+    _begin_batch = _core.begin_batch
+    _end_batch = _core.end_batch
+    _mark = _core.mark
+    _set_scope = _core.set_scope
+    _core.setup(
+        not_ready=NotReady,
+        errors=ERRORS,
+        loading=LOADING,
+        untracked_read=_check_untracked_read,
+        tracked_write=_check_tracked_write,
+    )
+
+
 # --- utilities ------------------------------------------------------------------------------
 
 
@@ -942,6 +1045,10 @@ def untrack(fn, *args):
     finally:
         _untracking -= 1
         _listener = saved
+
+
+if _core is not None:
+    untrack = _core.untrack
 
 
 def on(deps, fn):
@@ -983,8 +1090,7 @@ def selector(source, equal=None):
         if node is None:
             node = Signal(_same(equal, key, source.peek() if hasattr(source, "peek") else untrack(source)))
             subscribers[key] = node
-            if _owner is not None:
-                _owner._cleanups.append(lambda: subscribers.pop(key, None))
+            on_cleanup(lambda: subscribers.pop(key, None))
         return node()
 
     return is_selected
@@ -1022,11 +1128,10 @@ class Transition:
         self._commit()
 
     def _commit(self):
-        global _transition
         self._committed = True
         _open_transitions.remove(self)
-        saved = _transition
-        _transition = None  # the deferred effects run now, whatever transition is nested around us
+        saved = _current_transition()
+        _set_transition(None)  # the deferred effects run now, whatever transition is nested around us
         _begin_batch()
         try:
             for revert in self._reverts:
@@ -1040,7 +1145,7 @@ class Transition:
                 _is_pending._write(False)
         finally:
             _end_batch()
-            _transition = saved
+            _set_transition(saved)
         callbacks, self._callbacks = self._callbacks, []
         for fn in callbacks:
             fn()
@@ -1076,12 +1181,11 @@ def transition(fn, *args):
     loading immediately and count toward the commit; only the step that would put it on the
     page waits. What is on screen keeps its previous nodes until then.
     """
-    global _transition
     t = Transition()
     _open_transitions.append(t)
     _is_pending._write(True)
-    saved = _transition
-    _transition = t
+    saved = _current_transition()
+    _set_transition(t)
     _begin_batch()
     try:
         fn(*args)
@@ -1091,7 +1195,7 @@ def transition(fn, *args):
         finally:
             # Closed even when `fn` raised: a transition left open would keep every effect
             # it parked from ever reaching the page.
-            _transition = saved
+            _set_transition(saved)
             t._open = False
             t._maybe_commit()
     return t
@@ -1134,9 +1238,9 @@ class Optimistic(Signal):
     the real data, or the previous value if the work failed."""
 
     def set(self, value):
-        if _transition is None or _transition._committed:
+        t = _current_transition()
+        if t is None or t._committed:
             return Signal.set(self, value)
-        t = _transition
         if self not in [r.__self__ for r in t._reverts if hasattr(r, "__self__")]:
             base = self._value
             t._reverts.append(_Revert(self, base))

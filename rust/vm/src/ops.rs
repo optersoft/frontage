@@ -27,6 +27,7 @@ impl Vm {
             return self.t.none_type;
         }
         match self.heap.get(v) {
+            Obj::Node(n) => n.class,
             Obj::Str(_) => self.t.str_,
             Obj::Int(_) => self.t.int,
             Obj::List(_) => self.t.list,
@@ -227,7 +228,7 @@ impl Vm {
 
     /// Call `obj.<name>(other)` if the type defines it; `None` for absent or `NotImplemented`.
     pub fn try_dunder(&mut self, obj: Value, name: Value, other: Value) -> PyResult<Option<Value>> {
-        if !obj.is_obj() || !matches!(self.heap.get(obj), Obj::Instance(_) | Obj::Exc(_)) {
+        if !obj.is_obj() || !matches!(self.heap.get(obj), Obj::Instance(_) | Obj::Exc(_) | Obj::Node(_)) {
             return Ok(None);
         }
         match self.lookup_method(obj, name) {
@@ -727,7 +728,7 @@ impl Vm {
                 let (s1, e1, p1, s2, e2, p2) = (*s1, *e1, *p1, *s2, *e2, *p2);
                 Ok(Some(self.eq(s1, s2)? && self.eq(e1, e2)? && self.eq(p1, p2)?))
             }
-            (Obj::Instance(_), _) | (_, Obj::Instance(_)) | (Obj::Exc(_), _) | (_, Obj::Exc(_)) => Ok(None),
+            (Obj::Instance(_), _) | (_, Obj::Instance(_)) | (Obj::Exc(_), _) | (_, Obj::Exc(_)) | (Obj::Node(_), _) | (_, Obj::Node(_)) => Ok(None),
             (Obj::Str(x), Obj::Str(y)) => Ok(Some(x.hash == y.hash && x.s == y.s)),
             (Obj::List(_), Obj::List(_)) | (Obj::Tuple(_), Obj::Tuple(_)) => {
                 let xs: Vec<Value> = match self.heap.get(a) {
@@ -796,7 +797,7 @@ impl Vm {
                 let hooks = self.js()?;
                 Ok((hooks.truthy)(self, h))
             }
-            Obj::Instance(_) => {
+            Obj::Instance(_) | Obj::Node(_) => {
                 let name = self.n.bool_;
                 if let Some(m) = self.lookup_method(v, name) {
                     let r = self.call(m, &[v], &[])?;
@@ -960,7 +961,7 @@ impl Vm {
                 Some(v) => Ok(v),
                 None => Err(self.key_error(key)),
             },
-            Obj::Instance(_) | Obj::Exc(_) => {
+            Obj::Instance(_) | Obj::Exc(_) | Obj::Node(_) => {
                 let name = self.n.getitem;
                 match self.lookup_method(obj, name) {
                     Some(m) => self.call(m, &[obj, key], &[]),
@@ -1157,7 +1158,7 @@ impl Vm {
                 }
                 Ok(())
             }
-            Obj::Instance(_) | Obj::Exc(_) => {
+            Obj::Instance(_) | Obj::Exc(_) | Obj::Node(_) => {
                 let name = self.n.setitem;
                 match self.lookup_method(obj, name) {
                     Some(m) => {
@@ -1245,7 +1246,7 @@ impl Vm {
             Obj::Set(_) | Obj::FrozenSet(_) => Iter::Set { set: v, at: 0 },
             Obj::Range { start, stop, step } => Iter::Range { cur: *start, stop: *stop, step: *step },
             Obj::Iter(_) | Obj::Generator(_) => return Ok(v),
-            Obj::Instance(_) | Obj::Exc(_) => {
+            Obj::Instance(_) | Obj::Exc(_) | Obj::Node(_) => {
                 let name = self.n.iter;
                 if let Some(m) = self.lookup_method(v, name) {
                     return self.call(m, &[v], &[]);
@@ -1804,7 +1805,7 @@ impl Vm {
                     Ok(format!("<class '{module}.{name}'>"))
                 }
             }
-            Obj::Instance(_) => {
+            Obj::Instance(_) | Obj::Node(_) => {
                 let name = self.n.repr;
                 if let Some(m) = self.lookup_method(v, name) {
                     if !self.is_object_default(m, "__repr__") {
@@ -1907,7 +1908,7 @@ impl Vm {
                     let hooks = self.js()?;
                     return (hooks.str)(self, h);
                 }
-                Obj::Instance(_) => {
+                Obj::Instance(_) | Obj::Node(_) => {
                     let name = self.n.str_;
                     if let Some(m) = self.lookup_method(v, name) {
                         if !self.is_object_default(m, "__str__") {

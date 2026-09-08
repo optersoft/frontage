@@ -80,6 +80,7 @@ impl Vm {
                     return Err(self.attribute_error(format!("module '{mname}' has no attribute '{s}'")));
                 }
                 Obj::Exc(_) => return self.exc_get_attr(obj, name),
+                Obj::Node(_) => return crate::core::node_get_attr(self, obj, name),
                 Obj::Func(_) => {
                     if let Some(v) = self.func_get_attr(obj, name) {
                         return Ok(v);
@@ -252,7 +253,7 @@ impl Vm {
 
     /// Bind a class attribute to an instance: functions become bound methods, properties are
     /// read, static and class methods unwrap.
-    fn bind_descriptor(&mut self, attr: Value, obj: Value, cls: Value) -> PyResult {
+    pub fn bind_descriptor(&mut self, attr: Value, obj: Value, cls: Value) -> PyResult {
         if !attr.is_obj() {
             return Ok(attr);
         }
@@ -524,6 +525,7 @@ impl Vm {
                 }
                 self.instance_set_attr_direct(obj, name, value)
             }
+            Obj::Node(_) => crate::core::node_set_attr(self, obj, name, value),
             Obj::Exc(_) => {
                 if let Obj::Exc(e) = self.heap.get_mut(obj) {
                     let mut d = core::mem::take(&mut e.dict);

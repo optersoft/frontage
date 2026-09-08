@@ -52,7 +52,7 @@ class Store:
         if node is None:
             from . import reactive
 
-            if reactive._listener is not None:
+            if reactive._current_listener() is not None:
                 node = Signal(value, equal=_is)
                 self._nodes[key] = node
         if node is not None:

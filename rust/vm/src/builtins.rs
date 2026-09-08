@@ -79,6 +79,10 @@ fn set_keys(vm: &Vm, set: Value) -> Vec<Value> {
 
 // -- installation ----------------------------------------------------------------------------------
 
+pub fn new_class_pub(vm: &mut Vm, name: &str, kind: Option<Builtin>, bases: &[Value]) -> Value {
+    new_class(vm, name, kind, bases)
+}
+
 fn new_class(vm: &mut Vm, name: &str, kind: Option<Builtin>, bases: &[Value]) -> Value {
     let name_v = vm.intern(name);
     let module = vm.intern("builtins");
@@ -761,6 +765,7 @@ pub fn construct_builtin(vm: &mut Vm, cls: Value, kind: Builtin, args: &[Value],
             let f = arg(vm, args, 0, "classmethod")?;
             Ok(vm.heap.alloc(Obj::ClassMethod(f)))
         }
+        Builtin::Owner | Builtin::Signal | Builtin::Memo | Builtin::Effect | Builtin::RenderEffect => crate::core::construct(vm, cls, kind, args, kwargs),
         Builtin::BaseException => {
             let exc = vm.heap.alloc(Obj::Exc(Box::new(Exc {
                 class: cls,
@@ -1039,6 +1044,7 @@ fn b_callable(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
             vm.lookup_method(v, c).is_some()
         }
         Obj::Js(_) => true,
+        Obj::Node(n) => matches!(n.kind, crate::core::Kind::Signal | crate::core::Kind::Memo),
         _ => false,
     }))
 }

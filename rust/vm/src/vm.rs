@@ -218,6 +218,10 @@ pub struct Vm {
     pub browser: bool,
     /// Bumped whenever any class attribute changes; class-level lookups cache on it.
     pub class_epoch: u32,
+    /// The sampling profiler, on while `Some`: `_frontage.profile_start()`.
+    pub prof: Option<Box<Profile>>,
+    /// The reactive graph's module state (`core.rs`).
+    pub core: crate::core::Core,
     /// Some class overrides `__getattribute__`: instance lookups must check for it.
     pub getattribute_overridden: bool,
 }
@@ -248,6 +252,8 @@ impl Vm {
             js_hooks: None,
             browser: false,
             class_epoch: 1,
+            prof: None,
+            core: crate::core::Core::new(),
             getattribute_overridden: false,
         };
         Names::fill(&mut vm);
@@ -496,6 +502,7 @@ impl Vm {
         roots.extend(self.handling.iter().copied());
         roots.extend(self.roots.iter().copied());
         roots.extend(self.js_pins.iter().copied());
+        self.core.trace(&mut |v| roots.push(v));
         let freed = self.heap.collect(roots);
         if !self.heap.freed_js.is_empty() {
             let handles = core::mem::take(&mut self.heap.freed_js);
@@ -691,6 +698,14 @@ impl Vm {
                 self.js_call(h, crate::jshooks::UNDEFINED_HANDLE, args)
             }
             Obj::Class(_) => self.construct(callee, args, kwargs),
+            Obj::Node(_) => {
+                if args.is_empty() && kwargs.is_empty() {
+                    return crate::core::node_call(self, callee);
+                }
+                let name = self.n.call;
+                let m = self.get_attr(callee, name)?;
+                self.call(m, args, kwargs)
+            }
             Obj::Instance(_) => {
                 let name = self.n.call;
                 match self.lookup_method(callee, name) {
@@ -857,6 +872,34 @@ impl Vm {
         self.run_frame_from(base)
     }
 
+    /// One instruction under the profiler: every 64th, the time since the last sample goes to
+    /// the running code (exclusive) and to every code on the frame stack (inclusive).
+    #[inline(never)]
+    fn profile_tick(&mut self, top: *const Code) {
+        let now_needed = {
+            let p = self.prof.as_mut().unwrap();
+            p.counter = p.counter.wrapping_add(1);
+            p.counter & 63 == 0
+        };
+        if !now_needed {
+            return;
+        }
+        let now = self.host.now_ms();
+        let p = self.prof.as_mut().unwrap();
+        let dt = now - p.last;
+        p.last = now;
+        p.samples += 1;
+        p.record(top, dt, true);
+        let mut seen: Vec<*const Code> = Vec::with_capacity(self.frames.len());
+        for f in &self.frames {
+            let c = &*f.code as *const Code;
+            if !seen.contains(&c) {
+                seen.push(c);
+                p.record(c, dt, false);
+            }
+        }
+    }
+
     fn run_frame_from(&mut self, base: usize) -> PyResult<Exit> {
         loop {
             // The frame's code, base and pc live in locals across instructions that stay in
@@ -868,6 +911,9 @@ impl Vm {
             };
             let code: &Code = unsafe { &*code_ptr };
             let flow = loop {
+                if self.prof.is_some() {
+                    self.profile_tick(code_ptr);
+                }
                 match self.step(fi, fbase, code, &mut pc) {
                     Ok(Flow::Next) => {
                         if self.frames.len() != fi + 1 {
@@ -1854,6 +1900,15 @@ impl Vm {
                 }
             }
         }
+        // A signal or memo read: `count()`.
+        if this.is_undef() && kw.is_empty() && self.stack.len() == first && target.is_obj() {
+            if let Obj::Node(_) = self.heap.get(target) {
+                let r = crate::core::node_call(self, target);
+                self.stack.truncate(callee_at);
+                self.stack.push(r?);
+                return Ok(Flow::Next);
+            }
+        }
         // A JavaScript method with its receiver, from `LoadMethod`.
         if !this.is_undef() {
             if let (Some(fh), Some(th)) = (self.js_handle(target), self.js_handle(this)) {
@@ -1971,6 +2026,22 @@ impl Vm {
     pub fn dict_get_str(&mut self, dict: Value, key: &str) -> Option<Value> {
         let k = self.intern(key);
         self.dict_get(dict, k)
+    }
+    pub fn list_push(&mut self, list: Value, v: Value) {
+        if let Obj::List(items) = self.heap.get_mut(list) {
+            items.push(v);
+        }
+    }
+    pub fn class_dict_set(&mut self, cls: Value, name: Value, value: Value) {
+        if let Obj::Class(c) = self.heap.get_mut(cls) {
+            let mut d = core::mem::take(&mut c.dict);
+            d.set(&self.heap, name, value);
+            if let Obj::Class(c) = self.heap.get_mut(cls) {
+                c.dict = d;
+                c.version += 1;
+            }
+        }
+        self.class_epoch += 1;
     }
     pub fn dict_set_str(&mut self, dict: Value, key: &str, value: Value) {
         let k = self.intern(key);
@@ -2236,4 +2307,37 @@ pub enum Flow {
     Next,
     Return(Value),
     Yield(Value),
+}
+
+/// A sampling profile: milliseconds per code object, exclusive (it was running) and inclusive
+/// (it was on the stack), keyed by the code's address; the name is kept from the first sample.
+#[derive(Default)]
+pub struct Profile {
+    pub last: f64,
+    pub counter: u32,
+    pub samples: u64,
+    pub rows: std::collections::HashMap<usize, ProfileRow>,
+}
+
+#[derive(Default, Clone)]
+pub struct ProfileRow {
+    pub name: String,
+    pub file: String,
+    pub line: u32,
+    pub exclusive: f64,
+    pub inclusive: f64,
+}
+
+impl Profile {
+    fn record(&mut self, code: *const Code, dt: f64, exclusive: bool) {
+        let row = self.rows.entry(code as usize).or_insert_with(|| {
+            let c = unsafe { &*code };
+            ProfileRow { name: c.qualname.clone(), file: c.filename.to_string(), line: c.firstline, ..Default::default() }
+        });
+        if exclusive {
+            row.exclusive += dt;
+        } else {
+            row.inclusive += dt;
+        }
+    }
 }

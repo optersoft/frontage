@@ -777,7 +777,7 @@ def _apply_class_dict(node, classes, prev, renderer):
 
 
 def _listen(node, event, handler, renderer, capture=False):
-    owner = reactive._owner  # the module, not `get_owner()`: a row registers one per handler
+    owner = reactive.get_owner()  # a row registers one per handler
 
     def call(ev):
         result = handler(ev)
@@ -788,7 +788,7 @@ def _listen(node, event, handler, renderer, capture=False):
 
     remove = renderer.add_listener(node, event, call, capture)
     if owner is not None:
-        owner._cleanups.append(remove)
+        owner.on_cleanup(remove)
 
 
 def emit(node, name, detail=None):
@@ -892,7 +892,7 @@ def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hy
     warnings (a read after an await, a write inside a tracked computation, a `For` that
     rebuilds every row). `scope` names the mount for `unique_id` (default: the target's id).
     """
-    reactive.DEBUG = bool(debug)
+    reactive.set_debug(debug)
     if scope is None and isinstance(parent, str) and parent.startswith("#"):
         scope = parent[1:]
     if renderer is None or isinstance(parent, str):

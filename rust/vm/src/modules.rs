@@ -10,6 +10,7 @@ use crate::vm::{PyResult, Vm};
 
 pub fn install(vm: &mut Vm) {
     vm.builtin_modules.insert("sys", mod_sys);
+    vm.builtin_modules.insert("_core", crate::core::install_module);
     vm.builtin_modules.insert("math", mod_math);
     vm.builtin_modules.insert("time", mod_time);
     vm.builtin_modules.insert("json", mod_json);
@@ -910,8 +911,33 @@ fn fr_sleep_ms(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
 fn fr_monotonic(vm: &mut Vm, _args: &[Value], _k: &[(Value, Value)]) -> PyResult {
     Ok(Value::float(vm.host.now_ms() / 1000.0))
 }
+fn fr_profile_start(vm: &mut Vm, _args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    let now = vm.host.now_ms();
+    vm.prof = Some(Box::new(crate::vm::Profile { last: now, ..Default::default() }));
+    Ok(Value::NONE)
+}
+/// Stop, and return `[(name, file, line, exclusive_ms, inclusive_ms), …]` sorted by
+/// exclusive time, largest first.
+fn fr_profile_stop(vm: &mut Vm, _args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    let prof = match vm.prof.take() {
+        Some(p) => p,
+        None => return Ok(vm.list(Vec::new())),
+    };
+    let mut rows: Vec<crate::vm::ProfileRow> = prof.rows.values().cloned().collect();
+    rows.sort_by(|a, b| b.exclusive.partial_cmp(&a.exclusive).unwrap_or(core::cmp::Ordering::Equal));
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        let name = vm.str(&r.name);
+        let file = vm.str(&r.file);
+        let t = vm.tuple(vec![name, file, Value::int(r.line as i32), Value::float(r.exclusive), Value::float(r.inclusive)]);
+        out.push(t);
+    }
+    Ok(vm.list(out))
+}
 fn mod_frontage(vm: &mut Vm) -> PyResult {
     let (m, d) = module_with(vm, "_frontage");
+    add_fn(vm, d, "profile_start", fr_profile_start);
+    add_fn(vm, d, "profile_stop", fr_profile_stop);
     add_fn(vm, d, "sleep_ms", fr_sleep_ms);
     add_fn(vm, d, "monotonic", fr_monotonic);
     vm.dict_set_str(d, "browser", Value::bool(vm.browser));

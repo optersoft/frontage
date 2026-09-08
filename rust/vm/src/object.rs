@@ -115,6 +115,11 @@ pub enum Builtin {
     Iterator,
     NotImplementedType,
     EllipsisType,
+    Owner,
+    Signal,
+    Memo,
+    Effect,
+    RenderEffect,
 }
 
 pub struct Class {
@@ -225,6 +230,8 @@ pub enum Obj {
     Super { class: Value, this: Value },
     /// A JavaScript object, by handle in the host's table.
     Js(u32),
+    /// A node of the reactive graph: Owner, Signal, Memo, Effect (`core.rs`).
+    Node(Box<crate::core::Node>),
     NotImplemented,
     Ellipsis,
 }
@@ -268,6 +275,7 @@ impl Obj {
             Obj::Code(_) => "code",
             Obj::Super { .. } => "super",
             Obj::Js(_) => "JsObject",
+            Obj::Node(_) => "node",
             Obj::NotImplemented => "NotImplementedType",
             Obj::Ellipsis => "ellipsis",
         }
@@ -381,6 +389,7 @@ impl Obj {
                 visit(*format_spec)
             }
             Obj::Code(c) => trace_code(c, &mut visit),
+            Obj::Node(n) => n.trace(&mut visit),
         }
     }
 }
