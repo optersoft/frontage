@@ -240,7 +240,18 @@ def site_build() -> None:
     sh("npx", "astro", "build", cwd=WEB)
     shutil.copytree(WEB / "dist", WWW)
     if keep.exists():
-        shutil.move(str(keep), str(WWW / "gallery"))
+        # Merged into the gallery directory Astro just made, one entry at a time. `shutil.move`
+        # of the whole directory would put it *inside* that one — `www/gallery/_gallery-keep/`
+        # — and every card on the page links to `./<app>/`, so the whole gallery 404s while
+        # the index that lists it looks perfectly well.
+        target = WWW / "gallery"
+        target.mkdir(parents=True, exist_ok=True)
+        for entry in keep.iterdir():
+            destination = target / entry.name
+            if destination.exists():
+                shutil.rmtree(destination) if destination.is_dir() else destination.unlink()
+            shutil.move(str(entry), str(destination))
+        shutil.rmtree(keep)
     runtime = ROOT / "frontage" / "_runtime"
     if not (runtime / "frontage-compiler.wasm").exists():
         raise MakeError("no runtime: run `mk runtime.build` first")

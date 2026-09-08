@@ -536,6 +536,13 @@ decides, all in 0.10.0:
       kept Vite's module runner open past its config hook. The academy's ten chapters, their
       seven `::: frontage` cards, the playground, the gallery and the runner were all opened
       in Chromium against production and run.
+- [x] **Every gallery card on the site was a 404** (found and fixed 2026-09-08). `site.build`
+      moves the measured gallery aside, lets Astro write `www/`, and moves it back — and
+      `shutil.move` of a directory onto an existing one puts it *inside*, so the apps landed in
+      `www/gallery/_gallery-keep/` while the index that lists them looked perfectly well. It
+      merges entry by entry now. Nothing tests `mk site.build`, which is why this shipped;
+      the cheapest guard would be a line in the task itself that fails when
+      `www/gallery/<first app>/index.html` is missing.
 - [ ] `[human]` The academy still describes 0.9 in `python/frontage/polars.md`'s measurements
       and in any `.ca`/`.es` variant of these pages, if one is ever cut. Re-measure the polars
       binary-vs-JSON numbers on this runtime when that page next changes.
