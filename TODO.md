@@ -555,9 +555,12 @@ decides, all in 0.10.0:
 - [x] **`frontage build` packs the closure of what the entry imports**, walked with `ast`
       (`cli/graph.py`), as bytecode, app included, one `.fbc` per module and a manifest;
       `__init__.py` lazy through PEP 562; `serve` and `swap` follow (2026-09-08).
-- [ ] Still to do on that: content-hashed files, immutable caching, brotli beside them,
-      preload hints; `Route("/map", lazy="pages.map")` with chunks (`graph.lazy_roots` finds
-      them), shared chunks over 20 KB, hover prefetch; `examples/uber` split.
+- [x] Content-hashed files (`name.<8 hex>.fbc`, `frontage.<8 hex>.wasm`, named in the
+      manifest), a `_headers` that caches them forever, `modulepreload`/`preload` hints in the
+      page; a rebuild moves only the URL of what changed (2026-09-08). Brotli beside them is
+      not written: the hosts in use compress on the fly.
+- [ ] Still to do on that: `Route("/map", lazy="pages.map")` with chunks (`graph.lazy_roots`
+      finds them), shared chunks over 20 KB, hover prefetch; `examples/uber` split.
 - [ ] **Development**: module-level signals and stores survive a swap by qualified name
       (Vue's split, not React's guess), a template-only edit patches templates in place,
       an error overlay, a devtools page in `serve` over `reactive.tree()`.

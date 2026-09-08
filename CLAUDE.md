@@ -107,9 +107,12 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
   phase-by-phase numbers and a per-primitive calibration; `_frontage.profile_start()` the
   per-function ones.
 - **The browser boots frontage's own runtime; there is no other.** A page loads
-  `_frontage/boot.js`, which loads `frontage.wasm` (`_runtime/`), fetches the `.fbc` modules
-  `manifest.json` names — the entry's import closure, compiled on the host by `fpy`, no
-  parser in the page — and runs the entry as `__main__`; the counter boots in 26 ms. The
+  `_frontage/boot.js`, which loads the wasm and the `.fbc` modules `manifest.json` names — the
+  entry's import closure, compiled on the host by `fpy`, no parser in the page — and runs the
+  entry as `__main__`; the counter boots in 26 ms. A built app's files are content-hashed
+  (`frontage.reactive.1a2b3c4d.fbc`, `frontage.<hash>.wasm`, the manifest maps them) with a
+  `_headers` that caches them forever and preload hints in the page; the dev server serves
+  them by plain name. The
   compiler is found on PATH, in `FRONTAGE_FPY`, in a checkout's `rust/target/`, or fetched
   from the release's assets into `~/.cache/frontage` on first use (`cli/frontage_rt.py`; CI
   builds one per platform on a tag). `mk runtime.build` rebuilds and vendors the runtime

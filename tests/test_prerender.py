@@ -50,8 +50,11 @@ def test_prerender_counter(tmp_path):
     # The built shape: the app's source beside the page, the modules as bytecode, and no
     # loose `frontage/*.py` for the browser to fetch.
     assert (out / "counter.py").exists()
-    assert (out / "_frontage" / "counter.fbc").exists()
-    assert (out / "_frontage" / "frontage.wasm").exists()
+    import json as _json
+
+    manifest = _json.loads((out / "_frontage" / "manifest.json").read_text())
+    assert (out / "_frontage" / manifest["entry"]).exists()
+    assert (out / "_frontage" / manifest["wasm"]).exists()
     assert not (out / "frontage").exists()
     assert 'data-fr-entry="counter"' in page
 

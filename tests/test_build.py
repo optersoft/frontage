@@ -1,6 +1,7 @@
 """`python -m frontage build` and the runtime image behind it (no network, no browser)."""
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -72,14 +73,23 @@ def test_build_writes_a_page_that_boots_from_wasm(tmp_path):
     app = write_app(tmp_path, counter=APP)
     out = build.build(app, tmp_path / "out", quiet=True)
 
-    for name in ("boot.js", "glue.js", "frontage.wasm", "manifest.json", "counter.fbc", "frontage.reactive.fbc"):
+    for name in ("boot.js", "glue.js", "manifest.json"):
         assert (out / "_frontage" / name).exists()
-    # The page fetches the entry by its own name; the manifest lists the rest, and only what
-    # the entry reaches (the router is not imported here).
+    # The manifest lists every module but the entry, and only what the entry reaches (the
+    # router is not imported here); each module and the wasm sit at a content-hashed name,
+    # which `_headers` lets a host cache forever, and the page preloads them.
     manifest = json.loads((out / "_frontage" / "manifest.json").read_text())
     assert "counter" not in manifest["modules"] and "frontage.reactive" in manifest["modules"]
     assert "frontage.router" not in manifest["modules"]
-    assert (out / "_frontage" / "frontage.wasm").read_bytes()[:4] == b"\0asm"
+    files = manifest["files"]
+    assert re.fullmatch(r"counter\.[0-9a-f]{8}\.fbc", files["counter"]) and manifest["entry"] == files["counter"]
+    assert (out / "_frontage" / files["frontage.reactive"]).exists()
+    assert re.fullmatch(r"frontage\.[0-9a-f]{8}\.wasm", manifest["wasm"])
+    assert (out / "_frontage" / manifest["wasm"]).read_bytes()[:4] == b"\0asm"
+    assert "immutable" in (out / "_headers").read_text()
+    page = (out / "index.html").read_text()
+    assert f'<link rel="preload" href="./_frontage/{manifest["wasm"]}" as="fetch" crossorigin>' in page
+    assert '<link rel="modulepreload" href="./_frontage/boot.js">' in page
 
     page = (out / "index.html").read_text()
     assert 'data-fr-entry="counter"' in page and "data-fr-boot" in page
@@ -92,10 +102,21 @@ def test_build_writes_a_page_that_boots_from_wasm(tmp_path):
 def test_a_module_the_entry_does_not_import_is_not_shipped(tmp_path):
     app = write_app(tmp_path, counter=APP, helpers="X = 1\n")
     out = build.build(app, tmp_path / "out", quiet=True)
-    assert (out / "_frontage" / "counter.fbc").exists()
-    assert not (out / "_frontage" / "helpers.fbc").exists()
-    # The sources stay readable in the output too, which is the point of a teaching framework.
-    assert (out / "helpers.py").exists()
+    files = json.loads((out / "_frontage" / "manifest.json").read_text())["files"]
+    assert "counter" in files and "helpers" not in files
+
+
+def test_a_rebuild_keeps_the_names_of_what_did_not_change(tmp_path):
+    """Content hashes: a change to one module moves that file's URL and no other's."""
+    app = write_app(tmp_path, counter=APP, helpers="X = 1\n")
+    (tmp_path / "app" / "counter.py").write_text(APP + "import helpers\n")
+    first = json.loads((build.build(app, tmp_path / "out", quiet=True) / "_frontage" / "manifest.json").read_text())
+    (tmp_path / "app" / "helpers.py").write_text("X = 2\n")
+    second = json.loads((build.build(app, tmp_path / "out", quiet=True) / "_frontage" / "manifest.json").read_text())
+    assert first["files"]["helpers"] != second["files"]["helpers"]
+    assert first["files"]["counter"] == second["files"]["counter"]
+    assert first["files"]["frontage.reactive"] == second["files"]["frontage.reactive"]
+    assert first["wasm"] == second["wasm"]
 
 
 def test_the_vendored_runtime_is_present():

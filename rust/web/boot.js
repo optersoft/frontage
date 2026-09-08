@@ -36,8 +36,12 @@ export async function startRuntime() {
   return rt;
 }
 
+// A built app's manifest names each module's content-hashed file; the dev server's does not.
+let files = {};
+const fileOf = (name) => files[name] || `${name}.fbc`;
+
 async function addModules(rt, names) {
-  const modules = await Promise.all(names.map(async (name) => [name, await bytes(asset(`${name}.fbc`))]));
+  const modules = await Promise.all(names.map(async (name) => [name, await bytes(asset(fileOf(name)))]));
   for (const [name, fbc] of modules) rt.addModule(name, fbc);
 }
 
@@ -52,11 +56,12 @@ async function boot() {
   // A page that runs a typed program (`data-fr-compiler`) gets the whole framework, since
   // the program may import any of it; a built app gets its entry's import closure.
   const compiler = tag.dataset.frCompiler !== undefined;
-  const [rt, manifest, framework] = await Promise.all([
-    load(asset(compiler ? "frontage-compiler.wasm" : "frontage.wasm"), console_io),
+  const [manifest, framework] = await Promise.all([
     fetch(asset("manifest.json")).then((r) => r.json()),
     compiler ? fetch(asset("framework.json")).then((r) => r.json()) : { modules: [] },
   ]);
+  files = manifest.files || {};
+  const rt = await load(asset(compiler ? "frontage-compiler.wasm" : manifest.wasm || "frontage.wasm"), console_io);
   const names = [...new Set([...framework.modules, ...manifest.modules])];
   await addModules(rt, names);
   // JavaScript modules the app asked for (`data-fr-js="name=./lib.js, ./other.js"`): the
@@ -72,7 +77,7 @@ async function boot() {
     const namespace = await import(new URL(specifier, appRoot).href);
     if (name) rt.registerJsModule(name, namespace);
   }
-  const main = await bytes(asset(`${entry}.fbc`));
+  const main = await bytes(asset(manifest.entry || `${entry}.fbc`));
   window.frontage = rt;
   const code = rt.run(main);
   if (code === 1) console.error("frontage: the entry raised; see above");

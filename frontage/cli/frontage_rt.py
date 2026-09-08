@@ -160,9 +160,32 @@ def site_files(dest, quiet=True):
     return framework_files(dest, quiet=quiet)
 
 
-def manifest(names, entry):
-    """`manifest.json`: every module but the entry, which the boot fetches by its own name."""
-    return json.dumps({"modules": [n for n in names if n != entry]}).encode()
+def manifest(names, entry, files=None, wasm=None):
+    """`manifest.json`: every module but the entry (which the boot fetches by its own name),
+    and, for a built app, the content-hashed file of each module and of the wasm, so the
+    files can be cached forever and a rebuild changes only what changed."""
+    out = {"modules": [n for n in names if n != entry]}
+    if files:
+        out["files"] = files
+        out["entry"] = files[entry]
+    if wasm:
+        out["wasm"] = wasm
+    return json.dumps(out).encode()
+
+
+def hashed(name, data, suffix):
+    """`<name>.<8 hex digits of the content>.<suffix>`."""
+    import hashlib
+
+    return f"{name}.{hashlib.sha256(data).hexdigest()[:8]}.{suffix}"
+
+
+# Cloudflare Pages / Netlify `_headers`: the hashed files never change at their URL.
+HEADERS = """/_frontage/*.fbc
+  Cache-Control: public, max-age=31536000, immutable
+/_frontage/*.wasm
+  Cache-Control: public, max-age=31536000, immutable
+"""
 
 
 def module_file(name, app):

@@ -258,9 +258,13 @@ def build(app, out="", entry="", quiet=False, components=None):
     runtime.mkdir(parents=True, exist_ok=True)
     if not frontage_rt.available():
         raise SystemExit("error: the runtime is missing from frontage/_runtime: run `mk runtime.build`")
-    for name in frontage_rt.ASSETS:
-        if name != "frontage-compiler.wasm":  # a built app never compiles in the page
-            shutil.copy2(frontage_rt.RUNTIME_DIR / name, runtime / name)
+    # The two scripts by name (the page names boot.js); the wasm by content hash, so it can be
+    # cached forever and a runtime bump changes its URL.
+    for name in ("glue.js", "boot.js"):
+        shutil.copy2(frontage_rt.RUNTIME_DIR / name, runtime / name)
+    wasm_bytes = (frontage_rt.RUNTIME_DIR / "frontage.wasm").read_bytes()
+    wasm_file = frontage_rt.hashed("frontage", wasm_bytes, "wasm")
+    (runtime / wasm_file).write_bytes(wasm_bytes)
 
     # Components: assets beside the runtime, Python in the archive, a line in the boot tag.
     if components is None:
@@ -279,9 +283,14 @@ def build(app, out="", entry="", quiet=False, components=None):
     # The entry's import closure, each module as bytecode, and a manifest naming them;
     # nothing the page does not reach is shipped.
     members = frontage_rt.closure(app, entry, installed)
+    files = {}
     for name, path in members:
-        (runtime / f"{name}.fbc").write_bytes(frontage_rt.compile_module(path))
-    (runtime / frontage_rt.MANIFEST).write_bytes(frontage_rt.manifest([n for n, _ in members], entry))
+        data = frontage_rt.compile_module(path)
+        files[name] = frontage_rt.hashed(name, data, "fbc")
+        (runtime / files[name]).write_bytes(data)
+    (runtime / frontage_rt.MANIFEST).write_bytes(frontage_rt.manifest([n for n, _ in members], entry, files, wasm_file))
+    if not (out / "_headers").exists():
+        (out / "_headers").write_text(frontage_rt.HEADERS)
 
     page = out / "index.html"
     if page.exists():
@@ -293,7 +302,14 @@ def build(app, out="", entry="", quiet=False, components=None):
             html = declare(html, declarations)
     else:
         html = PAGE.format(title=app.name, tag=boot_tag(entry, declarations=declarations))
-    for link in styles:
+    # Preload hints: the boot and the glue as modules, the wasm as a fetch, all in flight
+    # before the parser reaches the boot tag.
+    hints = [
+        '<link rel="modulepreload" href="./_frontage/boot.js">',
+        '<link rel="modulepreload" href="./_frontage/glue.js">',
+        f'<link rel="preload" href="./_frontage/{wasm_file}" as="fetch" crossorigin>',
+    ]
+    for link in hints + styles:
         if link not in html:
             html = html.replace("</head>", f"  {link}\n</head>") if "</head>" in html else link + html
     page.write_text(html)
