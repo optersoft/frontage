@@ -719,9 +719,12 @@ impl Vm {
     }
 
     /// `class` statement: run the body into a namespace, then make the class.
-    pub fn build_class(&mut self, body: Value, name: Value, bases: Vec<Value>) -> PyResult {
+    /// `class name(*bases, **kw): body`. `kw` is a dict or NONE; `metaclass=` in it is called
+    /// as `M(name, bases, ns, **rest)`, the rest reaches the parent's `__init_subclass__`.
+    pub fn build_class(&mut self, body: Value, name: Value, bases: Vec<Value>, kw: Value) -> PyResult {
         let ns = self.dict(PyDict::new());
         self.roots.push(ns);
+        self.roots.push(kw);
         let globals = match self.heap.get(body) {
             Obj::Func(f) => f.globals,
             _ => Value::NONE,
@@ -734,12 +737,44 @@ impl Vm {
         self.dict_set(ns, qk, name);
         let r = self.run_function_with_namespace(body, ns);
         self.roots.pop();
+        self.roots.pop();
         r?;
-        self.make_class(name, bases, ns, module)
+        let mut kwargs: Vec<(Value, Value)> = if kw.is_none() { Vec::new() } else { self.mapping_items(kw)? };
+        let mk = self.intern("metaclass");
+        let mut metaclass = None;
+        kwargs.retain(|&(k, v)| {
+            if k == mk {
+                metaclass = Some(v);
+                false
+            } else {
+                true
+            }
+        });
+        // No `metaclass=`: a base's metaclass is inherited, as in CPython.
+        if metaclass.is_none() {
+            for &b in &bases {
+                if let Obj::Class(c) = self.heap.get(b) {
+                    if !c.meta.is_none() {
+                        metaclass = Some(c.meta);
+                        break;
+                    }
+                }
+            }
+        }
+        if let Some(meta) = metaclass {
+            let bases_t = self.tuple(bases);
+            return self.call(meta, &[name, bases_t, ns], &kwargs);
+        }
+        self.make_class_kw(name, bases, ns, module, &kwargs)
     }
 
     /// `type(name, bases, dict)`.
-    pub fn make_class(&mut self, name: Value, mut bases: Vec<Value>, ns: Value, module: Value) -> PyResult {
+    pub fn make_class(&mut self, name: Value, bases: Vec<Value>, ns: Value, module: Value) -> PyResult {
+        self.make_class_kw(name, bases, ns, module, &[])
+    }
+
+    /// `make_class` with the class keywords, which reach the parent's `__init_subclass__`.
+    pub fn make_class_kw(&mut self, name: Value, mut bases: Vec<Value>, ns: Value, module: Value, kwargs: &[(Value, Value)]) -> PyResult {
         if bases.is_empty() {
             bases.push(self.t.object);
         }
@@ -754,7 +789,7 @@ impl Vm {
                 _ => return Err(self.type_error("bases must be classes")),
             }
         }
-        let placeholder = Class { name, bases: bases.clone(), mro: Vec::new(), dict: PyDict::new(), builtin, version: 0, module, cache: core::cell::RefCell::new([(Value::UNDEF, Value::UNDEF); 32]), cache_epoch: Default::default() };
+        let placeholder = Class { name, bases: bases.clone(), mro: Vec::new(), dict: PyDict::new(), builtin, version: 0, module, cache: core::cell::RefCell::new([(Value::UNDEF, Value::UNDEF); 32]), cache_epoch: Default::default(), meta: Value::NONE };
         let cls = self.heap.alloc(Obj::Class(Box::new(placeholder)));
         self.roots.push(cls);
         let mro = self.compute_mro(cls, &bases)?;
@@ -814,7 +849,7 @@ impl Vm {
                     _ => None,
                 };
                 if let Some(f) = target {
-                    self.call(f, &[cls], &[])?;
+                    self.call(f, &[cls], kwargs)?;
                 }
             }
         }
@@ -828,8 +863,12 @@ impl Vm {
             Obj::Class(c) => c.builtin,
             _ => return Err(self.type_error("not a class")),
         };
+        // A metaclass (a subclass of `type`) constructs through its own `__new__`/`__init__`;
+        // every other builtin kind through `construct_builtin`.
         if let Some(kind) = builtin {
-            return crate::builtins::construct_builtin(self, cls, kind, args, kwargs);
+            if !(kind == Builtin::Type && cls != self.t.type_) {
+                return crate::builtins::construct_builtin(self, cls, kind, args, kwargs);
+            }
         }
         let new = self.n.new;
         let obj = if let Some(newf) = self.class_lookup(cls, new).filter(|f| matches!(self.heap.get(*f), Obj::Func(_) | Obj::StaticMethod(_))) {

@@ -108,6 +108,16 @@ def test_the_vendored_runtime_is_present():
     assert compiler[:4] == b"\0asm" and len(compiler) > len(wasm)
 
 
+def test_the_runtime_stays_within_its_size_budget():
+    """What every page downloads, compressed the way a host serves it. The number is the
+    budget, not a measurement: a change that crosses it needs a reason in the commit
+    (2026-09-08: 261 KB gzip, 209 KB brotli, with the native core)."""
+    import gzip
+
+    wasm = (frontage_rt.RUNTIME_DIR / "frontage.wasm").read_bytes()
+    assert len(gzip.compress(wasm, 9)) < 300_000
+
+
 def test_an_existing_page_keeps_its_markup_and_gains_the_tag(tmp_path):
     app = write_app(tmp_path, counter=APP)
     (app / "index.html").write_text("<!DOCTYPE html>\n<body>\n<main id='app'>x</main>\n</body>\n")

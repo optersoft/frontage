@@ -92,8 +92,10 @@ impl Heap {
         self.enabled && (self.stress || self.since_gc >= self.threshold)
     }
 
-    /// Mark from `roots`, sweep everything else.
-    pub fn collect(&mut self, roots: impl IntoIterator<Item = Value>) -> usize {
+    /// Mark from `roots`, sweep everything else. A suspended generator nobody reaches is
+    /// kept one more cycle and returned, so the VM can close it (its `finally` runs); it goes
+    /// at the next collection.
+    pub fn collect(&mut self, roots: impl IntoIterator<Item = Value>) -> (usize, Vec<Value>) {
         self.marks.clear();
         self.marks.resize(self.slots.len(), false);
         let mut stack: Vec<Value> = Vec::with_capacity(1024);
@@ -102,17 +104,20 @@ impl Heap {
                 stack.push(v);
             }
         }
-        while let Some(v) = stack.pop() {
-            let i = v.as_obj() as usize;
-            if self.marks[i] {
-                continue;
-            }
-            self.marks[i] = true;
-            self.slots[i].trace(|child| {
-                if child.is_obj() && !self.marks[child.as_obj() as usize] {
-                    stack.push(child);
+        self.mark_from(&mut stack);
+        let mut doomed = Vec::new();
+        for i in 1..self.slots.len() {
+            if !self.marks[i] {
+                if let Obj::Generator(g) = &self.slots[i] {
+                    if !g.finished && !g.running && g.frame.as_ref().map(|f| f.pc > 0).unwrap_or(false) {
+                        doomed.push(Value::obj(i as u32));
+                    }
                 }
-            });
+            }
+        }
+        if !doomed.is_empty() {
+            stack.extend(doomed.iter().copied());
+            self.mark_from(&mut stack);
         }
         let mut freed = 0;
         for i in 1..self.slots.len() {
@@ -132,7 +137,22 @@ impl Heap {
         // Grow the threshold with the live set, so a big heap is not collected constantly.
         let live = self.slots.len() - self.free.len();
         self.threshold = (live / 2).max(20_000);
-        freed
+        (freed, doomed)
+    }
+
+    fn mark_from(&mut self, stack: &mut Vec<Value>) {
+        while let Some(v) = stack.pop() {
+            let i = v.as_obj() as usize;
+            if self.marks[i] {
+                continue;
+            }
+            self.marks[i] = true;
+            self.slots[i].trace(|child| {
+                if child.is_obj() && !self.marks[child.as_obj() as usize] {
+                    stack.push(child);
+                }
+            });
+        }
     }
 }
 

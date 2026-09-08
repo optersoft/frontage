@@ -59,8 +59,9 @@ native core was built by it: `RUNTIME.md` §9's addendum has each step's number.
 
 ## What it is not, yet
 
-No `match` statement, no metaclasses or class keywords, `__slots__` is a plain dict, a
-generator's `finally` does not run when it is collected, no `re` (it delegates to `RegExp`
-by design, §3.6, not written), no `exec`/`eval` of source in the page (no parser there), and
-`.fbc` files are read from a manifest rather than found by `build`'s import walk. Every one is
-listed in `RUNTIME.md` §9 with its cost.
+`__slots__` is accepted but not enforced (an instance keeps a dict); `eval` is not written
+(`exec` and `compile` are, in the compiler build); a class statement's `**kwargs` is
+rejected; `re` covers what `RegExp` does (no conditional groups, no `\N{…}`). `match`
+statements, metaclasses, class keywords and a generator's `finally` on collection are in
+since 2026-09-08, each with a differential case. Every gap found is a case in
+`py/tests/cases/` first.

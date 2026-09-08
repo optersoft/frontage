@@ -443,14 +443,15 @@ ships as source and costs about two milliseconds to compile in the VM. Plan in
         a new GitLab project serves Pages to members only even when the project is public.
       - [x] The nine READMEs caught up too: they still described PyScript, a `pyscript.json`
         the repos no longer have, and a pipeline running `export`.
-- [ ] Release: bump `version.py`, check the chapters name the new wheel, tag `v0.9.0`.
+- [x] Release: bump `version.py`, check the chapters name the new wheel, tag `v0.9.0` (0.9.0 and 0.9.1 shipped).
 ## M12 — faster than React, in one release: 0.10.0 (planned 2026-09-08)
 
 The plan is `FASTER.md`; §1–§4 there are measured, on the examples, on the pinned
 interpreter, and on seven custom builds of the MicroPython wasm port made for it. What it
 decides, all in 0.10.0:
 
-- [ ] **Our own build of the interpreter.** An out-of-tree variant for `ports/webassembly`
+- [x] ~~**Our own build of the interpreter.**~~ Superseded 2026-09-08: MicroPython is gone from
+      `main`; the runtime is frontage's own (`rust/`). Kept for the record: an out-of-tree variant for `ports/webassembly`
       (three files, `VARIANT_DIR=`, upstream tag untouched): **`SUPPORT_LONGJMP=wasm`** (the
       upstream build routes every Python exception through JavaScript longjmp trampolines),
       an optimised link (upstream never runs Binaryen), the frozen micropython-lib cut from
@@ -459,7 +460,8 @@ decides, all in 0.10.0:
       page, **create 1,000 rows 139 → 71 ms, swap 12 → 4.4, update 3.3 → 1.4**, with the
       framework unchanged. The browser suite (21 tests) passes on it. Safari ≥ 15.2.
       Bump to upstream `1.29.0-6` on the way.
-- [ ] **The framework core in Rust, inside the interpreter** (`frontage/_core`: a `no_std`
+- [x] ~~**The framework core in Rust, inside the interpreter**~~ Superseded 2026-09-08 by the
+      native core in frontage's own runtime (below). Kept for the record (`frontage/_core`: a `no_std`
       staticlib behind a ~300-line C shim, linked by `runtime build --c-modules`) — **was
       "in C"; `RUST.md` (2026-09-08) is the design and the reason.** Probed the same day, on
       stable Rust 1.96 and the pinned emsdk: it links first time, `no_std` costs 1 KB of
@@ -483,9 +485,9 @@ decides, all in 0.10.0:
       until the runtime reaches parity with the browser suite; `rust/` is the release path
       from here. Done the same day: the build packs the import closure (`cli/graph.py`),
       `re` over `RegExp` (`rust/vm/src/lib/re.py`, a web case in the differential suite).
-- [ ] **The native core in the runtime** (`RUNTIME.md` §3.8, `FASTER.md` step 2 landing
+- [x] **The native core in the runtime** (`RUNTIME.md` §3.8, `FASTER.md` step 2 landing
       here). Gate: `profile_rows` create ≤ 35 ms (2× MicroPython's 71), the 157 tests
-      unchanged. Measured in Chromium, create of 1,000 rows with DOM templates, each step
+      unchanged — **met, 24.8 ms.** Measured in Chromium, create of 1,000 rows with DOM templates, each step
       committed the same day (2026-09-08):
       - [x] the reactive graph as VM types (`rust/vm/src/core.rs`: Signal/Memo/Effect/Owner,
             tracking with O(1) unsubscribe, marking, the flush, batch; `reactive.py` keeps the
@@ -522,16 +524,21 @@ decides, all in 0.10.0:
       `glue.js` and `boot.js`, vendored by `mk runtime.build` and shipped in the wheel. The
       compiler `fpy` is fetched from the release's assets on first use (CI builds five, one per
       platform, on a tag), like the Tailwind CLI. `frontage serve` swaps modules over `.fbc`.
-- [ ] Runtime gaps that the suite does not reach: `match`, metaclasses and class keywords,
-      generator finalisation on collection, `__slots__`, a size test in CI (209 KB brotli
-      today), the 0.10.0 release itself (FASTER.md §11's list, the chapters, the wheel's first
-      tag with binaries).
-- [ ] **`_core.sort/filter/group` as the core's first tenant, and `frontage.table` on them.**
-      Found 2026-09-08: MicroPython's `sorted` pivots on the last element and calls `key` per
-      comparison — **10,000 ordered floats sort in 269 ms, 1,440 ms with a key** (shuffled:
-      1.3 ms), and it is not stable (`py/objlist.c`'s own TODO). A grid sorted by a column
-      that arrives ordered pays it on every click. Gate: under 5 ms. `[human]` an upstream
-      issue for the pivot.
+- [x] Runtime gaps the suite did not reach, closed 2026-09-08 with a differential case each:
+      `match` statements (PEP 634, every pattern kind, over four hidden builtins), metaclasses
+      and class keywords (`type.__new__`, a class typed by its metaclass, `__init_subclass__`
+      with keywords), a generator's `finally` when it is collected unreachable (the collector
+      keeps it one cycle and the VM closes it), `__slots__` (accepted; not enforced), and a
+      size budget test (`test_the_runtime_stays_within_its_size_budget`: 300 KB gzip, 261
+      today).
+- [ ] The 0.10.0 release itself: FASTER.md §11's list, the academy chapters rewritten for the
+      runtime (they still describe MicroPython), the wheel's first tag with the five compiler
+      binaries. `[human]`: the tag.
+- [x] **`_core.sort/filter/group` as the core's first tenant.** Moot with the runtime: its
+      `sorted` is a stable merge sort in Rust that calls `key` once per element — **10,000
+      ordered floats sort in 2.0 ms on the wasm, 2.5 with a key** (MicroPython: 269 and
+      1,440). The gate was under 5 ms. `frontage.table` sorts with `sorted` and needs nothing
+      else.
 - [ ] **`frontage.frame`: a columnar engine as a Rust module of its own** (`data-fr-js`,
       `wasm32-unknown-unknown`, `no_std`): filter, sort, group/aggregate, rolling, resample,
       CSV and Arrow in; handles in Python, `Float64Array`s to the chart, a windowed `table`
@@ -541,23 +548,24 @@ decides, all in 0.10.0:
       grain with binaryen when present. `examples/weather` is the port and the number. Needs
       `_core.address(buf)` + a `HEAPU8` handoff for the zero-copy way in (every Python
       container crosses as an opaque proxy today: 65 ns an element).
-- [ ] **No more `frontage-*` projects on PyPI.** Subpackages of `frontage`, extras for
-      server halves, assets in the wheel, the component repo merged in. No shim releases for
-      the five published names and no 0.9-page compatibility in `boot.js` (decided 2026-09-08).
-- [ ] **`frontage build` packs the closure of what the entry imports**, walked with `ast`,
-      as bytecode, app included; `__init__.py` lazy through PEP 562 (verified on this
-      interpreter); two content-hashed archives (framework subset, app), immutable caching,
-      brotli beside them, preload hints; `Route("/map", lazy="pages.map")` with chunks, a
-      manifest inside the main archive, shared chunks over 20 KB, hover prefetch; `serve`
-      and `swap` follow; `examples/uber` split.
+- [x] **No more `frontage-*` projects on PyPI.** Subpackages of `frontage`, extras for
+      server halves, assets in the wheel, the component repo merged in (M12 step 3, 38c2d60).
+      No shim releases for the five published names and no 0.9-page compatibility in
+      `boot.js` (decided 2026-09-08).
+- [x] **`frontage build` packs the closure of what the entry imports**, walked with `ast`
+      (`cli/graph.py`), as bytecode, app included, one `.fbc` per module and a manifest;
+      `__init__.py` lazy through PEP 562; `serve` and `swap` follow (2026-09-08).
+- [ ] Still to do on that: content-hashed files, immutable caching, brotli beside them,
+      preload hints; `Route("/map", lazy="pages.map")` with chunks (`graph.lazy_roots` finds
+      them), shared chunks over 20 KB, hover prefetch; `examples/uber` split.
 - [ ] **Development**: module-level signals and stores survive a swap by qualified name
       (Vue's split, not React's guess), a template-only edit patches templates in place,
       an error overlay, a devtools page in `serve` over `reactive.tree()`.
 - [ ] **The React gaps marked "yes" in `FASTER.md` §9**: head management, view
       transitions, form validation in core, accessibility basics, Tailwind for apps, the
       "from React" and "from Streamlit" chapters.
-- [ ] Open: `-O2` for app bytecode (yes, with `--debug`); which interpreter trims; the
-      Python core kept behind a flag until 1.0.
+- [x] Open, now closed by the runtime: there is no interpreter to trim and no second core to
+      keep behind a flag; `-O2` has no meaning for `.fbc` (docstrings are dropped at compile).
 - Measured and rejected, with the number, in `FASTER.md` §10: Pyodide, Python→JS,
       SPy/mypyc/Codon for apps, pocketpy, Rust in the same wasm, `wasm-opt` on the upstream
       binary (53 KB raw, 4 KB gzip — the size is data), a Worker, symbol-level shaking.
@@ -804,8 +812,9 @@ a server, and both are constraints we chose.
       out — Streamlit's issue #5827 answers it with *"This touches on the fundamental of
       Streamlit… No guarantees that we'll do this anytime soon!"*, open since 2022.
 
-- [ ] At 1.0: delete `frontage/cli/pyscript.py`, `tools/fetch_pyscript.py`, `mk pyscript.fetch`,
-      the `export` command with its tests, and the ~18 MB `tools/pyscript/` fixture.
+- [x] At 1.0: delete `frontage/cli/pyscript.py`, `tools/fetch_pyscript.py`, `mk pyscript.fetch`,
+      the `export` command with its tests, and the ~18 MB `tools/pyscript/` fixture — done
+      early, 2026-09-08, with MicroPython.
 
 ## Do not "fix" these
 

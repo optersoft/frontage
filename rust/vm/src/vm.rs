@@ -220,6 +220,8 @@ pub struct Vm {
     pub class_epoch: u32,
     /// The sampling profiler, on while `Some`: `_frontage.profile_start()`.
     pub prof: Option<Box<Profile>>,
+    /// Closing unreachable generators after a collection; not re-entered.
+    pub finalizing: bool,
     /// The reactive graph's module state (`core.rs`).
     pub core: crate::core::Core,
     /// The DOM op stream (`dom.rs`).
@@ -257,6 +259,7 @@ impl Vm {
             browser: false,
             class_epoch: 1,
             prof: None,
+            finalizing: false,
             core: crate::core::Core::new(),
             dom: crate::dom::DomStream::new(),
             view: Default::default(),
@@ -510,7 +513,19 @@ impl Vm {
         roots.extend(self.js_pins.iter().copied());
         self.core.trace(&mut |v| roots.push(v));
         self.view.trace(&mut |v| roots.push(v));
-        let freed = self.heap.collect(roots);
+        let (freed, doomed) = self.heap.collect(roots);
+        // Generators nobody reaches: `close()` each, so its `finally` runs, as CPython does
+        // when the last reference goes. They are freed at the next collection.
+        if !doomed.is_empty() && !self.finalizing {
+            self.finalizing = true;
+            for g in doomed {
+                if let Err(e) = crate::builtins::generator_close(self, g) {
+                    let text = self.format_exception(e);
+                    self.host.write_stderr(&format!("Exception ignored while closing a generator:\n{text}"));
+                }
+            }
+            self.finalizing = false;
+        }
         if !self.heap.freed_js.is_empty() {
             let handles = core::mem::take(&mut self.heap.freed_js);
             if let Some(h) = self.js_hooks {
@@ -1471,14 +1486,17 @@ impl Vm {
                 push!(f);
             }
             Op::MakeClass => {
+                // arg: the number of bases; the top bit says a keywords dict is on top.
                 self.frames[fi].pc = *pc;
-                let nbases = arg as usize;
+                let has_kw = arg & (1 << 31) != 0;
+                let nbases = (arg & !(1 << 31)) as usize;
+                let kw = if has_kw { pop!() } else { Value::NONE };
                 let len = self.stack.len();
                 let bases: Vec<Value> = self.stack[len - nbases..].to_vec();
                 self.stack.truncate(len - nbases);
                 let name = pop!();
                 let body = pop!();
-                let cls = self.build_class(body, name, bases)?;
+                let cls = self.build_class(body, name, bases, kw)?;
                 push!(cls);
             }
             Op::BuildTuple => {

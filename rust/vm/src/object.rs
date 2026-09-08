@@ -135,6 +135,8 @@ pub struct Class {
     /// `cache_epoch` equals the VM's `class_epoch`.
     pub cache: core::cell::RefCell<[(Value, Value); 32]>,
     pub cache_epoch: core::cell::Cell<u32>,
+    /// The metaclass, when it is not `type`.
+    pub meta: Value,
 }
 
 /// The slot a name hashes to in a class's direct-mapped cache.
@@ -310,6 +312,7 @@ impl Obj {
             Obj::Class(c) => {
                 visit(c.name);
                 visit(c.module);
+                visit(c.meta);
                 c.bases.iter().for_each(|&x| visit(x));
                 c.mro.iter().for_each(|&x| visit(x));
                 c.dict.trace(&mut visit);

@@ -46,7 +46,13 @@ impl Vm {
                     self.t.builtin_function
                 }
             }
-            Obj::Class(_) => self.t.type_,
+            Obj::Class(c) => {
+                if c.meta.is_none() {
+                    self.t.type_
+                } else {
+                    c.meta
+                }
+            }
             Obj::Instance(i) => i.class,
             Obj::Module(_) => self.t.module,
             Obj::Exc(e) => e.class,
@@ -1817,7 +1823,17 @@ impl Vm {
                     }
                 }
                 let t = self.type_name(v);
-                Ok(format!("<{t} object at 0x{:x}>", v.as_obj()))
+                // `<__main__.Point object at …>`: the class's module, as CPython prints it.
+                let cls = self.type_of(v);
+                let module = match self.heap.get(cls) {
+                    Obj::Class(c) => self.as_str(c.module).unwrap_or("").to_string(),
+                    _ => String::new(),
+                };
+                if module.is_empty() || module == "builtins" {
+                    Ok(format!("<{t} object at 0x{:x}>", v.as_obj()))
+                } else {
+                    Ok(format!("<{module}.{t} object at 0x{:x}>", v.as_obj()))
+                }
             }
             Obj::Module(m) => {
                 let name = self.as_str(m.name).unwrap_or("?").to_string();

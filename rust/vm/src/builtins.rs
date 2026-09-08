@@ -86,7 +86,7 @@ pub fn new_class_pub(vm: &mut Vm, name: &str, kind: Option<Builtin>, bases: &[Va
 fn new_class(vm: &mut Vm, name: &str, kind: Option<Builtin>, bases: &[Value]) -> Value {
     let name_v = vm.intern(name);
     let module = vm.intern("builtins");
-    let placeholder = Class { name: name_v, bases: bases.to_vec(), mro: Vec::new(), dict: PyDict::new(), builtin: kind, version: 0, module, cache: core::cell::RefCell::new([(Value::UNDEF, Value::UNDEF); 32]), cache_epoch: Default::default() };
+    let placeholder = Class { name: name_v, bases: bases.to_vec(), mro: Vec::new(), dict: PyDict::new(), builtin: kind, version: 0, module, cache: core::cell::RefCell::new([(Value::UNDEF, Value::UNDEF); 32]), cache_epoch: Default::default(), meta: Value::NONE };
     let cls = vm.heap.alloc_pinned(Obj::Class(Box::new(placeholder)));
     let mut mro = vec![cls];
     // Single inheritance among builtins: chain the first base's MRO.
@@ -133,6 +133,13 @@ pub fn install(vm: &mut Vm) {
     vm.t.object = object;
     let type_ = new_class(vm, "type", Some(Builtin::Type), &[object]);
     vm.t.type_ = type_;
+    // `type.__new__(mcls, name, bases, ns, **kw)` and `type.__init__`, what a metaclass calls
+    // through `super()`. Plain functions, not bound: the metaclass is the first argument.
+    let f = vm.native("__new__", type_new);
+    let sm = vm.heap.alloc(Obj::StaticMethod(f));
+    let key = vm.intern("__new__");
+    vm.class_dict_set(type_, key, sm);
+    add_method(vm, type_, "__init__", type_init);
     macro_rules! ty {
         ($field:ident, $name:expr, $kind:expr) => {{
             let c = new_class(vm, $name, Some($kind), &[object]);
@@ -336,6 +343,10 @@ pub fn install(vm: &mut Vm) {
     add_builtin(vm, "bin", b_bin);
     add_builtin(vm, "globals", b_globals);
     add_builtin(vm, "compile", b_compile);
+    add_builtin(vm, "__match_seq__", m_match_seq);
+    add_builtin(vm, "__match_map__", m_match_map);
+    add_builtin(vm, "__match_map_rest__", m_match_map_rest);
+    add_builtin(vm, "__match_class__", m_match_class);
     add_builtin(vm, "exec", b_exec);
     add_builtin(vm, "vars", b_vars);
     add_builtin(vm, "dir", b_dir);
@@ -1501,6 +1512,179 @@ fn b_oct(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
 fn b_bin(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
     radix(vm, args, "0b", |n| format!("{n:b}"))
 }
+// -- pattern matching (PEP 634): the runtime half of a `match` statement --------------------------
+
+/// `__match_seq__(subject, before, after, has_star)`: the subject's items as a list when it is
+/// a sequence of the right length — `before` fixed items, a list for the star, `after` fixed
+/// items — else None. `str`, `bytes` and `bytearray` never match a sequence pattern.
+fn m_match_seq(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    check_args(vm, args, 4, 4, "__match_seq__")?;
+    let subject = args[0];
+    let before = vm.as_i64(args[1]).unwrap_or(0) as usize;
+    let after = vm.as_i64(args[2]).unwrap_or(0) as usize;
+    let star = vm.truthy(args[3])?;
+    if !subject.is_obj() {
+        return Ok(Value::NONE);
+    }
+    let items = match vm.heap.get(subject) {
+        Obj::List(v) | Obj::Tuple(v) => v.clone(),
+        Obj::Range { .. } => vm.collect_iter(subject)?,
+        Obj::Str(_) | Obj::Bytes(_) | Obj::ByteArray(_) | Obj::Dict(_) | Obj::Set(_) | Obj::FrozenSet(_) => return Ok(Value::NONE),
+        Obj::Instance(_) => {
+            // A sequence type of the app's own: it has `__len__` and `__getitem__` and is not a mapping.
+            let (len_, getitem, keys) = (vm.n.len, vm.n.getitem, vm.intern("keys"));
+            if vm.lookup_method(subject, len_).is_none() || vm.lookup_method(subject, getitem).is_none() || vm.lookup_method(subject, keys).is_some() {
+                return Ok(Value::NONE);
+            }
+            vm.collect_iter(subject)?
+        }
+        _ => return Ok(Value::NONE),
+    };
+    let n = items.len();
+    if (!star && n != before + after) || (star && n < before + after) {
+        return Ok(Value::NONE);
+    }
+    let mut out: Vec<Value> = Vec::with_capacity(before + after + 1);
+    out.extend_from_slice(&items[..before]);
+    if star {
+        let middle = items[before..n - after].to_vec();
+        let l = vm.list(middle);
+        out.push(l);
+    }
+    out.extend_from_slice(&items[n - after..]);
+    Ok(vm.list(out))
+}
+
+/// `__match_map__(subject, keys)`: the values for `keys` as a list when the subject is a
+/// mapping holding every key, else None.
+fn m_match_map(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    check_args(vm, args, 2, 2, "__match_map__")?;
+    let (subject, keys) = (args[0], args[1]);
+    if !is_mapping(vm, subject) {
+        return Ok(Value::NONE);
+    }
+    let mut out = Vec::new();
+    for key in vm.collect_iter(keys)? {
+        if !vm.contains(subject, key)? {
+            return Ok(Value::NONE);
+        }
+        let v = vm.get_item(subject, key)?;
+        out.push(v);
+    }
+    Ok(vm.list(out))
+}
+
+/// `__match_map_rest__(subject, keys)`: a new dict of the subject's items not in `keys`.
+fn m_match_map_rest(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    check_args(vm, args, 2, 2, "__match_map_rest__")?;
+    let (subject, keys) = (args[0], args[1]);
+    let taken = vm.collect_iter(keys)?;
+    let out = vm.dict(PyDict::new());
+    for (k, v) in vm.mapping_items(subject)? {
+        let mut skip = false;
+        for &t in &taken {
+            if vm.eq(k, t)? {
+                skip = true;
+                break;
+            }
+        }
+        if !skip {
+            vm.key_set(out, k, v)?;
+        }
+    }
+    Ok(out)
+}
+
+fn is_mapping(vm: &mut Vm, v: Value) -> bool {
+    if !v.is_obj() {
+        return false;
+    }
+    match vm.heap.get(v) {
+        Obj::Dict(_) => true,
+        Obj::Instance(_) | Obj::Node(_) => {
+            let (keys, getitem) = (vm.intern("keys"), vm.n.getitem);
+            vm.lookup_method(v, keys).is_some() && vm.lookup_method(v, getitem).is_some()
+        }
+        _ => false,
+    }
+}
+
+/// `__match_class__(subject, cls, n_positional, keyword_names)`: the matched attributes as a
+/// list — positional ones through `cls.__match_args__` (a builtin type with one positional
+/// pattern matches the subject itself), then the keyword ones — else None.
+fn m_match_class(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    check_args(vm, args, 4, 4, "__match_class__")?;
+    let (subject, cls) = (args[0], args[1]);
+    let npos = vm.as_i64(args[2]).unwrap_or(0) as usize;
+    if !cls.is_obj() || !matches!(vm.heap.get(cls), Obj::Class(_)) {
+        return Err(vm.type_error("called match pattern must be a class"));
+    }
+    if !vm.is_instance_of(subject, cls) {
+        return Ok(Value::NONE);
+    }
+    let mut out = Vec::new();
+    if npos > 0 {
+        let builtin = match vm.heap.get(cls) {
+            Obj::Class(c) => c.builtin.is_some() && c.builtin != Some(Builtin::Object),
+            _ => false,
+        };
+        let ma = vm.intern("__match_args__");
+        let match_args = vm.class_lookup(cls, ma);
+        match match_args {
+            Some(names) => {
+                let names = vm.collect_iter(names)?;
+                if npos > names.len() {
+                    let cn = vm.class_name(cls);
+                    return Err(vm.type_error(format!("{cn}() accepts {} positional sub-patterns ({npos} given)", names.len())));
+                }
+                for &name in names.iter().take(npos) {
+                    match vm.get_attr(subject, name) {
+                        Ok(v) => out.push(v),
+                        Err(_) => return Ok(Value::NONE),
+                    }
+                }
+            }
+            None if builtin && npos == 1 => out.push(subject),
+            None => {
+                let cn = vm.class_name(cls);
+                return Err(vm.type_error(format!("{cn}() accepts 0 positional sub-patterns ({npos} given)")));
+            }
+        }
+    }
+    for name in vm.collect_iter(args[3])? {
+        match vm.get_attr(subject, name) {
+            Ok(v) => out.push(v),
+            Err(_) => return Ok(Value::NONE),
+        }
+    }
+    Ok(vm.list(out))
+}
+
+/// `type.__new__(mcls, name, bases, ns, **kw)`: the class, with `mcls` as its metaclass.
+fn type_new(vm: &mut Vm, args: &[Value], kwargs: &[(Value, Value)]) -> PyResult {
+    check_args(vm, args, 4, 4, "type.__new__")?;
+    let (mcls, name, bases_v, ns) = (args[0], args[1], args[2], args[3]);
+    let bases = vm.collect_iter(bases_v)?;
+    let snapshot = vm.take_dict_snapshot(ns)?;
+    let mut d = PyDict::new();
+    for (k, v) in snapshot {
+        d.set(&vm.heap, k, v);
+    }
+    let ns2 = vm.dict(d);
+    let mk = vm.n.module;
+    let module = vm.dict_get(ns2, mk).unwrap_or_else(|| vm.intern("builtins"));
+    let cls = vm.make_class_kw(name, bases, ns2, module, kwargs)?;
+    if mcls != vm.t.type_ {
+        if let Obj::Class(c) = vm.heap.get_mut(cls) {
+            c.meta = mcls;
+        }
+    }
+    Ok(cls)
+}
+fn type_init(_vm: &mut Vm, _args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    Ok(Value::NONE)
+}
+
 /// `compile(source, filename, mode)`: a code object, when this runtime carries the compiler
 /// (the native runner, the playground's wasm); the page's runtime has none.
 fn b_compile(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
@@ -1621,7 +1805,16 @@ fn b_build_class(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult
     if args.len() < 2 {
         return Err(vm.type_error("__build_class__: not enough arguments"));
     }
-    vm.build_class(args[0], args[1], args[2..].to_vec())
+    let kw = if _k.is_empty() {
+        Value::NONE
+    } else {
+        let mut d = PyDict::new();
+        for &(k, v) in _k {
+            d.set(&vm.heap, k, v);
+        }
+        vm.dict(d)
+    };
+    vm.build_class(args[0], args[1], args[2..].to_vec(), kw)
 }
 
 // -- object, type, exceptions ---------------------------------------------------------------------------
@@ -2810,7 +3003,11 @@ fn gen_throw(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
 }
 fn gen_close(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
     check_args(vm, args, 1, 1, "close")?;
-    let g = args[0];
+    generator_close(vm, args[0])
+}
+
+/// `generator.close()`: GeneratorExit thrown in, its `finally` blocks run.
+pub fn generator_close(vm: &mut Vm, g: Value) -> PyResult {
     let finished = match vm.heap.get(g) {
         Obj::Generator(gen) => gen.finished || gen.frame.as_ref().map(|f| f.pc == 0).unwrap_or(true),
         _ => return Err(vm.type_error("close on a non-generator")),

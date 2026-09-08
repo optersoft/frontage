@@ -603,7 +603,7 @@ impl<'a> Gen<'a> {
                     self.emit(u, Op::Pop, 0);
                 }
             }
-            Stmt::Match(_) => return Err(format!("line {}: 'match' statements are not supported yet", u.last_line)),
+            Stmt::Match(m) => self.match_stmt(u, m)?,
         }
         Ok(())
     }
@@ -1128,6 +1128,172 @@ impl<'a> Gen<'a> {
         self.make_function_tail(u, code, &qualname, child, flags)
     }
 
+    // -- match statements (PEP 634) ------------------------------------------------------------
+    //
+    // The subject sits in a hidden slot; each case tests its pattern (falling through on a
+    // match, jumping to the next case on a miss), then the guard, then runs its body. The
+    // structural tests are four hidden builtins (`__match_seq__`, `__match_map__`,
+    // `__match_map_rest__`, `__match_class__`) that answer a list of the sub-values or None,
+    // so a nested pattern is the same code over another hidden slot.
+
+    fn match_stmt<'ast>(&mut self, u: &mut Unit<'ast>, m: &'ast ast::StmtMatch) -> CResult {
+        self.expr(u, &m.subject)?;
+        let subject = self.hidden_slot(u, "m");
+        self.store_slot(u, subject);
+        let end = self.label(u);
+        for case in &m.cases {
+            let next = self.label(u);
+            self.pattern(u, &case.pattern, subject, next)?;
+            if let Some(guard) = &case.guard {
+                self.expr(u, guard)?;
+                self.jump(u, Op::JumpIfFalse, next);
+            }
+            self.stmts(u, &case.body)?;
+            self.jump(u, Op::Jump, end);
+            self.bind(u, next);
+        }
+        self.bind(u, end);
+        Ok(())
+    }
+
+    /// `result = helper(...)` into a hidden slot, jumping to `fail` when it is None.
+    fn match_helper_result(&mut self, u: &mut Unit, fail: Label) -> Slot {
+        let values = self.hidden_slot(u, "mv");
+        self.store_slot(u, values);
+        self.load_slot(u, values);
+        self.emit_const(u, ConstKey::None);
+        self.emit(u, Op::IsOp, 0);
+        self.jump(u, Op::JumpIfTrue, fail);
+        values
+    }
+
+    /// `values[i]` into a fresh hidden slot.
+    fn match_item(&mut self, u: &mut Unit, values: Slot, i: usize) -> Slot {
+        let elem = self.hidden_slot(u, "me");
+        self.load_slot(u, values);
+        self.emit_const(u, ConstKey::Int(i as i64));
+        self.emit(u, Op::LoadSubscr, 0);
+        self.store_slot(u, elem);
+        elem
+    }
+
+    fn pattern<'ast>(&mut self, u: &mut Unit<'ast>, p: &'ast ast::Pattern, subject: Slot, fail: Label) -> CResult {
+        match p {
+            ast::Pattern::MatchValue(v) => {
+                self.load_slot(u, subject);
+                self.expr(u, &v.value)?;
+                self.emit(u, Op::CompareOp, CmpOp::Eq as u32);
+                self.jump(u, Op::JumpIfFalse, fail);
+            }
+            ast::Pattern::MatchSingleton(s) => {
+                self.load_slot(u, subject);
+                let key = match s.value {
+                    ast::Singleton::None => ConstKey::None,
+                    ast::Singleton::True => ConstKey::True,
+                    ast::Singleton::False => ConstKey::False,
+                };
+                self.emit_const(u, key);
+                self.emit(u, Op::IsOp, 0);
+                self.jump(u, Op::JumpIfFalse, fail);
+            }
+            ast::Pattern::MatchAs(a) => {
+                if let Some(inner) = &a.pattern {
+                    self.pattern(u, inner, subject, fail)?;
+                }
+                if let Some(name) = &a.name {
+                    self.load_slot(u, subject);
+                    self.store_name(u, name.id.as_str())?;
+                }
+            }
+            ast::Pattern::MatchOr(o) => {
+                let ok = self.label(u);
+                let last = o.patterns.len().saturating_sub(1);
+                for (i, alt) in o.patterns.iter().enumerate() {
+                    if i == last {
+                        self.pattern(u, alt, subject, fail)?;
+                    } else {
+                        let alt_fail = self.label(u);
+                        self.pattern(u, alt, subject, alt_fail)?;
+                        self.jump(u, Op::Jump, ok);
+                        self.bind(u, alt_fail);
+                    }
+                }
+                self.bind(u, ok);
+            }
+            ast::Pattern::MatchStar(_) => return Err(format!("line {}: a star pattern belongs in a sequence pattern", u.last_line)),
+            ast::Pattern::MatchSequence(s) => {
+                let star = s.patterns.iter().position(|p| matches!(p, ast::Pattern::MatchStar(_)));
+                let (before, after) = match star {
+                    Some(i) => (i, s.patterns.len() - i - 1),
+                    None => (s.patterns.len(), 0),
+                };
+                self.load_name(u, "__match_seq__")?;
+                self.load_slot(u, subject);
+                self.emit_const(u, ConstKey::Int(before as i64));
+                self.emit_const(u, ConstKey::Int(after as i64));
+                self.emit_const(u, if star.is_some() { ConstKey::True } else { ConstKey::False });
+                self.emit(u, Op::Call, 4);
+                let values = self.match_helper_result(u, fail);
+                for (i, sub) in s.patterns.iter().enumerate() {
+                    if let ast::Pattern::MatchStar(st) = sub {
+                        if let Some(name) = &st.name {
+                            let elem = self.match_item(u, values, i);
+                            self.load_slot(u, elem);
+                            self.store_name(u, name.id.as_str())?;
+                        }
+                        continue;
+                    }
+                    let elem = self.match_item(u, values, i);
+                    self.pattern(u, sub, elem, fail)?;
+                }
+            }
+            ast::Pattern::MatchMapping(m) => {
+                self.load_name(u, "__match_map__")?;
+                self.load_slot(u, subject);
+                for k in m.keys.iter() {
+                    self.expr(u, k)?;
+                }
+                self.emit(u, Op::BuildTuple, m.keys.len() as u32);
+                self.emit(u, Op::Call, 2);
+                let values = self.match_helper_result(u, fail);
+                for (i, sub) in m.patterns.iter().enumerate() {
+                    let elem = self.match_item(u, values, i);
+                    self.pattern(u, sub, elem, fail)?;
+                }
+                if let Some(rest) = &m.rest {
+                    self.load_name(u, "__match_map_rest__")?;
+                    self.load_slot(u, subject);
+                    for k in m.keys.iter() {
+                        self.expr(u, k)?;
+                    }
+                    self.emit(u, Op::BuildTuple, m.keys.len() as u32);
+                    self.emit(u, Op::Call, 2);
+                    self.store_name(u, rest.id.as_str())?;
+                }
+            }
+            ast::Pattern::MatchClass(c) => {
+                let positional = &c.arguments.patterns;
+                let keywords = &c.arguments.keywords;
+                self.load_name(u, "__match_class__")?;
+                self.load_slot(u, subject);
+                self.expr(u, &c.cls)?;
+                self.emit_const(u, ConstKey::Int(positional.len() as i64));
+                for k in keywords {
+                    self.emit_str(u, k.attr.id.as_str());
+                }
+                self.emit(u, Op::BuildTuple, keywords.len() as u32);
+                self.emit(u, Op::Call, 4);
+                let values = self.match_helper_result(u, fail);
+                let subs = positional.iter().chain(keywords.iter().map(|k| &k.pattern));
+                for (i, sub) in subs.enumerate() {
+                    let elem = self.match_item(u, values, i);
+                    self.pattern(u, sub, elem, fail)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn class_def<'ast>(&mut self, u: &mut Unit<'ast>, c: &'ast ast::StmtClassDef) -> CResult {
         for d in &c.decorator_list {
             self.expr(u, &d.expression)?;
@@ -1138,13 +1304,16 @@ impl<'a> Gen<'a> {
         // bases are evaluated in the enclosing scope, before the body scope
         let mut nbases = 0u32;
         let mut base_exprs: Vec<&Expr> = Vec::new();
+        let mut keywords: Vec<(&str, &Expr)> = Vec::new();
         if let Some(a) = &c.arguments {
             for e in a.args.iter() {
                 base_exprs.push(e);
             }
             for k in a.keywords.iter() {
-                let kname = k.arg.as_ref().map(|n| n.id.as_str()).unwrap_or("**");
-                return Err(format!("line {}: class keyword '{}' is not supported (metaclasses are not part of this runtime)", self.line_of(k.range().start().to_usize()), kname));
+                match &k.arg {
+                    Some(n) => keywords.push((n.id.as_str(), &k.value)),
+                    None => return Err(format!("line {}: `**kwargs` in a class statement is not supported", self.line_of(k.range().start().to_usize()))),
+                }
             }
         }
         let child = self.child_scope(u, Kind::Class, name)?;
@@ -1167,7 +1336,17 @@ impl<'a> Gen<'a> {
             self.expr(u, b)?;
             nbases += 1;
         }
-        self.emit(u, Op::MakeClass, nbases);
+        // `metaclass=` and the other keywords travel as a dict on top; the flag bit says so.
+        if keywords.is_empty() {
+            self.emit(u, Op::MakeClass, nbases);
+        } else {
+            for (name, value) in &keywords {
+                self.emit_str(u, name);
+                self.expr(u, value)?;
+            }
+            self.emit(u, Op::BuildDict, keywords.len() as u32);
+            self.emit(u, Op::MakeClass, nbases | (1 << 31));
+        }
         for _ in &c.decorator_list {
             self.emit(u, Op::Call, 1);
         }
