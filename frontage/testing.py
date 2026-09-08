@@ -70,6 +70,50 @@ class App:
             raise
         self.settle()
 
+    @classmethod
+    def from_module(cls, name, selector=None, **options):
+        """The app your `frontage build` entry builds — imported, its `mount` caught.
+
+            app = App.from_module("app")
+
+        An entry module ends in `mount(view, "#app")`, and on CPython that call has nowhere
+        to draw: it raises rather than guess. So the import happens with the same switch the
+        prerenderer uses, which makes `mount` *register* its view instead, and this mounts it
+        here. Nothing in the app has to know it is under test — no `if in_browser`, no second
+        entry point, no view exported only for the tests.
+
+        `selector` picks one when a page holds several mounts. The module is imported fresh
+        every time, so two tests never share the module-level signals of an app.
+        """
+        import importlib
+        import sys
+
+        from .runtime import prerender
+
+        was_active, prerender.active = prerender.active, True
+        mounts = prerender.mounts
+        prerender.mounts = []
+        try:
+            sys.modules.pop(name, None)
+            importlib.import_module(name)
+            found = prerender.mounts
+        finally:
+            prerender.active = was_active
+            prerender.mounts = mounts
+        if not found:
+            raise AssertionError(f"{name!r} mounted nothing: an entry module ends in mount(view, '#app')")
+        if selector is not None:
+            found = [m for m in found if m[0] == selector]
+            if not found:
+                raise AssertionError(f"{name!r} has no mount on {selector!r}")
+        elif len(found) > 1:
+            targets = ", ".join(repr(m[0]) for m in found)
+            raise AssertionError(f"{name!r} has {len(found)} mounts ({targets}): name one with selector=")
+        target, view, debug, fallback = found[0]
+        options.setdefault("debug", debug)
+        options.setdefault("fallback", fallback)
+        return cls(view, **options)
+
     # -- lifetime ---------------------------------------------------------------------------
 
     def dispose(self):

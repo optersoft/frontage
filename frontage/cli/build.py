@@ -244,7 +244,7 @@ def declare(html, declarations):
     return html[: match.start()] + f'{merged} data-fr-js="{", ".join(names)}">' + html[match.end() :]
 
 
-def build(app, out="", entry="", quiet=False, components=None):
+def build(app, out="", entry="", quiet=False, components=None, tailwind=False):
     from . import frontage_rt
 
     app = Path(app).resolve()
@@ -318,6 +318,8 @@ def build(app, out="", entry="", quiet=False, components=None):
         '<link rel="modulepreload" href="./_frontage/glue.js">',
         f'<link rel="preload" href="./_frontage/{wasm_file}" as="fetch" crossorigin>',
     ]
+    if tailwind:
+        styles = styles + [build_tailwind(app, out, quiet=quiet)]
     for link in hints + styles:
         if link not in html:
             html = html.replace("</head>", f"  {link}\n</head>") if "</head>" in html else link + html
@@ -334,6 +336,43 @@ def build(app, out="", entry="", quiet=False, components=None):
     return out
 
 
+TAILWIND_INPUT = "tailwind.css"
+TAILWIND_OUTPUT = "tailwind.out.css"
+
+
+def build_tailwind(app, out, quiet=False):
+    """Run Tailwind over the app and write the stylesheet into the build; returns the link.
+
+    The app directory is what Tailwind scans, `.py` included — a class name in a template
+    string is a class name in a file, which is all its scanner asks for. The input file is
+    the app's own `tailwind.css` (created with `@import "tailwindcss";` if it is not there,
+    the same starter `frontage tailwind` writes), so the two commands cannot disagree about
+    what the configuration is.
+    """
+    import subprocess
+
+    from . import tailwind as tailwind_cli
+
+    source = Path(app) / TAILWIND_INPUT
+    if not source.exists():
+        source.write_text(tailwind_cli.STARTER)
+        if not quiet:
+            print(f"created {source} with {tailwind_cli.STARTER.strip()}")
+    target = Path(out) / TAILWIND_OUTPUT
+    command = [str(tailwind_cli.binary(quiet=quiet)), "--input", str(source), "--output", str(target), "--minify"]
+    run = subprocess.run(command, capture_output=True, text=True, cwd=str(app))
+    if run.returncode != 0:
+        raise SystemExit(f"error: tailwind failed: {run.stderr.strip() or run.stdout.strip()}")
+    # The copy of the *input* that came in with the app's files is not a stylesheet the page
+    # wants; the generated one beside it is.
+    stale = Path(out) / TAILWIND_INPUT
+    if stale.exists():
+        stale.unlink()
+    if not quiet:
+        print(f"{target}: {target.stat().st_size:,} bytes of Tailwind")
+    return f'<link rel="stylesheet" href="./{TAILWIND_OUTPUT}">'
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog=f"{PROG} build", description=__doc__)
     parser.add_argument("app", help="the app directory")
@@ -345,6 +384,11 @@ def main(argv=None):
         default=[],
         metavar="NAME=PATH",
         help="a component package not installed yet, for developing one (repeatable)",
+    )
+    parser.add_argument(
+        "--tailwind",
+        action="store_true",
+        help="generate the Tailwind stylesheet for this app and link it in the page",
     )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
@@ -358,7 +402,7 @@ def main(argv=None):
     try:
         # An explicit --component replaces discovery, so a component under development is
         # tested as itself rather than alongside an older installed copy of the same name.
-        build(args.app, args.out, args.entry, quiet=args.quiet, components=local or None)
+        build(args.app, args.out, args.entry, quiet=args.quiet, components=local or None, tailwind=args.tailwind)
     except SystemExit as exc:
         print(exc, file=sys.stderr)
         return 2

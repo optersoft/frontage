@@ -228,3 +228,56 @@ def test_an_unclosed_attribute_test_says_so():
     with App(lambda: h.p("x")) as app:
         with pytest.raises(ValueError, match="not closed"):
             app.find("[name=who")
+
+
+# -- from_module ----------------------------------------------------------------------------
+
+
+def _write(tmp_path, monkeypatch, body, name="entry_app"):
+    import sys
+
+    (tmp_path / f"{name}.py").write_text(body)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    sys.modules.pop(name, None)
+    return name
+
+
+ENTRY = """
+from frontage import Signal, h, mount
+
+count = Signal(0)
+view = lambda: h.div(h.span(count, cls="n"), h.button("+", on_click=lambda ev: count.update(lambda n: n + 1)))
+mount(view, "#app")
+"""
+
+
+def test_from_module_mounts_the_entry_file(tmp_path, monkeypatch):
+    name = _write(tmp_path, monkeypatch, ENTRY)
+    with App.from_module(name) as app:
+        assert app.find(".n").text == "0"
+        app.click("button")
+        assert app.find(".n").text == "1"
+
+
+def test_from_module_imports_fresh_so_two_tests_do_not_share_state(tmp_path, monkeypatch):
+    name = _write(tmp_path, monkeypatch, ENTRY)
+    with App.from_module(name) as app:
+        app.click("button")
+        assert app.find(".n").text == "1"
+    with App.from_module(name) as app:
+        assert app.find(".n").text == "0"
+
+
+def test_from_module_says_so_when_nothing_was_mounted(tmp_path, monkeypatch):
+    name = _write(tmp_path, monkeypatch, "x = 1\n")
+    with pytest.raises(AssertionError, match="mounted nothing"):
+        App.from_module(name)
+
+
+def test_from_module_needs_a_selector_when_a_page_holds_several(tmp_path, monkeypatch):
+    body = ENTRY + '\nmount(lambda: h.p("aside", cls="aside"), "#side")\n'
+    name = _write(tmp_path, monkeypatch, body)
+    with pytest.raises(AssertionError, match="has 2 mounts"):
+        App.from_module(name)
+    with App.from_module(name, selector="#side") as app:
+        assert app.find(".aside").text == "aside"

@@ -628,8 +628,13 @@ decides, all in 0.10.0:
       checker and `Form`; neither imports it, so an app that names no schema carries none of
       it. The form's check is `coerce=True` and dispatches the parsed value, because a form
       holds strings whatever the schema says.
-- [ ] **The rest of the React gaps marked "yes" in `FASTER.md` §9**: Tailwind for apps, the
-      "from React" and "from Streamlit" chapters.
+- [x] **Tailwind for apps** (2026-09-08): `frontage build --tailwind` generates the stylesheet
+      and links it, so shipping a Tailwind app is one command. The scanning needed nothing —
+      Tailwind v4 reads every non-ignored text file, and a class in a t-string is a class in a
+      `.py` file.
+- [ ] Still open from that line: **class completion in the language server** (a class list is
+      version-dependent and large; the honest source is the CLI's own output, not a table
+      copied into this repo), and the "from React" and "from Streamlit" chapters.
 - [x] Open, now closed by the runtime: there is no interpreter to trim and no second core to
       keep behind a flag; `-O2` has no meaning for `.fbc` (docstrings are dropped at compile).
 - Measured and rejected, with the number, in `FASTER.md` §10: Pyodide, Python→JS,

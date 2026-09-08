@@ -324,3 +324,62 @@ def test_an_explicit_component_bypasses_the_scan(tmp_path):
     component = make_component(tmp_path)
     out = build.build(app, tmp_path / "out", quiet=True, components=[component])
     assert (out / "_frontage" / "components" / "chart").is_dir()
+
+
+# --- Tailwind ---------------------------------------------------------------------------
+
+
+def fake_tailwind(tmp_path, monkeypatch):
+    """A stand-in for Tailwind's CLI: writes `--output`, records how it was called."""
+    import sys
+
+    from frontage.cli import tailwind as tailwind_cli
+
+    script = tmp_path / "fake-tailwind.py"
+    script.write_text(
+        "import sys\n"
+        "args = sys.argv[1:]\n"
+        "out = args[args.index('--output') + 1]\n"
+        "source = open(args[args.index('--input') + 1]).read()\n"
+        "open(out, 'w').write('/*' + source.strip() + '*/.p{color:red}')\n"
+        "open(out + '.argv', 'w').write(repr(args))\n"
+    )
+    binary = tmp_path / "fake-tailwind"
+    binary.write_text(f'#!/bin/sh\nexec {sys.executable} {script} "$@"\n')
+    binary.chmod(0o755)
+    monkeypatch.setattr(tailwind_cli, "binary", lambda *a, **k: binary)
+    return binary
+
+
+def test_build_tailwind_generates_the_stylesheet_and_links_it(tmp_path, monkeypatch):
+    app = write_app(tmp_path, app=APP)
+    (app / "index.html").write_text("<html><head><title>t</title></head><body><div id='app'></div></body></html>")
+    fake_tailwind(tmp_path, monkeypatch)
+
+    out = build.build(app, tmp_path / "out", quiet=True, tailwind=True)
+    css = out / build.TAILWIND_OUTPUT
+    assert css.exists() and ".p{color:red}" in css.read_text()
+    assert '<link rel="stylesheet" href="./tailwind.out.css">' in (out / "index.html").read_text()
+    # The input is written into the app (it is the app's configuration) and is not shipped:
+    # a page that downloaded `@import "tailwindcss";` would have downloaded nothing useful.
+    assert (app / build.TAILWIND_INPUT).read_text().startswith("@import")
+    assert not (out / build.TAILWIND_INPUT).exists()
+
+
+def test_the_app_directory_is_what_tailwind_scans(tmp_path, monkeypatch):
+    """A class name in a template string is a class name in a `.py` file, which is all
+    Tailwind's scanner asks for — so the app directory is the whole configuration."""
+    app = write_app(tmp_path, app=APP)
+    fake_tailwind(tmp_path, monkeypatch)
+    out = build.build(app, tmp_path / "out", quiet=True, tailwind=True)
+    argv = (out / (build.TAILWIND_OUTPUT + ".argv")).read_text()
+    assert str(app / build.TAILWIND_INPUT) in argv and "--minify" in argv
+
+
+def test_without_the_flag_nothing_tailwind_happens(tmp_path, monkeypatch):
+    app = write_app(tmp_path, app=APP)
+    fake_tailwind(tmp_path, monkeypatch)
+    out = build.build(app, tmp_path / "out", quiet=True)
+    assert not (out / build.TAILWIND_OUTPUT).exists()
+    assert not (app / build.TAILWIND_INPUT).exists()
+    assert "tailwind" not in (out / "index.html").read_text()
