@@ -128,3 +128,83 @@ def test_the_entry_runs_as_dunder_main(tmp_path):
     import sys
 
     assert sys.modules.pop("probe") == "__main__"
+
+
+# --- state across a swap -----------------------------------------------------------------
+
+
+STATEFUL = """from frontage import Signal, Store, h, mount
+from frontage.state import State, field
+
+count = Signal({count})
+todos = Store(["milk"])
+settings = Store({{"theme": "light"}})
+
+
+class Prefs(State):
+    name = field("ann")
+
+
+prefs = Prefs()
+mount(lambda: h.p("{text}"), TARGET, renderer=RENDERER)
+"""
+
+
+def write_stateful(tmp_path, text, count=0):
+    source = STATEFUL.format(text=text, count=count)
+    renderer = HtmlRenderer()
+    root = renderer.create_element("div")
+    source = source.replace("TARGET", "__target__").replace("RENDERER", "__renderer__")
+    import builtins
+
+    builtins.__target__ = root  # ty: ignore[unresolved-attribute]
+    builtins.__renderer__ = renderer  # ty: ignore[unresolved-attribute]
+    (tmp_path / "app.py").write_text(source)
+
+
+def entry_value(name):
+    namespace = dev._entry_ns[0]
+    assert namespace is not None, "the entry has not run yet"
+    return namespace[name]
+
+
+def test_module_level_state_survives_a_swap(tmp_path):
+    """Vue's rule: the qualified name identifies the state, so editing the view around it
+    leaves the values where the user put them."""
+    write_stateful(tmp_path, "one")
+    dev.swap("app", ["app"], root=str(tmp_path))
+    entry_value("count").set(7)
+    entry_value("todos").set(lambda todos: todos.append("bread"))
+    entry_value("settings").set_path("theme", "dark")
+    entry_value("prefs").name = "bob"
+
+    write_stateful(tmp_path, "two")
+    dev.swap("app", ["app"], root=str(tmp_path))
+    assert entry_value("count")() == 7
+    assert list(entry_value("todos")) == ["milk", "bread"]
+    assert entry_value("settings")["theme"] == "dark"
+    assert entry_value("prefs").name == "bob"
+
+
+def test_an_edit_to_the_initial_value_does_not_win_over_the_live_one(tmp_path):
+    """The state is restored after the rebuild, so the source's new starting value is
+    overwritten. Reloading the page is what starts from the source again."""
+    write_stateful(tmp_path, "one", count=0)
+    dev.swap("app", ["app"], root=str(tmp_path))
+    entry_value("count").set(3)
+
+    write_stateful(tmp_path, "one", count=99)
+    dev.swap("app", ["app"], root=str(tmp_path))
+    assert entry_value("count")() == 3
+
+
+def test_state_that_was_renamed_or_removed_starts_fresh(tmp_path):
+    write_stateful(tmp_path, "one")
+    dev.swap("app", ["app"], root=str(tmp_path))
+    entry_value("count").set(5)
+
+    (tmp_path / "app.py").write_text(
+        "from frontage import Signal, h, mount\ntally = Signal(0)\nmount(lambda: h.p('x'), __target__, renderer=__renderer__)\n"
+    )
+    dev.swap("app", ["app"], root=str(tmp_path))
+    assert entry_value("tally")() == 0

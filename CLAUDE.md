@@ -137,6 +137,10 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
   page is *handed* its modules; it cannot fetch one it turns out to need, and no app imports
   the module that performs a swap. `cli/serve.py` appends it to the manifest it synthesises.
   Every swap failed on `ModuleNotFoundError` before that, silently falling back to a reload.
+- **A dev page holds only the modules the app imports, so `frontage/dev.py` imports
+  defensively.** `from .store import Store` at the top of a helper broke every swap in an app
+  that has no Store. Anything the swap path reaches for beyond `reactive` and `view` needs a
+  guard or a line in the dev manifest.
 - **`window.frontage` is the runtime object, and the boot assigns it.** Anything a dev script
   hangs on that name is gone the moment the runtime is ready — which is how the error
   overlay's hooks disappeared. The overlay uses `window.frontageDevError` instead.

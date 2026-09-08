@@ -584,9 +584,15 @@ decides, all in 0.10.0:
       **the swap had been broken in the browser** since the runtime switch: the page is handed
       its modules and no app imports `frontage.dev`, so every swap died on `ModuleNotFoundError`
       and fell back to a reload. The dev manifest names that module now.
-- [ ] **Development, still**: module-level signals and stores survive a swap by qualified name
-      (Vue's split, not React's guess), a template-only edit patches templates in place,
-      a devtools page in `serve` over `reactive.tree()`.
+- [x] **Module-level state survives a swap** (2026-09-08), by qualified name — Vue's rule,
+      not React's guess. A `Signal`, `Store` or `State` at module level is read before the
+      modules are dropped and written back after the rebuild, in one batch; renaming it or
+      moving it to another module starts it fresh, and an edit to its initial value does not
+      win over the live one (reload for that). ⚠ `frontage.store` is imported *defensively*
+      there: a page holds only the modules its app imports, so an app with no Store has no
+      `frontage.store` to import, and an unguarded import broke every swap.
+- [ ] **Development, still**: a template-only edit patches templates in place, and a devtools
+      page in `serve` over `reactive.tree()`.
 - [ ] **The React gaps marked "yes" in `FASTER.md` §9**: head management, view
       transitions, form validation in core, accessibility basics, Tailwind for apps, the
       "from React" and "from Streamlit" chapters.

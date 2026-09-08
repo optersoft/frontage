@@ -56,3 +56,33 @@ def test_a_swap_that_raises_shows_the_traceback(editable, page: Page):
     source.write_text(good)
     expect(page.locator(OVERLAY)).to_have_count(0, timeout=30_000)
     expect(page.locator("#value")).to_have_text("Value: 0, doubled: 0")
+
+
+MODULE_STATE = """from frontage import Signal, h, mount
+
+count = Signal(0)
+
+mount(
+    lambda: h.div(
+        h.button("+", on_click=lambda ev: count.update(lambda n: n + 1), id="inc"),
+        h.span("{label}: ", count, id="value"),
+    ),
+    "#app",
+)
+"""
+
+
+def test_module_level_state_survives_a_swap(editable, page: Page):
+    """The signal is module-level, so its value is the user's, not the source's; the counter
+    inside a component is rebuilt, which is the same rule seen from the other side."""
+    base, app = editable
+    source = app / "counter.py"
+    source.write_text(MODULE_STATE.format(label="Value"))
+    page.goto(f"{base}/index.html")
+    expect(page.locator("#value")).to_have_text("Value: 0", timeout=30_000)
+    page.click("#inc")
+    page.click("#inc")
+    expect(page.locator("#value")).to_have_text("Value: 2")
+
+    source.write_text(MODULE_STATE.format(label="Count"))
+    expect(page.locator("#value")).to_have_text("Count: 2", timeout=30_000)
