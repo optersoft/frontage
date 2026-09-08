@@ -27,6 +27,7 @@ ASSETS = ("frontage.wasm", "frontage-compiler.wasm", "glue.js", "boot.js")
 MANIFEST = "manifest.json"
 FRAMEWORK = "framework.json"  # every framework module, for a page that runs a typed program
 RELEASES = "https://github.com/optersoft/frontage/releases/download"
+LATEST = "https://github.com/optersoft/frontage/releases/latest/download"
 
 _compiled = {}  # path -> (mtime, bytes)
 
@@ -87,14 +88,22 @@ def fpy(quiet=False):
     path = cache_dir("fpy", __version__) / name
     if path.exists():
         return path
-    url = f"{RELEASES}/v{__version__}/{name}"
-    if not quiet:
-        print(f"fetching {url}")
-    try:
-        data = urllib.request.urlopen(url, timeout=300).read()
-    except OSError as exc:
+    # This version's asset first, then the latest release's: a checkout can sit at a version
+    # whose tag does not exist yet — bumped by hand, or tagged minutes ago and still building
+    # — and the compiler reads the same Python and writes the same `.fbc` either way.
+    urls = [f"{RELEASES}/v{__version__}/{name}", f"{LATEST}/{name}"]
+    data, last = None, None
+    for url in urls:
+        if not quiet:
+            print(f"fetching {url}")
+        try:
+            data = urllib.request.urlopen(url, timeout=300).read()
+            break
+        except OSError as exc:
+            last = exc
+    if data is None:
         raise SystemExit(
-            f"error: no fpy compiler for this platform ({exc}); in a checkout run "
+            f"error: no fpy compiler for this platform ({last}); in a checkout run "
             "`cargo build --profile native -p fpy` in rust/, or set FRONTAGE_FPY"
         ) from None
     partial = path.with_suffix(".part")
