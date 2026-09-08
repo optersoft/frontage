@@ -212,6 +212,10 @@ name = "frontage"
 source = { editable = "." }
 
 [package.optional-dependencies]
+chat = [
+    { name = "fastapi" },
+    { name = "uvicorn" },
+]
 polars = [
     { name = "fastapi" },
     { name = "polars" },
@@ -233,11 +237,13 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fastapi", marker = "extra == 'chat'", specifier = ">=0.110" },
     { name = "fastapi", marker = "extra == 'polars'", specifier = ">=0.110" },
     { name = "polars", marker = "extra == 'polars'", specifier = ">=1.0" },
+    { name = "uvicorn", marker = "extra == 'chat'", specifier = ">=0.29" },
     { name = "uvicorn", marker = "extra == 'polars'", specifier = ">=0.29" },
 ]
-provides-extras = ["polars"]
+provides-extras = ["chat", "polars"]
 
 [package.metadata.requires-dev]
 dev = [
