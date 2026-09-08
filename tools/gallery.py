@@ -35,6 +35,7 @@ APPS = [
     ("lazy", "Lazy route", "A route in a chunk of its own: fetched on hover, not on load.", "#home"),
     ("chart", "Chart", "uPlot as a component — a 20,000-point chart from Python.", "canvas"),
     ("wasm", "Wasm library", "A WebAssembly library imported like any Python module.", "#answer"),
+    ("rustlib", "Your own Rust", "A 1 KB Rust library, called from Python: 13× on the arithmetic.", "#mean"),
     ("weather", "Weather", "Streamlit's Seattle Weather demo, ported: five charts, no server.", "#app canvas"),
     (
         "uber",

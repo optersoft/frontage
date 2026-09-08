@@ -864,9 +864,16 @@ a server, and both are constraints we chose.
       second package needs the same shim, add a declared list instead — a key in the
       component's `pyproject.toml`, read at discovery without importing — and keep the name rule.
       Done: `build.Component.modules()` skips a listed module; the shim can go.
-- [ ] A `frontage-wasm` template (wasm-pack, glue, Python wrapper, the `data-fr-js` line) so
-      calling your own Rust is a fifteen-minute exercise. Streamlit has no answer to this: its
-      Python is on a server, where the wasm cannot go.
+- [x] **The template for calling your own Rust** (2026-09-08): `examples/rustlib/` — a crate,
+      the glue, the boot-tag line, a README that is the fifteen minutes, and a page that
+      measures the thing that decides the design. **No wasm-pack and no wasm-bindgen**: a
+      `no_std` cdylib of `extern "C"` functions over numbers is 1,036 bytes and thirty lines of
+      glue, and a generator would hide exactly what a reader needs to see.
+      ⚠ The first version had the API shaped `mean(values)` and was **slower than Python** —
+      2.5× slower — because a list does not cross, it is copied element by element, and 20,000
+      crossings cost 1.5 ms against 0.16 ms to compute. Shaped as `load(values)` once and then
+      questions, it is 13× faster than the same statistics in Python. The example now measures
+      and states both numbers, because that ratio is the whole rule for a wasm boundary.
 - Not doing, deliberately: pandas/scikit-learn/matplotlib (that is stlite, at 13.8 MB before
       app code), copying `st.*` names onto reactive semantics, or a server *in the framework*
       (a component's opt-in server half, `frontage-polars`, is the one exception, and it is

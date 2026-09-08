@@ -17,6 +17,8 @@ test-results/
 .wrangler/
 /build/
 node_modules/
+# cargo's output for the example crate; the built .wasm beside it is committed
+/examples/rustlib/rust/target/
 *.vsix
 # web/'s Astro build and the gallery facts `mk gallery` writes for its page
 /web/dist/

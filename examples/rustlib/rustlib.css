@@ -1,0 +1,10 @@
+:root { color-scheme: light dark; }
+body { font: 16px/1.55 system-ui, sans-serif; margin: 0; padding: 2rem; max-width: 46rem; }
+.numbers { display: flex; gap: 2rem; flex-wrap: wrap; margin: 1rem 0; font-variant-numeric: tabular-nums; }
+.numbers div { min-width: 7rem; }
+.numbers span { display: block; color: #6b7280; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+.numbers strong { font-size: 1.5rem; font-weight: 600; }
+.bars { display: flex; align-items: flex-end; gap: 2px; height: 8rem; margin: 1rem 0; }
+.bars i { flex: 1; background: #2563eb; min-height: 1px; }
+.note { color: #6b7280; }
+button { font: inherit; padding: .35rem .9rem; border-radius: 6px; border: 1px solid #8884; background: #8881; cursor: pointer; }
