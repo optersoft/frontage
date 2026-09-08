@@ -216,7 +216,11 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
   Ship's copies of them say the same). ⚠ The chapters still describe MicroPython (0.9.x); the
   0.10 release rewrites what they say about the runtime.
 - **Pages that load Tailwind's browser build import `theme.css` + `utilities.css` only**: the
-  full import brings preflight, which restyles the page around the app.
+  full import brings preflight, which restyles the page around the app. Keep the specifiers
+  **bare** (`tailwindcss/theme.css`): Tailwind's script resolves them against what it has
+  bundled. The browser also tries them as URLs and logs two 404s — noise, not a fault, and
+  rewriting them to CDN URLs to quieten it silently produces a page with no utilities at
+  all (measured 2026-09-08: bare `p-4` → 16px, URL → 0px).
 - **Hydration is fences, not ids.** Prerendered HTML wraps every hole's content in
   `<!--[-->` … `<!--h-->` and keeps `data-fr-h`; static template text keeps its `<!--h-->` too
   (the client adopts the text by it, then removes it). Each hole positions the cursor from its
