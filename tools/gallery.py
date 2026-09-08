@@ -115,9 +115,16 @@ def measure(built, out):
                     lambda route: route.continue_() if "127.0.0.1" in route.request.url else route.abort(),
                 )
                 sent = [0]
-                page.on(
-                    "response", lambda r, s=sent: s.__setitem__(0, s[0] + int(r.header_value("content-length") or 0))
-                )
+
+                def count_bytes(response, s=sent):
+                    # A response that arrives as the context closes cannot be read any more,
+                    # and its bytes are not part of what the page waited for either.
+                    try:
+                        s[0] += int(response.header_value("content-length") or 0)
+                    except Exception:
+                        pass
+
+                page.on("response", count_bytes)
                 start = time.perf_counter()
                 page.goto(f"http://127.0.0.1:{port}/{app['name']}/index.html")
                 page.wait_for_selector(app["ready"], timeout=60_000)

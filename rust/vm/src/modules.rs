@@ -19,6 +19,7 @@ pub fn install(vm: &mut Vm) {
     vm.builtin_modules.insert("random", mod_random);
     vm.builtin_modules.insert("_frontage", mod_frontage);
     vm.builtin_modules.insert("gc", mod_gc);
+    vm.builtin_modules.insert("binascii", mod_binascii);
     for (name, _) in PY_MODULES {
         vm.builtin_modules.insert(name, mod_python);
     }
@@ -964,6 +965,137 @@ fn mod_frontage(vm: &mut Vm) -> PyResult {
     add_fn(vm, d, "collect", fr_collect);
     add_fn(vm, d, "heap_len", fr_heap_len);
     add_fn(vm, d, "format_exception", fr_format_exception);
+    Ok(m)
+}
+
+// -- binascii -------------------------------------------------------------------------------------
+
+const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+fn bytes_arg(vm: &mut Vm, args: &[Value], i: usize, what: &str) -> PyResult<Vec<u8>> {
+    let v = arg(vm, args, i, what)?;
+    if v.is_obj() {
+        match vm.heap.get(v) {
+            Obj::Bytes(b) | Obj::ByteArray(b) => return Ok(b.clone()),
+            Obj::Str(s) => return Ok(s.s.as_bytes().to_vec()),
+            _ => {}
+        }
+    }
+    let t = vm.type_name(v);
+    Err(vm.type_error(format!("{what}() argument must be bytes or str, not '{t}'")))
+}
+
+/// `binascii.a2b_base64(data)`: whitespace ignored, padding honoured, as CPython's is.
+fn ba_a2b_base64(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    let data = bytes_arg(vm, args, 0, "a2b_base64")?;
+    let mut table = [255u8; 256];
+    for (i, &c) in B64.iter().enumerate() {
+        table[c as usize] = i as u8;
+    }
+    let (mut acc, mut bits) = (0u32, 0u32);
+    let mut out = Vec::with_capacity(data.len() * 3 / 4 + 3);
+    for &byte in &data {
+        if byte == b'=' {
+            break;
+        }
+        let value = table[byte as usize];
+        if value == 255 {
+            if byte.is_ascii_whitespace() {
+                continue;
+            }
+            return Err(vm.value_error("Invalid base64-encoded string"));
+        }
+        acc = (acc << 6) | value as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    Ok(vm.heap.alloc(Obj::Bytes(out)))
+}
+
+/// `binascii.b2a_base64(data, newline=True)`.
+fn ba_b2a_base64(vm: &mut Vm, args: &[Value], kwargs: &[(Value, Value)]) -> PyResult {
+    let data = bytes_arg(vm, args, 0, "b2a_base64")?;
+    let mut newline = true;
+    for &(k, v) in kwargs {
+        if vm.as_str(k) == Some("newline") {
+            newline = vm.truthy(v)?;
+        }
+    }
+    let mut out = Vec::with_capacity(data.len().div_ceil(3) * 4 + 1);
+    for chunk in data.chunks(3) {
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
+        out.push(B64[(n >> 18) as usize & 63]);
+        out.push(B64[(n >> 12) as usize & 63]);
+        out.push(if chunk.len() > 1 { B64[(n >> 6) as usize & 63] } else { b'=' });
+        out.push(if chunk.len() > 2 { B64[n as usize & 63] } else { b'=' });
+    }
+    if newline {
+        out.push(b'\n');
+    }
+    Ok(vm.heap.alloc(Obj::Bytes(out)))
+}
+
+fn ba_hexlify(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    let data = bytes_arg(vm, args, 0, "hexlify")?;
+    let sep = match args.get(1) {
+        Some(&v) if !v.is_none() => bytes_arg(vm, args, 1, "hexlify")?.first().copied(),
+        _ => None,
+    };
+    let mut out = Vec::with_capacity(data.len() * 2);
+    for (i, byte) in data.iter().enumerate() {
+        if i > 0 {
+            if let Some(s) = sep {
+                out.push(s);
+            }
+        }
+        out.extend_from_slice(format!("{byte:02x}").as_bytes());
+    }
+    Ok(vm.heap.alloc(Obj::Bytes(out)))
+}
+
+fn ba_unhexlify(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    let data = bytes_arg(vm, args, 0, "unhexlify")?;
+    if data.len() % 2 != 0 {
+        return Err(vm.value_error("Odd-length string"));
+    }
+    let mut out = Vec::with_capacity(data.len() / 2);
+    for pair in data.chunks(2) {
+        let text = core::str::from_utf8(pair).map_err(|_| vm.value_error("Non-hexadecimal digit found"))?;
+        match u8::from_str_radix(text, 16) {
+            Ok(b) => out.push(b),
+            Err(_) => return Err(vm.value_error("Non-hexadecimal digit found")),
+        }
+    }
+    Ok(vm.heap.alloc(Obj::Bytes(out)))
+}
+
+fn ba_crc32(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    let data = bytes_arg(vm, args, 0, "crc32")?;
+    let mut crc = !args.get(1).and_then(|&v| vm.as_i64(v)).unwrap_or(0) as u32;
+    for &byte in &data {
+        crc ^= byte as u32;
+        for _ in 0..8 {
+            crc = if crc & 1 != 0 { (crc >> 1) ^ 0xEDB8_8320 } else { crc >> 1 };
+        }
+    }
+    Ok(vm.int(!crc as u32 as i64))
+}
+
+fn mod_binascii(vm: &mut Vm) -> PyResult {
+    let (m, d) = module_with(vm, "binascii");
+    add_fn(vm, d, "a2b_base64", ba_a2b_base64);
+    add_fn(vm, d, "b2a_base64", ba_b2a_base64);
+    add_fn(vm, d, "hexlify", ba_hexlify);
+    add_fn(vm, d, "unhexlify", ba_unhexlify);
+    add_fn(vm, d, "b2a_hex", ba_hexlify);
+    add_fn(vm, d, "a2b_hex", ba_unhexlify);
+    add_fn(vm, d, "crc32", ba_crc32);
+    let e = vm.t.value_error;
+    vm.dict_set_str(d, "Error", e);
     Ok(m)
 }
 
