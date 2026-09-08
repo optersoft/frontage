@@ -536,12 +536,17 @@ decides, all in 0.10.0:
       0.10.1 adds `binascii`, which `examples/uber` needs and 0.10.0 lacked — the gallery
       caught it after the tag. The ten chapter repositories are pinned to 0.10.1, rebuilt and
       verified live. The academy chapters are rewritten and committed.
-- [ ] `[human]` **Two deploys finish the release.** `mk site.deploy` in this repo (the runner
-      the chapters' cards point at, the playground on the compiler build, the gallery and the
-      0.10.x wheels) — assembled and verified locally, `mk --yes site.deploy` is the command.
-      Then `mk server.deploy` in `academy/` (the `::: frontage` directive, committed and
-      pushed): **until it lands, the seven live cards in the chapters render as plain code
-      blocks**, which is why `academy-pages` is committed but not pushed.
+- [x] **The release is live end to end (2026-09-08).** frontage.optersoft.com deploys from a
+      push now (Cloudflare Pages builds `mk site.build` itself), and three things had to be
+      fixed for that build to pass: an app with a t-string could not be read by a build host
+      older than 3.14 (0.10.2), the compiler asset was fetched by exact version while the
+      release was still uploading (a fallback to the latest release), and `@optersoft/astro`
+      kept Vite's module runner open past its config hook. The academy's ten chapters, their
+      seven `::: frontage` cards, the playground, the gallery and the runner were all opened
+      in Chromium against production and run.
+- [ ] `[human]` The academy still describes 0.9 in `python/frontage/polars.md`'s measurements
+      and in any `.ca`/`.es` variant of these pages, if one is ever cut. Re-measure the polars
+      binary-vs-JSON numbers on this runtime when that page next changes.
 - [x] **`_core.sort/filter/group` as the core's first tenant.** Moot with the runtime: its
       `sorted` is a stable merge sort in Rust that calls `key` once per element — **10,000
       ordered floats sort in 2.0 ms on the wasm, 2.5 with a key** (MicroPython: 269 and
