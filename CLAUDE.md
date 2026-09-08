@@ -121,7 +121,11 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
   them by plain name. The
   compiler is found on PATH, in `FRONTAGE_FPY`, in a checkout's `rust/target/`, or fetched
   from the release's assets into `~/.cache/frontage` on first use (`cli/frontage_rt.py`; CI
-  builds one per platform on a tag). `mk runtime.build` rebuilds and vendors the runtime
+  builds one per platform on a tag). ⚠ **`releases/latest` is not a safe fallback during a
+  release**: a release exists from the moment its tag is pushed and its assets arrive minutes
+  later, so `latest` is precisely the incomplete one — which is what failed the site deploy on
+  every version-bump push. `_asset_urls` walks the releases list for one that carries the
+  asset. `mk runtime.build` rebuilds and vendors the runtime
   after a change under `rust/` — both wasms and the two scripts — and the four files are
   committed, ~2.5 MB, shipped in the wheel. Needs Safari 15 / Chrome 90 / Firefox 88 (the
   `d` flag on `RegExp`, bulk memory).
