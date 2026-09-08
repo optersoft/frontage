@@ -200,13 +200,8 @@ constraint holds).
       bundle on the builder; found through the API build log), so the site sat at 0.4.0 while the
       chapters named 0.5.0–0.7.0 wheels. `site.build` now fetches the bundle; the d510d1d build
       deployed itself. `mk site.deploy` remains the hand fallback.
-- [ ] `[human]` The academy still cuts the chapters for anonymous readers (the Router page stops
-      after Links, 2026-09-06 15:00). `index.md` has `public: true`; the academy commit that
-      honours it (4e1b5042) is not deployed, and the academy tree has uncommitted work.
-      Do: deploy academy. Done: `curl -s academy.optersoft.com/python/frontage/router | grep -c Exercises` is 1.
-      **Still open, re-checked 2026-09-07**: `router`, `basic` and `async` all return 0. The
-      commit is in `~/optersoft/academy` with `adfb5bdc` on top of it, so the fix exists and
-      has simply never shipped. A day old now, and it hides every exercise on the site.
+- [x] The academy serves the chapters whole to anonymous readers (verified 2026-09-08:
+      `router`, `basic`, `async` and `ship` all show their exercises).
 
 ## M10 — the language server (in progress, 2026-09-06)
 
@@ -424,14 +419,11 @@ ships as source and costs about two milliseconds to compile in the VM. Plan in
       - Fixed by re-asserting it after every navigation `HashMode` causes or observes.
       - Worth remembering: this had been failing on the nightly job since some point after
         M5, where the entry claims both browsers passed. Nobody was reading it.
-- [ ] `[human]` **The academy's half is a small Rust change now.** `academy-content`'s frame
-      dispatch gains a `frame.kind == "frontage"` branch beside the `"pyscript"` one at
-      `content.rs:4611`, reusing `academy_preview::pyscript`'s machinery with
-      `RUNNER_URL = "https://frontage.optersoft.com/runner.html"` — the fragment payload is
-      already the same shape. No new runner file is needed on that side: this repo hosts it.
-      Until that lands, the Wasm libraries chapter has code blocks rather than a running app,
-      and the other nine chapters keep their PyScript frames, which still work. Nothing on the
-      live site is broken in the meantime.
+- [x] **The academy's `::: frontage` frame shipped (2026-09-08).** `academy-content`'s
+      dispatch gained the branch beside `"pyscript"`, and `academy_preview::pyscript` grew a
+      second runtime — `frontage.optersoft.com/runner.html`, a `{"code", "markup"}` fragment,
+      no packages and no terminal — with three tests. Seven cards across the chapters were
+      opened in Chromium against production and run.
 - [x] The nine chapter repos moved to `frontage build` (2026-09-07). One boot tag instead of
       PyScript CDN links, `pyscript.json` deleted, both pipelines on `frontage==0.9.0` and
       `frontage build`. All nine built and opened in Chromium before pushing, all nine
@@ -684,15 +676,10 @@ a server, and both are constraints we chose.
       checks the tag against the package's own version, and asserts the wheel actually carries
       `_browser/index.js` — the failure that installs and imports perfectly and then does
       nothing in a page, which no test run from the source tree can catch.
-- [ ] `[human]` **Register three PyPI trusted publishers**, or nothing ships:
-      <https://pypi.org/manage/account/publishing/> — provider GitHub, owner `optersoft`,
-      repository `frontage-component`, workflow `ci.yml`, environment `pypi`, for the projects
-      `frontage-layout`, `frontage-chart` and `frontage-table`. **All three names were unclaimed
-      on 2026-09-07**, which will not stay true forever. Until they exist,
-      `pip install frontage-chart` — the first line of `COMPONENTS.md` and of the components'
-      README — is a promise rather than a fact. A missing publisher fails `422
-      invalid-publisher` and uploads nothing, so the version stays claimable and a re-run
-      succeeds once it is registered.
+- [x] ~~Register three PyPI trusted publishers for `frontage-layout`, `frontage-chart` and
+      `frontage-table`.~~ Moot since 0.10: the components are subpackages of `frontage` and
+      there are no `frontage-*` projects to publish (M12 step 3). `pip install frontage` is
+      the whole install, and `COMPONENTS.md` says so.
 - [ ] `frontage-postgrest`. **Correction to an earlier claim**: database dashboards are *not*
       out of reach. Browsers have no raw sockets, but PostgREST generates an HTTP API from a
       Postgres schema and enforces **row-level security**, so the policy lives next to the data
