@@ -376,3 +376,15 @@ def test_a_packaged_component_is_discovered_copied_and_imported(server, page: Pa
     }""")
     expect(page.locator("#count")).to_have_text("4000 points")
     assert errors == []
+
+
+def test_lazy_route_under_the_dev_server(server, page: Page):
+    """`frontage serve` puts every module in one archive, so a lazy route is a plain import
+    there — no manifest entry, no fetch, and the page must still reach the route."""
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{server}/examples/lazy/index.html")
+    expect(page.locator("#home")).to_be_visible(timeout=30_000)
+    page.click("#to-report")
+    expect(page.locator("#summary")).to_have_text("600 rides, busiest at 02:00", timeout=30_000)
+    assert errors == []

@@ -90,3 +90,46 @@ def trips(tmp_path_factory):
     yield f"http://127.0.0.1:{port}"
     proc.terminate()
     proc.wait()
+
+
+@pytest.fixture(scope="session")
+def lazy(tmp_path_factory):
+    """`examples/lazy`, built with the real `frontage build` and served as static files: a
+    chunk only exists in a build, so the dev server (one archive per directory) cannot show
+    one."""
+    import functools
+    import http.server
+    import socketserver
+    import threading
+
+    out = tmp_path_factory.mktemp("lazy")
+    subprocess.run(
+        [sys.executable, "-m", "frontage", "build", str(ROOT / "examples" / "lazy"), "--out", str(out), "--quiet"],
+        check=True,
+    )
+
+    class Quiet(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, format, *args):
+            pass
+
+        def do_GET(self):
+            # `?slow` on the page makes the chunk take a second, so the state while it is in
+            # flight is observable; `?gone` makes it 404, so the failure is too.
+            if "pages.report" in self.path:
+                shape = getattr(self.server, "chunk", "")
+                if shape == "slow":
+                    time.sleep(1.0)
+                elif shape == "gone":
+                    self.send_error(404)
+                    return
+            super().do_GET()
+
+    class Threaded(socketserver.ThreadingTCPServer):
+        daemon_threads = True
+        allow_reuse_address = True
+        chunk = ""  # a test sets "slow" or "gone" to shape the chunk's response
+
+    server = Threaded(("127.0.0.1", 0), functools.partial(Quiet, directory=str(out)))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}", out, server
+    server.shutdown()

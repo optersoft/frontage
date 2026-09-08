@@ -133,11 +133,34 @@ def compile_module(path):
 def closure(app, entry, components=()):
     """The modules a page needs, by dotted name, with the file each comes from: the entry's
     import closure through `cli/graph.py`, over the app, the framework and the components."""
+    modules, _ = split(app, entry, components)
+    return modules
+
+
+def split(app, entry, components=()):
+    """`(modules, chunks)`: what the page loads at once, and what it fetches when asked.
+
+    A chunk is a module named by `Route(lazy=…)` or `chunks.load(…)` somewhere in the first
+    closure. It carries whatever only it reaches; a module the entry already loads stays in
+    the first payload, and two chunks that share one both carry it — a copy of a few
+    kilobytes is cheaper than a third request, until it is not (`TODO.md`).
+    """
     from .graph import Graph
 
     graph = Graph(app, components=components)
-    names = sorted(graph.closure([entry]))
-    return [(name, graph.modules[name]) for name in names]
+    main = graph.closure([entry])
+    chunks = {}
+    for root in sorted(graph.lazy_roots(main)):
+        extra = graph.closure([root], stop=main)
+        if extra:
+            chunks[root] = sorted(extra)
+    modules = [(name, graph.modules[name]) for name in sorted(main)]
+    for names in chunks.values():
+        modules += [(name, graph.modules[name]) for name in names if name not in main]
+    seen = {}
+    for name, path in modules:
+        seen[name] = path
+    return [(name, seen[name]) for name in sorted(seen)], chunks
 
 
 def framework_names():
@@ -169,11 +192,15 @@ def site_files(dest, quiet=True):
     return framework_files(dest, quiet=quiet)
 
 
-def manifest(names, entry, files=None, wasm=None):
-    """`manifest.json`: every module but the entry (which the boot fetches by its own name),
-    and, for a built app, the content-hashed file of each module and of the wasm, so the
-    files can be cached forever and a rebuild changes only what changed."""
-    out = {"modules": [n for n in names if n != entry]}
+def manifest(names, entry, files=None, wasm=None, chunks=None):
+    """`manifest.json`: every module the page loads at once but the entry (which the boot
+    fetches by its own name), the modules of each chunk, and, for a built app, the
+    content-hashed file of each module and of the wasm, so the files can be cached forever
+    and a rebuild changes only what changed."""
+    lazy = {name for names_ in (chunks or {}).values() for name in names_}
+    out = {"modules": [n for n in names if n != entry and n not in lazy]}
+    if chunks:
+        out["chunks"] = chunks
     if files:
         out["files"] = files
         out["entry"] = files[entry]
@@ -199,9 +226,12 @@ HEADERS = """/_frontage/*.fbc
 
 def module_file(name, app):
     """The source of a dotted module name for a page served from `app`: the app's own, or
-    the framework's."""
+    the framework's. A package is its `__init__.py` — `pages` is a directory, and a chunk
+    that names `pages.report` needs `pages` beside it."""
     if name.startswith("frontage.") or name == "frontage":
         rel = name.split(".")[1:]
         package = ROOT / "frontage"
         return package / "__init__.py" if not rel else package.joinpath(*rel[:-1], rel[-1] + ".py")
-    return Path(app) / (name.replace(".", "/") + ".py")
+    stem = Path(app).joinpath(*name.split("."))
+    module = stem.with_suffix(".py")
+    return module if module.is_file() else stem / "__init__.py"

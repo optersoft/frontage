@@ -23,7 +23,7 @@ reads a param updates in place. Three modes: `history` (pushState), `hash` (the 
 case, and what static hosting wants), `memory` (no browser; the test suite runs on it).
 """
 
-from . import reactive
+from . import chunks, reactive
 from .aio import Action
 from .flow import _Branch
 from .reactive import Context, Memo, Owner, Signal, batch, get_owner, on_cleanup, provide, run_with_owner, untrack, use
@@ -144,10 +144,21 @@ def _join(prefix, path):
 
 
 class Route:
-    def __init__(self, path, component=None, children=None, preload=None):
+    """One level of the route tree.
+
+    `lazy="pages.map:map_page"` in place of a component makes this route a **chunk**: the
+    module is left out of the first payload and fetched the first time the route is shown
+    (`frontage.chunks`). While it is in flight the route shows the nearest `Loading`
+    fallback and counts toward `is_routing`, and a link to it starts the fetch on hover.
+    """
+
+    def __init__(self, path, component=None, children=None, preload=None, lazy=None):
+        if component is None and lazy is None:
+            raise TypeError(f"Route({path!r}) needs a component or lazy=")
         self.path = path
         self.segments = _segments(path)
-        self.component = component
+        self.lazy = lazy
+        self.component = component if component is not None else chunks.component(lazy)
         self.children = list(children or [])
         self.preload = preload
 
@@ -405,6 +416,13 @@ class Router:
             from . import view as _view
 
             renderer = _view._current_renderer
+            # The boundaries that lexically surround the outlet. A level's owner hangs from
+            # `home` — the router's own owner — so that a route survives the hole recomputing;
+            # that also puts it *beside* a `Loading` or `Errored` written in `root=`, not
+            # under it. Reading them here, where the outlet is being rendered, and providing
+            # them on the level owner is what makes `root=lambda children: Loading(…)` work.
+            here = reactive._current_owner()
+            boundaries = [(key, reactive.lookup(here, key)) for key in (reactive.LOADING, reactive.ERRORS)]
             chain = self.matches()
             if chain is None or depth >= len(chain):
                 route = None
@@ -413,7 +431,11 @@ class Router:
             if route is state.key and state.owner is not None:
                 return Mounted(state.nodes)
             state.dispose()
-            state.key = route
+            # `key` is set only once the level has actually rendered. A component that is not
+            # ready — a lazy route whose chunk is in flight, a body that reads a resource —
+            # raises `NotReady` out of `make`, and a level that had already claimed the key
+            # would answer the retry with the *previous* route's nodes, forever.
+            state.key = None
             owner = Owner(parent=home)
             state.owner = owner
 
@@ -427,6 +449,9 @@ class Router:
                         )
                         return _build_nodes(content, renderer)
                     return []
+                for key, scope in boundaries:
+                    if scope is not None:
+                        provide(key, scope)
                 level = _LevelContext(self, depth)
                 provide(_LEVEL, level)
                 try:
@@ -442,6 +467,7 @@ class Router:
                 return _build_nodes(content, renderer) if content is not None else []
 
             state.nodes = run_with_owner(owner, make)
+            state.key = route
             return Mounted(state.nodes)
 
         return accessor
@@ -570,9 +596,12 @@ class Router:
     # -- preloading ------------------------------------------------------------------------------
 
     def preload(self, path, intent="preload"):
-        """Run the preload functions of the routes `path` would match."""
+        """Run the preload functions of the routes `path` would match, and start fetching any
+        chunk they need — which is what makes a hover over a link to a lazy route pay off."""
         chain = match_routes(self.routes, Location(self.resolve(path)).pathname)
         for m in chain or []:
+            if m.route.lazy is not None:
+                chunks.prefetch(m.route.lazy)
             if m.route.preload is not None:
                 self._preload_one(m.route, m.params, intent)
 

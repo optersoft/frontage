@@ -350,8 +350,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return
             if name == frontage_rt.MANIFEST:
                 entry = find_entry(app)
-                names = [n for n, _ in frontage_rt.closure(app, entry)]
-                self._send_bytes(frontage_rt.manifest(names, entry), "application/json")
+                members, chunks = frontage_rt.split(app, entry)
+                names = [n for n, _ in members]
+                self._send_bytes(frontage_rt.manifest(names, entry, chunks=chunks), "application/json")
                 return
             if name.endswith(".fbc"):
                 source = frontage_rt.module_file(name[:-4], app)

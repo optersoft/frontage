@@ -32,6 +32,7 @@ APPS = [
     ("forms", "Forms", "Bindings, <code>Switch</code>, an <code>Action</code> on submit.", "#app form"),
     ("fetch", "Fetch", "<code>Resource</code>, <code>Loading</code> and <code>Errored</code>.", "#app"),
     ("contacts", "Contacts", "The router: nested routes, links, query strings.", "#app a"),
+    ("lazy", "Lazy route", "A route in a chunk of its own: fetched on hover, not on load.", "#home"),
     ("chart", "Chart", "uPlot as a component — a 20,000-point chart from Python.", "canvas"),
     ("wasm", "Wasm library", "A WebAssembly library imported like any Python module.", "#answer"),
     ("weather", "Weather", "Streamlit's Seattle Weather demo, ported: five charts, no server.", "#app canvas"),

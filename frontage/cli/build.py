@@ -289,13 +289,15 @@ def build(app, out="", entry="", quiet=False, components=None):
             styles.append(f'<link rel="stylesheet" href="./_frontage/components/{component.name}/{COMPONENT_STYLE}">')
     # The entry's import closure, each module as bytecode, and a manifest naming them;
     # nothing the page does not reach is shipped.
-    members = frontage_rt.closure(app, entry, installed)
+    members, chunks = frontage_rt.split(app, entry, installed)
     files = {}
     for name, path in members:
         data = frontage_rt.compile_module(path)
         files[name] = frontage_rt.hashed(name, data, "fbc")
         (runtime / files[name]).write_bytes(data)
-    (runtime / frontage_rt.MANIFEST).write_bytes(frontage_rt.manifest([n for n, _ in members], entry, files, wasm_file))
+    (runtime / frontage_rt.MANIFEST).write_bytes(
+        frontage_rt.manifest([n for n, _ in members], entry, files, wasm_file, chunks)
+    )
     if not (out / "_headers").exists():
         (out / "_headers").write_text(frontage_rt.HEADERS)
 

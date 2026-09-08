@@ -10,6 +10,7 @@
 import { load } from "./glue.js";
 
 const asset = (name) => new URL(name, import.meta.url).href;
+let rtAssets = "";
 
 async function bytes(url) {
   const response = await fetch(url);
@@ -61,6 +62,8 @@ async function boot() {
     compiler ? fetch(asset("framework.json")).then((r) => r.json()) : { modules: [] },
   ]);
   files = manifest.files || {};
+  // What a chunk fetch needs later: where these files live, and which modules are in each.
+  rtAssets = asset("");
   const rt = await load(asset(compiler ? "frontage-compiler.wasm" : manifest.wasm || "frontage.wasm"), console_io);
   const names = [...new Set([...framework.modules, ...manifest.modules])];
   await addModules(rt, names);
@@ -78,6 +81,8 @@ async function boot() {
     if (name) rt.registerJsModule(name, namespace);
   }
   const main = await bytes(asset(manifest.entry || `${entry}.fbc`));
+  rt.assetBase = rtAssets;
+  rt.manifest = manifest;
   window.frontage = rt;
   const code = rt.run(main);
   if (code === 1) console.error("frontage: the entry raised; see above");

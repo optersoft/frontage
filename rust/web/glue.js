@@ -406,6 +406,23 @@ export async function load(source, options = {}) {
       pump();
       return result;
     },
+    /// Fetch a chunk's modules and register them: `[[name, file], …]`, resolved against the
+    /// runtime's own directory. What `frontage.chunks` awaits for a lazy route.
+    async loadChunk(files) {
+      // `assetBase` is set by whatever booted this runtime (boot.js knows where its files
+      // are); a page that never set one asks relative to itself.
+      const base = (this && this.assetBase) || location.href;
+      await Promise.all(
+        Array.from(files, async ([name, file]) => {
+          const url = new URL(file, base).href;
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`frontage: ${response.status} fetching ${url}`);
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          const [np, nl] = putString(name);
+          ex.add_module(np, nl, put(bytes), bytes.length);
+        }),
+      );
+    },
     /// A JavaScript object as an importable Python module: `import name` gives its attributes.
     registerJsModule(name, object) {
       const [np, nl] = putString(name);

@@ -68,7 +68,7 @@ def test_matching_params_index_and_wildcards():
     assert [m.route.component for m in chain] == ["users", "user", "posts"]
     assert chain[-1].params == {"id": "7"} and chain[1].prefix == "/users/7"
     assert match_routes(routes, "/nope/x")[-1].params == {"rest": "nope/x"}
-    assert match_routes([Route("/only")], "/other") is None
+    assert match_routes([Route("/only", "only")], "/other") is None
 
 
 def test_location_and_query_parsing():

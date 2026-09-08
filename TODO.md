@@ -564,8 +564,19 @@ decides, all in 0.10.0:
       manifest), a `_headers` that caches them forever, `modulepreload`/`preload` hints in the
       page; a rebuild moves only the URL of what changed (2026-09-08). Brotli beside them is
       not written: the hosts in use compress on the fly.
-- [ ] Still to do on that: `Route("/map", lazy="pages.map")` with chunks (`graph.lazy_roots`
-      finds them), shared chunks over 20 KB, hover prefetch; `examples/uber` split.
+- [x] **`Route("/map", lazy="pages.map")` is a chunk** (2026-09-08): `graph.lazy_roots` finds
+      the roots, `split` gives each what only it reaches, the manifest names the modules of
+      each, and `frontage.chunks` fetches them the first time the route is visited. The wait
+      is the framework's own — the nearest `Loading`, `is_routing`, a transition, `Errored` —
+      and `A` prefetches on hover. `examples/lazy` is the example and the browser test.
+      Two things the plan got wrong: a shared module needs no size rule, because `split`
+      writes one file that both chunks name and the second fetch skips what the interpreter
+      already has; and the lazy component must read its memo **inside a hole**, since the
+      router calls a route's component under `untrack` and a memo read there is a dependency
+      of nothing.
+- [ ] `examples/uber` is not a route split: it has no router, and its 133 KB of data is what
+      the one page draws. What it wants instead is `frontage.frame` below (the data as a
+      binary the columnar engine reads), so it is filed there rather than here.
 - [ ] **Development**: module-level signals and stores survive a swap by qualified name
       (Vue's split, not React's guess), a template-only edit patches templates in place,
       an error overlay, a devtools page in `serve` over `reactive.tree()`.

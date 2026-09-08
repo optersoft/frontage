@@ -220,7 +220,12 @@ class Graph:
     # -- closures and chunk roots -------------------------------------------------------------
 
     def closure(self, roots, stop=()):
-        """Every module reachable from `roots`, never crossing into `stop`."""
+        """Every module reachable from `roots`, never crossing into `stop`.
+
+        A module's packages come with it: `import pages.map` needs `pages` to exist, and a
+        `pages/__init__.py` that imports nothing is reached by no edge in this graph — which
+        made a chunk whose root sat in a package unimportable in the page.
+        """
         seen, todo = set(), [r for r in roots if self._known(r)]
         stop = set(stop)
         while todo:
@@ -229,7 +234,13 @@ class Graph:
                 continue
             seen.add(name)
             todo.extend(d for d in self.deps(name) if d not in seen)
+            todo.extend(p for p in self._packages(name) if p not in seen)
         return seen
+
+    def _packages(self, name):
+        """The packages `name` lives in, outermost first, that this graph knows."""
+        parts = name.split(".")[:-1]
+        return [p for i in range(1, len(parts) + 1) if self._known(p := ".".join(parts[:i]))]
 
     def lazy_roots(self, within):
         """The modules named by `Route(…, lazy="pages.map")` or `chunks.load("pages.map")`
