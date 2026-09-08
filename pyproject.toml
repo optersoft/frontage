@@ -69,7 +69,8 @@ line-length = 120
 # per target: PEP 758 unparenthesized excepts on 3.14) targets 3.12 for it; only the files
 # that use template strings are 3.14.
 target-version = "py312"
-extend-exclude = ["tools/pyscript", "www", "typings"]
+# tools/micropython/variant/manifest.py is read by MicroPython's build, where `include` is a builtin.
+extend-exclude = ["tools/pyscript", "www", "typings", "tools/micropython/variant"]
 
 [tool.ruff.per-file-target-version]
 "tests/test_m2.py" = "py314"

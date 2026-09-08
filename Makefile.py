@@ -3,7 +3,8 @@
     mk sync                 .venv with every dependency group
     mk test                 unit tests (no browser)
     mk test --browser       the examples in Chromium, on MicroPython in WebAssembly
-    mk runtime.fetch        the pinned micropython.mjs + .wasm into frontage/_runtime/
+    mk runtime.wasm         compile the interpreter (frontage's variant) into frontage/_runtime/
+    mk runtime.fetch        the fallback: upstream's micropython.mjs + .wasm, no Docker needed
     mk runtime.build        cross-compile the framework into frontage/_runtime/frontage.tar
     mk pyscript.fetch       PyScript's offline bundle (core + both interpreters) into tools/pyscript/
     mk lint [--fix]         ruff check + ruff format, as CI runs them
@@ -102,12 +103,25 @@ def check() -> None:
 
 @task(name="runtime.fetch", requires=["uv"])
 def runtime_fetch() -> None:
-    """Download the pinned MicroPython WebAssembly build into frontage/_runtime/.
+    """The fallback: download the upstream MicroPython WebAssembly build into frontage/_runtime/.
 
-    The version is one line, `frontage/cli/micropython.py:VERSION`, the way the PyScript pin
-    was. It is the same build PyScript shipped, so bumping it is a browser run, not a port.
+    A no-op once the runtime is in place. The build a release ships is `mk runtime.wasm`,
+    frontage's own variant; this one is PyScript's build, bigger and slower, for a checkout
+    without Docker.
     """
     sh("uv", "run", "--frozen", "python", "-m", "frontage", "runtime", "fetch")
+
+
+@task(name="runtime.wasm", requires=["uv", "docker"])
+def runtime_wasm() -> None:
+    """Compile the interpreter: upstream MicroPython at the pinned tag with frontage's variant.
+
+    `tools/micropython/variant/` applied out of tree to `ports/webassembly`, built in the
+    pinned `emscripten/emsdk` image (FASTER.md §2: 108 KB of brotli instead of 170, a Python
+    call 0.05 µs instead of 0.25). The pin is `frontage/cli/micropython.py:UPSTREAM_TAG`;
+    bumping it is that line, this task, and a browser run. Commit the two files it writes.
+    """
+    sh("uv", "run", "--frozen", "python", "-m", "frontage", "runtime", "build")
 
 
 @task(name="runtime.build", requires=["uv"], needs=[runtime_fetch])

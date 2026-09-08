@@ -38,8 +38,13 @@ def test_the_vendored_runtime_is_present_and_is_the_pinned_build():
     for name in mp.WANTED + ("boot.js", mp.IMAGE_NAME):
         assert (mp.RUNTIME_DIR / name).exists(), f"{name} missing: run `mk runtime.fetch`"
     # The pin is a single line; if it moves, the image and the tests move with it.
-    assert mp.VERSION.startswith("1.28.")
-    assert (mp.RUNTIME_DIR / "micropython.wasm").stat().st_size > 300_000
+    assert mp.UPSTREAM_TAG.startswith("v1.29.")
+    wasm = (mp.RUNTIME_DIR / "micropython.wasm").read_bytes()
+    # Frontage's own variant, not the upstream npm build: a third smaller, and with wasm
+    # exception handling in place of the JavaScript `invoke_*` longjmp trampolines that
+    # upstream imports (FASTER.md §2). A fetched fallback build fails both.
+    assert 200_000 < len(wasm) < 300_000, "run `mk runtime.wasm`"
+    assert b"invoke_" not in wasm, "the upstream build, not frontage's variant: run `mk runtime.wasm`"
 
 
 def test_the_framework_image_holds_every_browser_module(tmp_path):

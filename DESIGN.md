@@ -472,6 +472,29 @@ an export of this build). It is not worth it: writing sixteen files into the in-
 filesystem is lost in the noise of a 52 ms boot, and the image needs a builder the tar does
 not. Thirty lines of JavaScript beat a new toolchain dependency.
 
+**Fifth measurement (2026-09-08, M12, `FASTER.md` §2).** The interpreter itself, which no
+earlier measurement had questioned. Upstream's `webassembly` port links with
+`SUPPORT_LONGJMP=emscripten` — MicroPython's `nlr` is `setjmp`/`longjmp`, so every call out of
+the bytecode loop goes through a JavaScript trampoline — never optimises at link time, and
+freezes 27 library packages no page imports. Frontage's own variant (`tools/micropython/variant/`,
+built by `mk runtime.wasm`) switches to wasm exception handling, links at `-Oz`, freezes
+`asyncio` alone and drops the unused C modules. Same page, same framework, Chromium:
+
+| `tools/profile_rows.py` | upstream | frontage's build |
+|---|---|---|
+| method call, per 10,000 | 2.3 ms | 0.8 ms |
+| `For` of 1,000, null renderer | 102 ms | 43 ms |
+| **create 1,000 rows, DOM, templates** | **139 ms** | **70 ms** |
+| swap two rows | 12.1 ms | 4.3 ms |
+| update every tenth row | 3.3 ms | 1.4 ms |
+| `micropython.wasm`, brotli | 170 KB | 108 KB |
+
+Every gallery card lost 188 KB on disk and none booted slower (`uber` went 328 → 93 ms, its
+133 KB of data now parsed three times faster). What the faster interpreter exposes is the
+next target: the null-renderer create is 43 ms and the DOM one 70, so the DOM side — a
+`jsffi` proxy per node, 11,000 of them — is now 27 ms of the 70. That, and the 43 ms of
+framework Python, is what the C core in `FASTER.md` §3–§4 is for.
+
 ## 13. Testing
 
 - `SPEC.md` first: behaviours, one line each, grouped by chapter, in our words.

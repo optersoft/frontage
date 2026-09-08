@@ -444,6 +444,51 @@ ships as source and costs about two milliseconds to compile in the VM. Plan in
       - [x] The nine READMEs caught up too: they still described PyScript, a `pyscript.json`
         the repos no longer have, and a pipeline running `export`.
 - [ ] Release: bump `version.py`, check the chapters name the new wheel, tag `v0.9.0`.
+## M12 — faster than React, in one release: 0.10.0 (planned 2026-09-08)
+
+The plan is `FASTER.md`; §1–§4 there are measured, on the examples, on the pinned
+interpreter, and on seven custom builds of the MicroPython wasm port made for it. What it
+decides, all in 0.10.0:
+
+- [ ] **Our own build of the interpreter.** An out-of-tree variant for `ports/webassembly`
+      (three files, `VARIANT_DIR=`, upstream tag untouched): **`SUPPORT_LONGJMP=wasm`** (the
+      upstream build routes every Python exception through JavaScript longjmp trampolines),
+      an optimised link (upstream never runs Binaryen), the frozen micropython-lib cut from
+      27 packages to `asyncio`, unused C modules off. Measured: 446 → 266 KB raw, 196 →
+      125 KB gzip, 170 → 108 KB brotli; a Python call 0.248 → 0.052 µs (4.8×); on the real
+      page, **create 1,000 rows 139 → 71 ms, swap 12 → 4.4, update 3.3 → 1.4**, with the
+      framework unchanged. The browser suite (21 tests) passes on it. Safari ≥ 15.2.
+      Bump to upstream `1.29.0-6` on the way.
+- [ ] **The framework core in C** (`frontage/_core`, a MicroPython user C module in that
+      build): the reactive graph, template holes, `For`/LIS, `Store`. Measured on a probe
+      module: C halves a call from Python, and a C loop calling a Python closure costs
+      0.015 µs against 0.121 from Python. The app's share of a 1,000-row create is under
+      1 ms; the raw bridge is 5 ms in Chromium; the 44 ms of framework Python left on the
+      new interpreter is what moves, and the 27 ms of DOM side goes with integer node ids
+      and an op buffer instead of a proxy per node. Gate: create-1,000 under 20 ms in
+      `profile_rows`, swap and update no worse.
+      API unchanged; the Python implementation stays for CPython and behind a flag.
+- [ ] **No more `frontage-*` projects on PyPI.** Subpackages of `frontage`, extras for
+      server halves, assets in the wheel, the component repo merged in. No shim releases for
+      the five published names and no 0.9-page compatibility in `boot.js` (decided 2026-09-08).
+- [ ] **`frontage build` packs the closure of what the entry imports**, walked with `ast`,
+      as bytecode, app included; `__init__.py` lazy through PEP 562 (verified on this
+      interpreter); two content-hashed archives (framework subset, app), immutable caching,
+      brotli beside them, preload hints; `Route("/map", lazy="pages.map")` with chunks, a
+      manifest inside the main archive, shared chunks over 20 KB, hover prefetch; `serve`
+      and `swap` follow; `examples/uber` split.
+- [ ] **Development**: module-level signals and stores survive a swap by qualified name
+      (Vue's split, not React's guess), a template-only edit patches templates in place,
+      an error overlay, a devtools page in `serve` over `reactive.tree()`.
+- [ ] **The React gaps marked "yes" in `FASTER.md` §9**: head management, view
+      transitions, form validation in core, accessibility basics, Tailwind for apps, the
+      "from React" and "from Streamlit" chapters.
+- [ ] Open: `-O2` for app bytecode (yes, with `--debug`); which interpreter trims; the
+      Python core kept behind a flag until 1.0.
+- Measured and rejected, with the number, in `FASTER.md` §10: Pyodide, Python→JS,
+      SPy/mypyc/Codon for apps, pocketpy, Rust in the same wasm, `wasm-opt` on the upstream
+      binary (53 KB raw, 4 KB gzip — the size is data), a Worker, symbol-level shaking.
+
 ## Beating Streamlit — the component strategy (planned 2026-09-07)
 
 `COMPONENTS.md` is the argument and the order of work. The short version: frontage already

@@ -63,15 +63,16 @@ and `frontage build` writes a directory that runs anywhere:
 uvx frontage build myapp        # index.html, your .py, and _frontage/ beside them
 ```
 
-| The counter, cold cache | 0.9.0 | 0.8.3 (PyScript) |
+| The counter, cold cache | 0.10.0 | 0.8.3 (PyScript) |
 |---|---|---|
 | requests | 6 | 29 |
-| transferred | 0.64 MB | 0.91 MB |
-| compressed | 0.27 MB | 0.33 MB |
-| to first paint | 52 ms | 88 ms |
+| transferred | 0.46 MB | 0.91 MB |
+| compressed | 0.19 MB | 0.33 MB |
+| to first paint | 59 ms | 88 ms |
 
-Most of that is the interpreter: the framework is 82 KB of precompiled bytecode, and none of
-it is parsed in the browser. Medians of five, this laptop's Chromium; DESIGN.md §12 has the
+Most of that is the interpreter — frontage's own build of MicroPython, 108 KB of brotli
+(`FASTER.md` §2); the framework is 82 KB of precompiled bytecode, and none of it is parsed
+in the browser. Medians of five, this laptop's Chromium; DESIGN.md §12 has the
 method.
 
 The same package is a small command line on your machine, stdlib only:

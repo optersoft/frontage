@@ -16,6 +16,7 @@ hydration, transitions and async memos). **PyScript is gone from the browser pat
 | `DESIGN.md` | the plan and its reasoning: what Leptos, Solid, Streamlit, Shiny and Reflex taught, the architecture, the milestones, the open decisions |
 | `SPEC.md` | one line per behaviour, tagged with its milestone; every line is a test to write; code is written from this, never from a reference framework's source |
 | `TODO.md` | what is next and what is blocked |
+| `FASTER.md` | M12's plan, one release: our own build of the interpreter, the framework core in C, one distribution, the closure and route chunks, state-preserving swap — with the measurements it rests on |
 
 ## Layout
 
@@ -88,15 +89,22 @@ hydration, transitions and async memos). **PyScript is gone from the browser pat
   `_frontage/boot.js`, which loads `micropython.wasm`, unpacks `frontage.tar` (the framework,
   precompiled to `.mpy`) and `app.tar` (the app, as source) into the interpreter's filesystem,
   and execs the entry as `__main__`. Four requests against PyScript's twenty-nine, 52 ms
-  against 88 (DESIGN §12). The **MicroPython pin is one line**,
-  `frontage/cli/micropython.py:VERSION` — the same upstream build PyScript shipped, so a bump
-  is a browser run, not a port.
+  against 88 (DESIGN §12). **The interpreter is frontage's own build since 0.10** (FASTER.md
+  §2): upstream MicroPython at the tag in `frontage/cli/micropython.py:UPSTREAM_TAG`, the
+  `webassembly` port with `tools/micropython/variant/` applied out of tree — wasm exception
+  handling instead of upstream's JavaScript longjmp trampolines (a Python call 0.25 → 0.05 µs,
+  a 1,000-row create halved), an optimised link, the frozen library cut to `asyncio`, unused
+  C modules off: 108 KB of brotli instead of 170. `mk runtime.wasm` builds it in the pinned
+  `emscripten/emsdk` image in about fifteen seconds; a bump is the tag line, that task, and a
+  browser run. `mk runtime.fetch` is the fallback (upstream's build, bigger and slower) for a
+  machine without Docker; `tests/test_build.py` refuses it as the vendored copy. Needs Safari
+  15.2 / Chrome 95 / Firefox 100.
 - **Rebuild the image after touching a top-level module**: `mk runtime.build`. The vendored
   `frontage/_runtime/frontage.tar` is what a wheel ships and what `frontage build` copies, so
   stale bytecode means a silently old framework in the browser. `mk build` depends on the task
   so the normal path cannot get it wrong, and the tar is reproducible (mtimes pinned to 0) so
   CI rebuilds it and compares bytes rather than trusting a timestamp a wheel install flattens.
-  `frontage/_runtime/` is committed, ~640 KB.
+  `frontage/_runtime/` is committed, ~455 KB.
 - **An embedded frame runs a program through `web/runner.html`**, not through a boot tag.
   `boot.js` exports `startRuntime()` — the interpreter with the framework in it and no
   application — because a runner holds its program in a URL fragment and has nothing to fetch.

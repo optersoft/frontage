@@ -112,7 +112,7 @@ jobs:
               path = mp.RUNTIME_DIR / name
               assert path.is_file(), f'{name} missing from the wheel'
               print(f'{name}: {path.stat().st_size:,} bytes')
-          assert (mp.RUNTIME_DIR / 'micropython.wasm').stat().st_size > 300_000
+          assert (mp.RUNTIME_DIR / 'micropython.wasm').stat().st_size > 200_000
           "
       - run: uv run --isolated --no-project --with dist/*.tar.gz -- python -c "import frontage; print(frontage.__version__)"
       - run: uv publish --trusted-publishing always
