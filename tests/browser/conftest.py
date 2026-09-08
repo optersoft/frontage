@@ -133,3 +133,31 @@ def lazy(tmp_path_factory):
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{server.server_address[1]}", out, server
     server.shutdown()
+
+
+@pytest.fixture
+def editable(tmp_path):
+    """A copy of `examples/counter` under `frontage serve`, whose files a test may edit: the
+    dev loop (a swap, a compile error, a traceback) is about what a save does."""
+    import shutil
+
+    app = tmp_path / "app"
+    shutil.copytree(ROOT / "examples" / "counter", app)
+    port = _free_port()
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "frontage", "serve", str(app), "--port", str(port), "--quiet"],
+        cwd=ROOT,
+    )
+    deadline = time.time() + 20
+    while time.time() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                break
+        except OSError:
+            time.sleep(0.1)
+    else:
+        proc.terminate()
+        raise RuntimeError("frontage serve did not start")
+    yield f"http://127.0.0.1:{port}", app
+    proc.terminate()
+    proc.wait()

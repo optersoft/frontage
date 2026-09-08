@@ -26,7 +26,54 @@ from . import PROG
 
 RELOAD_PATH = "/__frontage/reload"
 MODULE_PATH = "/__frontage/module/"
+OVERLAY_PATH = "/__frontage/overlay.js"
 RUNTIME_PREFIX = "/_frontage/"
+
+# The error overlay: what a failed edit looks like. It is a module of its own rather than more
+# lines in the swap script because the page's Python calls it too — `frontage.dev` reports a
+# swap that raised through `window.frontage.devError`, so a traceback from the interpreter and
+# a message from the compiler arrive in the same place, on top of the page that still works.
+OVERLAY_JS = """const ID = "frontage-dev-overlay";
+
+export function show(title, text) {
+  let box = document.getElementById(ID);
+  if (!box) {
+    box = document.createElement("div");
+    box.id = ID;
+    box.style.cssText =
+      "position:fixed;inset:0;z-index:2147483647;overflow:auto;padding:2rem;margin:0;" +
+      "background:#1a1a1acc;backdrop-filter:blur(2px);color:#fff;" +
+      "font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace";
+    document.body.appendChild(box);
+  }
+  box.textContent = "";
+  const card = document.createElement("div");
+  card.style.cssText =
+    "max-width:60rem;margin:0 auto;background:#111;border:1px solid #f87171;border-radius:8px;padding:1.25rem";
+  const heading = document.createElement("strong");
+  heading.style.cssText = "display:block;color:#f87171;margin-bottom:.75rem;font-size:14px";
+  heading.textContent = title;
+  const body = document.createElement("pre");
+  body.style.cssText = "margin:0;white-space:pre-wrap;word-break:break-word";
+  body.textContent = text;
+  const hint = document.createElement("div");
+  hint.style.cssText = "margin-top:1rem;color:#9ca3af";
+  hint.textContent = "Fix the file and save. The page is still the last one that worked.";
+  card.append(heading, body, hint);
+  box.appendChild(card);
+}
+
+export function hide() {
+  const box = document.getElementById(ID);
+  if (box) box.remove();
+}
+
+// What the page's Python calls when a swap raises (`frontage.dev`). Globals of their own,
+// not properties of `window.frontage`: the boot replaces that object with the runtime when
+// it is ready, which is after this module has run, and took the hooks with it.
+window.frontageDevError = (title, text) => show(title, text);
+window.frontageDevErrorClear = hide;
+"""
 
 # A page with no boot tag (a PyScript page, 0.9.x) can only reload.
 RELOAD_SCRIPT = (
@@ -39,6 +86,7 @@ RELOAD_SCRIPT = (
 # It imports the *same* module URL the page booted from, so it gets that live instance.
 SWAP_SCRIPT = """<script type="module" data-fr-reload>
 import {{ ready }} from "{boot}";
+import {{ show, hide }} from "{overlay}";
 const stream = new EventSource("{reload}");
 stream.onmessage = async (event) => {{
   let message;
@@ -46,11 +94,19 @@ stream.onmessage = async (event) => {{
   if (message.type !== "swap") return location.reload();
   try {{
     const rt = await ready;
+    const code = [];
     for (const name of message.modules) {{
       const response = await fetch("{module}" + name + ".fbc");
-      if (!response.ok) return location.reload();  // the compile failed: the page keeps the last good version
-      rt.addModule(name, new Uint8Array(await response.arrayBuffer()));
+      if (!response.ok) {{
+        // The compile failed. Nothing is torn down: the page stays as it is, under the
+        // compiler's own message, and the next save that works takes the overlay away.
+        return show(name + ".py does not compile", (await response.text()).trim());
+      }}
+      code.push([name, new Uint8Array(await response.arrayBuffer())]);
     }}
+    hide();
+    for (const [name, bytes] of code) rt.addModule(name, bytes);
+    // A swap that raises has already put its traceback on the overlay from Python.
     if (rt.swap(message.entry, message.modules) !== 0) console.error("frontage: the swap raised; see above");
   }} catch (error) {{
     console.error("frontage: swap failed, reloading", error);
@@ -145,7 +201,7 @@ def dev_script(html):
     src = _SRC.search(tag.group(0)) if tag else None
     if src is None:
         return RELOAD_SCRIPT
-    return SWAP_SCRIPT.format(boot=src.group(1), reload=RELOAD_PATH, module=MODULE_PATH)
+    return SWAP_SCRIPT.format(boot=src.group(1), reload=RELOAD_PATH, module=MODULE_PATH, overlay=OVERLAY_PATH)
 
 
 def inject(html):
@@ -257,6 +313,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if route == RELOAD_PATH:
             self._stream()
             return
+        if route == OVERLAY_PATH:
+            self._send_bytes(OVERLAY_JS.encode(), "text/javascript")
+            return
         if route.startswith(MODULE_PATH):
             self._send_module(route[len(MODULE_PATH) :])
             return
@@ -313,7 +372,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         try:
             data = frontage_rt.compile_module(candidate)
         except SystemExit as exc:
-            self.send_error(500, str(exc))
+            # The compiler's own words, as the body: the overlay shows them verbatim, and an
+            # error page's markup would be noise around the one line that says what is wrong.
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(str(exc).encode())
             return
         self._send_bytes(data, "application/octet-stream")
 
@@ -352,6 +417,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 entry = find_entry(app)
                 members, chunks = frontage_rt.split(app, entry)
                 names = [n for n, _ in members]
+                # `frontage.dev` is what performs a swap, and no app imports it — the page is
+                # handed its modules, it cannot fetch one it turns out to need. A build ships
+                # the closure and nothing more; a dev page needs this one module besides.
+                if "frontage.dev" not in names:
+                    names.append("frontage.dev")
                 self._send_bytes(frontage_rt.manifest(names, entry, chunks=chunks), "application/json")
                 return
             if name.endswith(".fbc"):

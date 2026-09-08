@@ -133,6 +133,13 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
   even its own-origin fetches leave as `Origin: null`: that is why `/_frontage/*` answers CORS,
   and why `frontage serve` sends the same headers — otherwise a frame works on Pages and not
   locally, which is the worst way round.
+- **A dev page needs `frontage.dev`, and the manifest is the only way it can get one.** The
+  page is *handed* its modules; it cannot fetch one it turns out to need, and no app imports
+  the module that performs a swap. `cli/serve.py` appends it to the manifest it synthesises.
+  Every swap failed on `ModuleNotFoundError` before that, silently falling back to a reload.
+- **`window.frontage` is the runtime object, and the boot assigns it.** Anything a dev script
+  hangs on that name is gone the moment the runtime is ready — which is how the error
+  overlay's hooks disappeared. The overlay uses `window.frontageDevError` instead.
 - **A lazy route's component reads its memo inside a hole, never at component-call time.**
   The router calls a route's component under `untrack` (`router._level`), so a memo read
   *there* is a dependency of nothing and the page sits on the old route forever after the

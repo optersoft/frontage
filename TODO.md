@@ -577,9 +577,16 @@ decides, all in 0.10.0:
 - [ ] `examples/uber` is not a route split: it has no router, and its 133 KB of data is what
       the one page draws. What it wants instead is `frontage.frame` below (the data as a
       binary the columnar engine reads), so it is filed there rather than here.
-- [ ] **Development**: module-level signals and stores survive a swap by qualified name
+- [x] **An error overlay** (2026-09-08): a file that does not compile shows the compiler's
+      message with the working page still running underneath, and an entry that raises while
+      the page rebuilds shows its traceback; the next good save clears it. `tests/browser/
+      test_dev_loop.py` is the first coverage the dev loop has ever had, and it found that
+      **the swap had been broken in the browser** since the runtime switch: the page is handed
+      its modules and no app imports `frontage.dev`, so every swap died on `ModuleNotFoundError`
+      and fell back to a reload. The dev manifest names that module now.
+- [ ] **Development, still**: module-level signals and stores survive a swap by qualified name
       (Vue's split, not React's guess), a template-only edit patches templates in place,
-      an error overlay, a devtools page in `serve` over `reactive.tree()`.
+      a devtools page in `serve` over `reactive.tree()`.
 - [ ] **The React gaps marked "yes" in `FASTER.md` §9**: head management, view
       transitions, form validation in core, accessibility basics, Tailwind for apps, the
       "from React" and "from Streamlit" chapters.

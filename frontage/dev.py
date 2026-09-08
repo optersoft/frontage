@@ -71,10 +71,42 @@ def swap(entry, names, root=None):
     # the ones the new render hands out match what a reload would have produced.
     view._ids[0] = 0
     view._mounts[0] = 0
-    if _frontage is not None:
-        _frontage.run_module_as_main(entry)
-    else:
-        # A namespace of its own, so last run's module-level names cannot linger and shadow
-        # one the edit removed. `__name__` is `__main__` because that is what the entry ran as.
-        exec(sources[entry], {"__name__": "__main__"})
+    try:
+        if _frontage is not None:
+            _frontage.run_module_as_main(entry)
+        else:
+            # A namespace of its own, so last run's module-level names cannot linger and shadow
+            # one the edit removed. `__name__` is `__main__` because that is what the entry ran as.
+            exec(sources[entry], {"__name__": "__main__"})
+    except Exception as exc:
+        report(entry, exc)
+        raise
+    clear_report()
     return len(names)
+
+
+def report(entry, exc):
+    """Put a swap's traceback on the dev server's error overlay, if this page has one.
+
+    The console has it too, but a page that has just been torn down and failed to build again
+    shows nothing at all, and a blank page is the worst way to learn that a save was bad. The
+    overlay belongs to `frontage serve`; a built page has no `devError` and this does nothing.
+    """
+    from .errors import format_exception
+    from .runtime import in_browser, window
+
+    if not in_browser:
+        return
+    show = getattr(window, "frontageDevError", None)
+    if show is not None:
+        show(f"{entry}.py raised while the page was rebuilding", format_exception(exc))
+
+
+def clear_report():
+    from .runtime import in_browser, window
+
+    if not in_browser:
+        return
+    clear = getattr(window, "frontageDevErrorClear", None)
+    if clear is not None:
+        clear()

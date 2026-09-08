@@ -117,6 +117,7 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 
 - E1 In debug mode an uncaught error renders a page naming the component and the traceback; in production the configured fallback renders and the error is logged. [M2]
 - E2 Debug warnings, once each, in the console (or stderr): a signal read inside a `Resource` fetcher or an async memo's coroutine after tracking ended (A3), naming the resource; a write to a signal inside a tracked computation, naming it; a `For` keyed by identity whose rows all failed to survive an update. Duplicate `For` keys stay an error. `mount(debug=False)` silences them. [M7]
+- E4 Under `frontage serve` a save that cannot work shows an overlay over the page rather than a blank page or a console line: a file that does not compile shows the compiler's message and nothing is torn down, so the last working page keeps running underneath with its state; an entry that raises while the page is rebuilding shows the traceback. The next save that works takes the overlay away. A built page has no overlay. [0.10.3]
 - E3 `import frontage.debug` makes a hydration that rebuilt nodes list each mismatch (`expected <b>, found <i>`, `dropped <i>: …`) and keeps the last `Hydration` in `frontage.debug.last_hydration`. [M7]
 
 ## 10. The layer above (M5)
