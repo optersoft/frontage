@@ -276,6 +276,9 @@ can be linked into the same Emscripten build (`wasm32-unknown-emscripten`, a `st
 and is the right tool for a *component* that computes in bulk behind a coarse boundary
 (`COMPONENTS.md` §7), which it already is; for the core it would be a second FFI around the
 first. Effort is not the constraint; two languages around one object model is.
+**Superseded 2026-09-08 by `RUST.md` §3.1**: probed, the second FFI is a ~300-line C shim
+on a stable toolchain, a closure called from Rust costs 24 ns, and a Python exception passes
+through Rust frames; the core goes to Rust, pending the user's word (`RUST.md` §7.1).
 
 **Why not a separate wasm module for the core.** Two wasm modules have two memories, and
 every value between them is copied through JavaScript (the `data-fr-js` rule in
@@ -494,6 +497,9 @@ matters for the audience, and where each lands:
   Rust with `-Z emscripten-wasm-eh` and `-Zbuild-std`, an Emscripten version matched to the
   host build exactly, and a hand-written `unsafe` FFI over `mp_obj_t` and `nlr`, because
   there is no PyO3 for MicroPython. It pays the C API's cost and adds a toolchain.
+  **Superseded 2026-09-08, `RUST.md` §2.4**: that tax is for *side modules* (PIC, `dlopen`).
+  A `staticlib` on stable Rust 1.96 linked into this build in the pinned emsdk first time;
+  `no_std` costs 1 KB of brotli.
 - **`wasm-opt` on the upstream binary** — 53 KB raw, 4 KB gzipped; the size is data, not code.
 - **A Worker** — §4.
 - **Symbol-level tree shaking** — §6: not safe in Python, and no bundler does it for

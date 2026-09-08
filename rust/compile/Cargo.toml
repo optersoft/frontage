@@ -1,0 +1,12 @@
+[package]
+name = "frontage-compile"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Python source to frontage bytecode, over ruff's parser"
+
+[dependencies]
+frontage-vm = { path = "../vm" }
+ruff_python_parser = "0.0.9"
+ruff_python_ast = "0.0.9"
+ruff_text_size = "0.0.9"

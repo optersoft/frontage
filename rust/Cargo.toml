@@ -1,0 +1,45 @@
+# The runtime spike (RUNTIME.md §7): a Python runtime for the browser, in Rust.
+#
+#   vm/        frontage-vm       the runtime: values, the collector, objects, the bytecode loop, builtins
+#   compile/   frontage-compile  Python source → bytecode, over ruff's parser
+#   py/        fpy               a native runner over both, and the differential tests against CPython
+[workspace]
+resolver = "2"
+members = ["vm", "compile", "py", "web"]
+# `web` links only against a browser host: build it with `--target wasm32-unknown-unknown`.
+default-members = ["vm", "compile", "py"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "Apache-2.0"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# Tests and the native runner want speed and backtraces, not bytes.
+[profile.dev]
+opt-level = 1
+
+# Native speed with symbols: `cargo build --profile native -p fpy`, then `sample`/`samply`.
+[profile.native]
+inherits = "release"
+opt-level = 3
+debug = 1
+strip = false
+
+[profile.wasm3]
+inherits = "release"
+opt-level = 3
+
+[profile.wasms]
+inherits = "release"
+opt-level = "s"
+
+[profile.wasmn]
+inherits = "wasms"
+strip = false

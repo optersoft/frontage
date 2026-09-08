@@ -459,15 +459,46 @@ decides, all in 0.10.0:
       page, **create 1,000 rows 139 → 71 ms, swap 12 → 4.4, update 3.3 → 1.4**, with the
       framework unchanged. The browser suite (21 tests) passes on it. Safari ≥ 15.2.
       Bump to upstream `1.29.0-6` on the way.
-- [ ] **The framework core in C** (`frontage/_core`, a MicroPython user C module in that
-      build): the reactive graph, template holes, `For`/LIS, `Store`. Measured on a probe
-      module: C halves a call from Python, and a C loop calling a Python closure costs
-      0.015 µs against 0.121 from Python. The app's share of a 1,000-row create is under
-      1 ms; the raw bridge is 5 ms in Chromium; the 44 ms of framework Python left on the
-      new interpreter is what moves, and the 27 ms of DOM side goes with integer node ids
-      and an op buffer instead of a proxy per node. Gate: create-1,000 under 20 ms in
-      `profile_rows`, swap and update no worse.
-      API unchanged; the Python implementation stays for CPython and behind a flag.
+- [ ] **The framework core in Rust, inside the interpreter** (`frontage/_core`: a `no_std`
+      staticlib behind a ~300-line C shim, linked by `runtime build --c-modules`) — **was
+      "in C"; `RUST.md` (2026-09-08) is the design and the reason.** Probed the same day, on
+      stable Rust 1.96 and the pinned emsdk: it links first time, `no_std` costs 1 KB of
+      brotli (`std` would cost 17), a Python closure called from Rust is 24 ns, and a Python
+      exception passes through Rust frames with the interpreter intact. What moves is
+      unchanged: the reactive graph, template holes, `For`/LIS, `Store`, then the DOM op
+      stream with integer node ids. Gate: create-1,000 under 20 ms in `profile_rows`, swap
+      and update no worse. API unchanged; the Python implementation stays for CPython and
+      behind a flag. **One decision for the user first: Rust or C** (`RUST.md` §7.1).
+- [x] **The spike of a Python runtime of our own ran (2026-09-08, `RUNTIME.md` §9, code in
+      `rust/`, uncommitted).** A NaN-boxed Rust bytecode VM with a precise collector, a
+      compiler over ruff's parser, a JavaScript bridge and a wasm build: 157 of the framework's
+      unit tests pass on it under node, `counter`/`todo`/`profile` boot in Chromium.
+      **Gates: correctness met; speed at parity with MicroPython (70.1 vs 71.1 ms create),
+      not 2×; size 179 KB brotli against ≤ 120, and the wasm is 80% interpreter with nothing
+      removable at that scale.**
+- [ ] **`[human]` Decide where the native reactive core is built** — the only thing the
+      spike says buys the 2×: in the Rust runtime (`RUNTIME.md` §3.8: core types as VM
+      values, `Result` all the way, one compiler, a bridge we own; a runtime of our own to
+      maintain, 60–70 KB heavier over the wire, `re`/`match`/metaclasses/generator
+      finalisation still to write) or in MicroPython (`RUST.md` §3.1: a `no_std` staticlib
+      behind a C shim, upstream's tail). Until then `main` ships MicroPython and `rust/`
+      stays a spike. If the runtime is chosen, the first three items are `build`'s import
+      walk over `.fbc`, `re` over `RegExp`, and a size test in CI at the number §9 measured.
+- [ ] **`_core.sort/filter/group` as the core's first tenant, and `frontage.table` on them.**
+      Found 2026-09-08: MicroPython's `sorted` pivots on the last element and calls `key` per
+      comparison — **10,000 ordered floats sort in 269 ms, 1,440 ms with a key** (shuffled:
+      1.3 ms), and it is not stable (`py/objlist.c`'s own TODO). A grid sorted by a column
+      that arrives ordered pays it on every click. Gate: under 5 ms. `[human]` an upstream
+      issue for the pivot.
+- [ ] **`frontage.frame`: a columnar engine as a Rust module of its own** (`data-fr-js`,
+      `wasm32-unknown-unknown`, `no_std`): filter, sort, group/aggregate, rolling, resample,
+      CSV and Arrow in; handles in Python, `Float64Array`s to the chart, a windowed `table`
+      source. A probe with sort, argsort, group-mean and filter is 3.2 KB of brotli, and
+      `wasm-metadce` cuts it to what an app's Python calls (1.7 KB for one export) — the
+      "minimal wasm per app" of `RUST.md` §4, module grain by the import walk and export
+      grain with binaryen when present. `examples/weather` is the port and the number. Needs
+      `_core.address(buf)` + a `HEAPU8` handoff for the zero-copy way in (every Python
+      container crosses as an opaque proxy today: 65 ns an element).
 - [ ] **No more `frontage-*` projects on PyPI.** Subpackages of `frontage`, extras for
       server halves, assets in the wheel, the component repo merged in. No shim releases for
       the five published names and no 0.9-page compatibility in `boot.js` (decided 2026-09-08).

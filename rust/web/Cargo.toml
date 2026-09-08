@@ -1,0 +1,16 @@
+[package]
+name = "frontage-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "the runtime as a WebAssembly module for the browser: exports over a C ABI, a host of JavaScript imports"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+frontage-vm = { path = "../vm" }
+
+[build-dependencies]
+frontage-vm = { path = "../vm" }
+frontage-compile = { path = "../compile" }

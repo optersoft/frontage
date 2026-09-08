@@ -1,0 +1,14 @@
+[package]
+name = "fpy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "run a Python file on frontage's runtime, natively"
+
+[[bin]]
+name = "fpy"
+path = "src/main.rs"
+
+[dependencies]
+frontage-vm = { path = "../vm" }
+frontage-compile = { path = "../compile" }

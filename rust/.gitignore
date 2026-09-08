@@ -1,0 +1,3 @@
+target/
+# built by `cargo build -p frontage-web --profile wasms --target wasm32-unknown-unknown` + wasm-opt; see README.md
+web/frontage.wasm

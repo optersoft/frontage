@@ -16,6 +16,7 @@ import sys
 # autofix deletes them and the package stops importing in the browser.
 __all__ = [
     "CPYTHON",
+    "FRONTAGE",
     "MICROPYTHON",
     "PYODIDE",
     "Unavailable",
@@ -32,6 +33,7 @@ __all__ = [
 PYODIDE = "pyodide"
 MICROPYTHON = "micropython"
 CPYTHON = "cpython"
+FRONTAGE = "frontage"  # frontage's own runtime (RUNTIME.md), in the browser
 
 
 def _detect():
@@ -39,11 +41,19 @@ def _detect():
         return PYODIDE
     if sys.platform == "webassembly" and sys.implementation.name == "micropython":
         return MICROPYTHON
+    if sys.implementation.name == "frontage":
+        try:
+            import js  # only the browser build has one, and only a page has a document
+
+            js.document  # noqa: B018
+            return FRONTAGE
+        except (ImportError, AttributeError):
+            return CPYTHON
     return CPYTHON
 
 
 platform = _detect()
-in_browser = platform in (PYODIDE, MICROPYTHON)
+in_browser = platform in (PYODIDE, MICROPYTHON, FRONTAGE)
 
 
 class _Prerender:
@@ -97,8 +107,9 @@ class Unavailable:
         return f"<{self._name}: unavailable outside the browser>"
 
 
-if platform == MICROPYTHON:
-    # Upstream MicroPython's own browser bridge (`ports/webassembly`: the `js` module and
+if platform in (MICROPYTHON, FRONTAGE):
+    # Upstream MicroPython's own browser bridge (and frontage's runtime, which offers the
+    # same two modules with the same names on purpose) (`ports/webassembly`: the `js` module and
     # `modjsffi.c`). PyScript wrapped exactly these and added nothing the package used —
     # `.new()`, which `dom` and `router` call, is upstream too — so frontage loads without it.
     from js import document, window

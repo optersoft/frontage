@@ -1,0 +1,11 @@
+[package]
+name = "frontage-vm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "frontage's Python runtime: a bytecode VM with a precise collector, made for the browser"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
