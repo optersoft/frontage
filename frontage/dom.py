@@ -6,8 +6,14 @@ element (found by a `data-fr` id walking up from the target), so a page has one 
 proxy per event type instead of one per handler.
 """
 
+from .reactive import get_owner, spawn
 from .renderer import Renderer
 from .runtime import create_proxy, document, in_browser, to_js, warn, window
+
+try:  # the runtime's native template path (rust/vm/src/view.rs)
+    import _view
+except ImportError:
+    _view = None
 
 
 class _NoDom:
@@ -648,7 +654,7 @@ class StreamRenderer(DomRenderer):
         if self._dispatcher is None:
             self._dispatcher = create_proxy(self._dispatch)
             _dom.set_dispatcher(self._dispatcher)
-        self._handlers[node, event] = handler
+        self._handlers[node, event] = (handler, get_owner())
         _dom.listen(node, event)
 
         def remove():
@@ -658,9 +664,13 @@ class StreamRenderer(DomRenderer):
         return remove
 
     def _dispatch(self, node, event, ev):
-        handler = self._handlers.get((node, event))
-        if handler is not None:
-            handler(ev)
+        entry = self._handlers.get((node, event))
+        if entry is not None:
+            handler, owner = entry
+            result = handler(ev)
+            # An `async def` handler returns a coroutine: a task owned where it was bound.
+            if hasattr(result, "send") and hasattr(result, "throw"):
+                spawn(result, owner)
 
     def teardown(self):
         super().teardown()
@@ -670,3 +680,18 @@ class StreamRenderer(DomRenderer):
 
 if _dom.available:
     DomRenderer = StreamRenderer  # ty: ignore[invalid-assignment]
+    if _view is not None and _view.available:
+        # The native template path needs the view's classes and its Python fallbacks.
+        from . import view as _view_module
+
+        _view.setup(
+            Element=_view_module.Element,
+            Text=_view_module.Text,
+            Mounted=_view_module.Mounted,
+            StreamRenderer=StreamRenderer,
+            module=_view_module,
+            build_template=_view_module._build_template,
+            apply_attr=_view_module._apply_attr,
+            listen=_view_module._listen,
+            build_nodes=_view_module._build_nodes,
+        )

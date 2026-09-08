@@ -1013,15 +1013,15 @@ if _core is not None:
     Memo._release = _memo_release
     Memo._read_async = _memo_read_async
     _current_owner = _core.get_owner  # ty: ignore[invalid-assignment]
-    get_owner = _core.get_owner
-    run_with_owner = _core.run_with_owner
-    on_cleanup = _core.on_cleanup
-    lookup = _core.lookup
-    route_error = _core.route_error
-    _begin_batch = _core.begin_batch
-    _end_batch = _core.end_batch
-    _mark = _core.mark
-    _set_scope = _core.set_scope
+    get_owner = _core.get_owner  # ty: ignore[invalid-assignment]
+    run_with_owner = _core.run_with_owner  # ty: ignore[invalid-assignment]
+    on_cleanup = _core.on_cleanup  # ty: ignore[invalid-assignment]
+    lookup = _core.lookup  # ty: ignore[invalid-assignment]
+    route_error = _core.route_error  # ty: ignore[invalid-assignment]
+    _begin_batch = _core.begin_batch  # ty: ignore[invalid-assignment]
+    _end_batch = _core.end_batch  # ty: ignore[invalid-assignment]
+    _mark = _core.mark  # ty: ignore[invalid-assignment]
+    _set_scope = _core.set_scope  # ty: ignore[invalid-assignment]
     _core.setup(
         not_ready=NotReady,
         errors=ERRORS,
@@ -1048,7 +1048,7 @@ def untrack(fn, *args):
 
 
 if _core is not None:
-    untrack = _core.untrack
+    untrack = _core.untrack  # ty: ignore[invalid-assignment]
 
 
 def on(deps, fn):

@@ -475,8 +475,20 @@ padding, `math.fsum`, cross-type numeric equality, dict keys with user `__hash__
 reads that must not insert — each found by a differential case or a framework test and
 fixed the same day, and each a reminder that the tail is long.
 
-**Reading.** The speed gate failed at parity and the size gate failed by half again; the
-correctness gate passed with room. So the runtime is real and works, and it does not by
+**Addendum, the same evening: the native core.** The user chose to build it here. Three
+steps, each measured on `tools/profile`'s create of 1,000 rows with DOM templates in
+Chromium: the reactive graph as VM types (`rust/vm/src/core.rs`) 74.9 → 58.8 ms; the DOM op
+stream (`rust/vm/src/dom.rs`, `glue.js`, `dom.py`'s streaming renderer: nodes as integers,
+one crossing per batch, delegation walked in JavaScript) 58.8 → 46.9, and the counter boots
+in 29 ms against 62; the template path native (`rust/vm/src/view.rs`: the extract walk, the
+clone and its holes, the hole effects with the insert rules and reconcile) 46.9 → **24.8 ms,
+2.9× MicroPython's 71.1 — the ≥ 2× gate met**, with swap 2.9 ms (4.4), update 0.6 (1.4),
+effects 0.4 (4.8), text holes 2.1 (6.6). The 157 tests pass unchanged on the wasm; the
+Python implementations stay as CPython's and the specification. The wasm is 654 KB raw;
+the size gate stands where §9 left it.
+
+**Reading, as written before the addendum.** The speed gate failed at parity and the size
+gate failed by half again; the correctness gate passed with room. So the runtime is real and works, and it does not by
 itself buy what it was meant to buy: the page is no faster and 70 KB heavier. What it does
 buy is the platform the rest of §3 assumed — a runtime we can put a native reactive core
 into as VM types (§3.8) rather than through MicroPython's C API and `mp_obj_t`, errors as

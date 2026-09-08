@@ -494,11 +494,17 @@ decides, all in 0.10.0:
             nodes are integers, operations are bytes executed in one crossing, delegated
             events walked in JavaScript): **58.8 → 46.9 ms**; the counter boots in 29 ms
             (62 before, MicroPython 52).
-      - [ ] the view's template path in Rust (`Template.extract`, `_build_template`, the
-            hole effects with the insert rules, `_apply_attr`, `_listen`; the Store's reads):
-            what the profiler now shows as the remaining 35 ms of Python, with the DOM side
-            under 10. The Python `view.py` stays for CPython, hydration and the HtmlRenderer;
-            the native path is taken for the streaming renderer without hydration.
+      - [x] the view's template path in Rust (`rust/vm/src/view.rs`: `Template.extract`,
+            the clone and its holes, the two hole effects — a child position with the insert
+            rules and reconcile, a bound attribute — `_listen` with an unlisten record among
+            the owner's cleanups; taken for the streaming renderer without hydration and a
+            cached Template, `view.py` for everything else): **46.9 → 24.8 ms. Gate met**
+            (2.9× MicroPython's 71.1). Every phase of `tools/profile` on the runtime, Chromium,
+            MicroPython in brackets: For DOM templates 26.8 (71.1), swap two rows 2.9 (4.4),
+            update every 10th 0.6 (1.4), effects create+dispose 1,000 0.4 (4.8), 1,000 text
+            holes 2.1 (6.6). The Python left per row is the author's `h` calls (`_children`,
+            7 ms of a 32 ms profiled run) and the Store's reads (9 ms): the next tenants, if
+            wanted — the gate no longer asks for them.
 - [ ] Runtime gaps before parity with the browser suite: `match`, metaclasses and class
       keywords, generator finalisation on collection, `__slots__`, a size test in CI at 179 KB
       brotli, `frontage build --runtime frontage` folding `rust/web/build_app.py` into

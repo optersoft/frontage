@@ -224,6 +224,8 @@ pub struct Vm {
     pub core: crate::core::Core,
     /// The DOM op stream (`dom.rs`).
     pub dom: crate::dom::DomStream,
+    /// The view layer's native state (`view.rs`).
+    pub view: crate::view::ViewState,
     /// Some class overrides `__getattribute__`: instance lookups must check for it.
     pub getattribute_overridden: bool,
 }
@@ -257,6 +259,7 @@ impl Vm {
             prof: None,
             core: crate::core::Core::new(),
             dom: crate::dom::DomStream::new(),
+            view: Default::default(),
             getattribute_overridden: false,
         };
         Names::fill(&mut vm);
@@ -506,6 +509,7 @@ impl Vm {
         roots.extend(self.roots.iter().copied());
         roots.extend(self.js_pins.iter().copied());
         self.core.trace(&mut |v| roots.push(v));
+        self.view.trace(&mut |v| roots.push(v));
         let freed = self.heap.collect(roots);
         if !self.heap.freed_js.is_empty() {
             let handles = core::mem::take(&mut self.heap.freed_js);

@@ -65,6 +65,8 @@ pub struct Node {
     pub loading: Value,
     pub error: Value,
     pub scopes: Value,
+    /// A hole effect's native half (`view.rs`): where it writes in the document.
+    pub hole: Option<Box<crate::view::Hole>>,
 }
 
 impl Node {
@@ -100,6 +102,7 @@ impl Node {
             loading: Value::NONE,
             error: Value::NONE,
             scopes: Value::NONE,
+            hole: None,
         }
     }
 
@@ -125,6 +128,9 @@ impl Node {
         visit(self.loading);
         visit(self.error);
         visit(self.scopes);
+        if let Some(h) = &self.hole {
+            h.trace(visit);
+        }
     }
 }
 
@@ -254,6 +260,36 @@ pub fn kind_of(vm: &Vm, v: Value) -> Option<Kind> {
     None
 }
 
+pub fn hole(vm: &mut Vm, e: Value) -> &mut crate::view::Hole {
+    node_mut(vm, e).hole.as_mut().expect("not a hole effect")
+}
+pub fn set_hole(vm: &mut Vm, e: Value, h: crate::view::Hole) {
+    node_mut(vm, e).hole = Some(Box::new(h));
+}
+fn has_child_hole(vm: &Vm, e: Value) -> bool {
+    node(vm, e).hole.as_ref().map(|h| h.attr.is_none()).unwrap_or(false)
+}
+/// A render effect made natively (a hole): allocated and attached, not yet queued.
+pub fn new_effect(vm: &mut Vm, cls: Value, func: Value, render: bool) -> Value {
+    let mut n = Node::blank(cls, Kind::Effect);
+    n.render = render;
+    let e = vm.heap.alloc(Obj::Node(Box::new(n)));
+    comp_init(vm, e, func);
+    e
+}
+/// Queue a fresh effect and, with no batch open, run it now.
+pub fn start_effect(vm: &mut Vm, e: Value) -> PyResult<()> {
+    queue(vm, e);
+    if vm.core.batch_depth == 0 && !vm.core.flushing {
+        begin_batch(vm);
+        end_batch(vm)?;
+    }
+    Ok(())
+}
+pub fn push_cleanup(vm: &mut Vm, owner: Value, f: Value) {
+    node_mut(vm, owner).cleanups.push(f);
+}
+
 fn is_unset(vm: &Vm, v: Value) -> bool {
     v.is_undef() || v == vm.core.unset
 }
@@ -305,6 +341,11 @@ fn dispose_owned(vm: &mut Vm, obj: Value) -> PyResult<()> {
     if !cleanups.is_empty() {
         rooted(vm, &cleanups, |vm| -> PyResult<()> {
             for &f in cleanups.iter().rev() {
+                // An unlisten record `(renderer, node, event)` from the native view path.
+                if f.is_obj() && matches!(vm.heap.get(f), Obj::Tuple(_)) {
+                    crate::view::run_unlisten(vm, f)?;
+                    continue;
+                }
                 vm.call(f, &[], &[])?;
             }
             Ok(())
@@ -572,7 +613,12 @@ fn compute(vm: &mut Vm, comp: Value) -> PyResult<Option<Value>> {
     vm.core.listener = comp;
     node_mut(vm, comp).not_ready = false;
     let f = node(vm, comp).func;
-    let r = rooted(vm, &[saved_owner, saved_listener], |vm| vm.call(f, &[], &[]));
+    let r = if has_child_hole(vm, comp) {
+        let renderer = hole(vm, comp).renderer;
+        rooted(vm, &[saved_owner, saved_listener], |vm| crate::view::hole_compute(vm, comp, renderer, f))
+    } else {
+        rooted(vm, &[saved_owner, saved_listener], |vm| vm.call(f, &[], &[]))
+    };
     vm.core.owner = saved_owner;
     vm.core.listener = saved_listener;
     match r {
@@ -743,6 +789,9 @@ fn effect_run(vm: &mut Vm, e: Value) -> PyResult<()> {
 }
 
 fn on_screen(vm: &mut Vm, e: Value) -> PyResult<bool> {
+    if node(vm, e).hole.is_some() {
+        return crate::view::hole_on_screen(vm, e);
+    }
     let target = node(vm, e).target;
     if target.is_none() {
         return Ok(true);
@@ -752,6 +801,15 @@ fn on_screen(vm: &mut Vm, e: Value) -> PyResult<bool> {
 }
 
 fn apply(vm: &mut Vm, e: Value, value: Value) -> PyResult<()> {
+    if node(vm, e).hole.is_some() {
+        let prev = node(vm, e).value;
+        vm.roots.push(value);
+        let r = crate::view::hole_apply(vm, e, value, prev);
+        vm.roots.pop();
+        r?;
+        node_mut(vm, e).value = value;
+        return Ok(());
+    }
     let effect = node(vm, e).effect;
     if !effect.is_none() {
         if !node(vm, e).cleanup.is_none() {

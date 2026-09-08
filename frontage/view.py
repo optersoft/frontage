@@ -30,6 +30,11 @@ from .errors import format_exception
 from .reactive import Context, Owner, RenderEffect, Signal, on_cleanup, provide, spawn, use
 from .renderer import HtmlRenderer, escape
 
+try:  # the runtime's native template path (rust/vm/src/view.rs); CPython has none
+    import _view
+except ImportError:
+    _view = None
+
 __all__ = [
     "Element",
     "Mounted",
@@ -250,6 +255,11 @@ def _build_nodes(view, renderer, cache=None):
     t = type(view)
     if t is Element:
         if TEMPLATES and getattr(renderer, "supports_templates", True):
+            if _view is not None:
+                # Native when the shape is compiled and cached and the renderer streams.
+                root = _view.build_template(view, renderer, cache)
+                if root is not None:
+                    return [root]
             return [_build_template(view, renderer, cache)]
         node = renderer.create_element(view.tag)
         if view.attrs:

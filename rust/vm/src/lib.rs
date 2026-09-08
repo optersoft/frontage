@@ -16,4 +16,5 @@ pub mod modules;
 pub mod object;
 pub mod ops;
 pub mod value;
+pub mod view;
 pub mod vm;

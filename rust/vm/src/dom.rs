@@ -44,25 +44,47 @@ pub struct DomStream {
     pub next_template: u32,
 }
 
+/// Events that bubble, so one listener on the document serves every element (`dom.py`).
+pub const DELEGATED: &[&str] = &[
+    "beforeinput", "change", "click", "contextmenu", "dblclick", "focusin", "focusout", "input", "keydown", "keypress", "keyup", "mousedown", "mousemove", "mouseout", "mouseover", "mouseup", "pointerdown", "pointermove", "pointerout", "pointerover", "pointerup", "submit", "touchend", "touchmove", "touchstart",
+];
+
 impl DomStream {
     pub fn new() -> DomStream {
         DomStream { ops: Vec::with_capacity(FLUSH_AT), next_id: 1, next_template: 0 }
     }
-    fn alloc(&mut self, n: u32) -> u32 {
+    pub fn op_id_str(&mut self, op: u8, id: i32, s: &str) {
+        self.u8(op);
+        self.i32(id);
+        self.str(s);
+    }
+    pub fn op_id_str_str(&mut self, op: u8, id: i32, a: &str, b: &str) {
+        self.u8(op);
+        self.i32(id);
+        self.str(a);
+        self.str(b);
+    }
+    pub fn op_id_str_bool(&mut self, op: u8, id: i32, a: &str, on: bool) {
+        self.u8(op);
+        self.i32(id);
+        self.str(a);
+        self.u8(on as u8);
+    }
+    pub fn alloc(&mut self, n: u32) -> u32 {
         let id = self.next_id;
         self.next_id += n;
         id
     }
-    fn u8(&mut self, v: u8) {
+    pub fn u8(&mut self, v: u8) {
         self.ops.push(v);
     }
-    fn u32(&mut self, v: u32) {
+    pub fn u32(&mut self, v: u32) {
         self.ops.extend_from_slice(&v.to_le_bytes());
     }
-    fn i32(&mut self, v: i32) {
+    pub fn i32(&mut self, v: i32) {
         self.ops.extend_from_slice(&v.to_le_bytes());
     }
-    fn str(&mut self, s: &str) {
+    pub fn str(&mut self, s: &str) {
         self.u32(s.len() as u32);
         self.ops.extend_from_slice(s.as_bytes());
     }
@@ -87,6 +109,9 @@ impl Vm {
             self.dom_flush()?;
         }
         Ok(())
+    }
+    pub fn dom_maybe_flush_pub(&mut self) -> PyResult<()> {
+        self.dom_maybe_flush()
     }
 }
 

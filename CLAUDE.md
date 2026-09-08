@@ -50,10 +50,24 @@ hydration, transitions and async memos). **PyScript is gone from the browser pat
 | `tools/gallery.py` | `mk gallery`: builds every app in its `APPS` list with the real `frontage build`, loads each cold in Chromium, and writes `www/gallery/` with the measured size and start time on every card. A broken app fails the build; a slower one changes the number on the page. `site.build` runs it and then preserves the result rather than rebuilding it. The page is styled with the site's Tailwind stylesheet, which it copies in beside itself (see `tools/site_css.py`) |
 | `web/` | what frontage.optersoft.com serves: `index.html` (the landing page; the documentation itself is the academy's Frontage section, linked from it), `404.html` + `_redirects` (one line, `/* /404.html 404`, because the project answers an unknown path with the landing page and a 200 — a soft 404), `site.tailwind.css` + the committed `site.css` (see `tools/site_css.py`), `_headers` (CORS + `Cross-Origin-Resource-Policy` on `/dist/` and both runtime copies), `web/playground/`, the **gallery** (generated, see `tools/gallery.py`), and **`runner.html`** — the page an embedded live-code frame points at, with the program in the URL fragment. `mk site.build` assembles `www/` with the playground, the runtime twice (once under the playground, once at the root for the runner) and every released wheel |
 | `typings/` | ty stubs for the browser-only modules |
-| `rust/` | **the spike runtime, uncommitted, not in the release path**: `vm/` (the VM), `compile/` (source → bytecode over ruff's parser), `py/` (`fpy`, the native runner and the differential tests against CPython), `web/` (the wasm, `glue.js`, `boot.js`, `run.mjs` for node, `build_app.py` as `frontage build`'s stand-in). `rust/README.md` has the build and test lines; `RUNTIME.md` §9 the numbers. `frontage/runtime.py` reports it as `FRONTAGE` (`sys.implementation.name == "frontage"` plus a `js.document`) |
+| `rust/` | **frontage's own Python runtime, the chosen path since 2026-09-08 (`TODO.md`), not yet in the release path**: `vm/` (the VM: `core.rs` is the reactive graph as VM types, `dom.rs` the DOM op stream, `view.rs` the native template path, `fbc.rs` the bytecode format, `lib/` the Python standard modules including `re` over `RegExp`), `compile/` (source → bytecode over ruff's parser), `py/` (`fpy`, the native runner and the differential tests against CPython; `--stress` collects at every safe point), `web/` (the wasm, `glue.js` with the op executor and event delegation, `boot.js`, `run.mjs` for node, `build_app.py` as `frontage build`'s stand-in over `cli/graph.py`). `rust/README.md` has the build and test lines; `RUNTIME.md` §9 the numbers. `frontage/runtime.py` reports it as `FRONTAGE`; `reactive.py`, `dom.py` and `view.py` switch to `_core`, `_dom` and `_view` when the modules exist and keep their Python for CPython |
 
 ## Rules that are not obvious from the code
 
+- **On the Rust runtime, three Python modules have a native half, and the Python half is
+  the specification.** `reactive.py` rebinds `Signal`/`Memo`/`Effect`/`RenderEffect`/`Owner`
+  and the scheduling to `_core` (`rust/vm/src/core.rs`), `dom.py`'s `DomRenderer` is the
+  `StreamRenderer` over `_dom` (`dom.rs`: nodes are integer ids, a negative id is "the parent
+  of node -id", operations are bytes flushed in one crossing), and `view.py`'s template branch
+  tries `_view.build_template` (`view.rs`) first, which answers None — and the Python path
+  runs — for the first row of a shape, hydration, prerender and any other renderer. So a
+  behaviour is written in Python first, tested on CPython, and then ported; the 157 tests run
+  on both (`rust/README.md`). What is rare stays in Python and reaches in through the node's
+  attributes (`_state`, `_observers`, `_urgent`, …) and the hooks `_core.setup` installs. The
+  module state moved into the VM: read it through `_current_owner()`, `_current_listener()`,
+  `_current_transition()`, `set_debug()`, never the old globals. A sampling profiler is
+  `_frontage.profile_start()/profile_stop()` — the core was built by it, and a change to a hot
+  path should come with its numbers.
 - **Clean room.** Do not open PuePy, Solid or Leptos source while writing code here. Their docs
   and examples are fine. `SPEC.md` is the source. A PR states it was written that way.
 - **MicroPython is a target.** No `typing` at runtime, no dataclasses, string annotations
