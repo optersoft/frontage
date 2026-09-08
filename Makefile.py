@@ -96,6 +96,23 @@ def check() -> None:
     note("lint, types and unit tests passed")
 
 
+@task(name="components.wasm", requires=["cargo"])
+def components_wasm() -> None:
+    """Build every crate in rust/components/ and vendor the .wasm into the component that ships it.
+
+    These are not the runtime: they are ordinary libraries an app calls through `data-fr-js`
+    (`rust/components/README.md`). The built files are committed, so `pip install frontage`
+    needs no Rust."""
+    crates = {"dsp": ROOT / "frontage" / "dsp" / "_browser" / "dsp.wasm"}
+    for name, destination in crates.items():
+        crate = ROOT / "rust" / "components" / name
+        sh("cargo", "test", "--release", cwd=crate)
+        sh("cargo", "build", "--release", "--target", "wasm32-unknown-unknown", cwd=crate)
+        built = crate / "target" / "wasm32-unknown-unknown" / "release" / f"{name}.wasm"
+        shutil.copy2(built, destination)
+        note(f"{destination.relative_to(ROOT)}: {destination.stat().st_size:,} bytes")
+
+
 @task(name="runtime.build", requires=["cargo", "wasm-opt"])
 def runtime_build() -> None:
     """Build the runtime from rust/ and vendor it into frontage/_runtime/.

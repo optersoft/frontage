@@ -11,7 +11,7 @@ import pytest
 from frontage.cli.build import BROWSER_DIR, COMPONENT_ENTRY, builtin, discover
 
 ROOT = Path(__file__).resolve().parents[2]
-NAMES = ["chart", "chat", "layout", "map", "remote", "schema", "supabase", "table"]
+NAMES = ["chart", "chat", "dsp", "layout", "map", "remote", "schema", "supabase", "table"]
 
 
 def test_every_builtin_component_is_found_and_only_those():

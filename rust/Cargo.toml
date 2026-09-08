@@ -6,6 +6,9 @@
 [workspace]
 resolver = "2"
 members = ["vm", "compile", "py", "web"]
+# Libraries an *app* calls through `data-fr-js`, not part of the runtime: built for
+# `wasm32-unknown-unknown` on their own, with their own profiles (`components/README.md`).
+exclude = ["components"]
 # `web` links only against a browser host: build it with `--target wasm32-unknown-unknown`.
 default-members = ["vm", "compile", "py"]
 

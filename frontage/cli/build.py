@@ -161,11 +161,24 @@ def discover():
 
 
 _IMPORTS = "(?:^|\n)[ \t]*(?:from|import)[ \t]+{0}\\b"
+# `from frontage import dsp`, or `dsp` anywhere in that import's list of names.
+_FROM_LIST = "(?:^|\n)[ \t]*from[ \t]+{0}[ \t]+import[ \t]+\\(?[^\n()]*(?:\n[^()]*)?\\b{1}\\b"
 
 
 def imports(text, package):
-    """Does this source import that package? `import x`, `from x import y`, `from x.y import z`."""
-    return re.search(_IMPORTS.format(re.escape(package)), text) is not None
+    """Does this source import that package? `import x`, `from x import y`, `from x.y import z`,
+    and — for a subpackage — `from x import y` naming it in the list.
+
+    That last form is the one a reader writes without thinking (`from frontage import dsp`), and
+    missing it meant the component was neither declared on the boot tag nor packed into the
+    page, with the import failing in the browser and nothing here saying why.
+    """
+    if re.search(_IMPORTS.format(re.escape(package)), text) is not None:
+        return True
+    parent, _, leaf = package.rpartition(".")
+    if not parent:
+        return False
+    return re.search(_FROM_LIST.format(re.escape(parent), re.escape(leaf)), text) is not None
 
 
 def required(app, installed):

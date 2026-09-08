@@ -722,10 +722,18 @@ a server, and both are constraints we chose.
       - The comparison the page still owes a reader is a *side-by-side*: Streamlit's own hosted
         demo next to this one, both cold, both measured. Today the gallery publishes only our
         half of it.
-- [ ] A DSP/FFT wasm module — the concrete first case for Rust, not a hypothetical one. GW
-      Quickview is blocked *only* by `scipy.signal` and `gwpy`: the FFT and filtering are the
-      app, one buffer in and a spectrogram out, exactly the coarse boundary the 1.00 µs
-      crossing rewards. It is also the most impressive thing on the list to run with no server.
+- [x] **`frontage.dsp`, the DSP/FFT module** (2026-09-09): a radix-2 FFT, Hann windows,
+      Welch's PSD, a spectrogram in decibels, a brick-wall bandpass and an RMS — **12 KB** of
+      `no_std` Rust in `rust/components/dsp/`, tested against a naive DFT and against `std`'s
+      own `cos`/`ln`/`sqrt` (the crate computes those itself). `examples/spectrum` is a chirp
+      under noise with a live spectrogram, spectrum and filter, and it is what GW Quickview
+      needs. `draw` rasterises the spectrogram onto a canvas without the values ever reaching
+      Python — a few hundred frames of a hundred bins is a few hundred thousand crossings.
+      ⚠ Two things it cost, both worth keeping: the dev server **did not declare components at
+      all**, so any app importing `frontage.chart` (or any other) ran when built and not when
+      served; and `bandpass` filtered one transform's worth while everything else measured the
+      whole signal, so a filter over a long signal looked like it did nothing. The filtered
+      count is now the signal's length.
 - [x] `frontage-table` (2026-09-07): a virtualised, sortable grid in **pure Python — no
       JavaScript at all**, which is the surprise. A grid is where libraries reach for 200 KB,
       but the expensive part is *not* drawing the rows nobody is looking at, and a fine-grained

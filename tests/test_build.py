@@ -220,7 +220,7 @@ def test_discover_finds_the_builtin_components_without_importing_anything():
 
     before = set(sys.modules)
     found = build.discover()
-    assert [c.name for c in found] == ["chart", "chat", "layout", "map", "remote", "schema", "supabase", "table"]
+    assert [c.name for c in found] == ["chart", "chat", "dsp", "layout", "map", "remote", "schema", "supabase", "table"]
     assert all(c.import_name == f"frontage.{c.name}" for c in found)
     names = {c.name for c in found}
     imported = [m for m in set(sys.modules) - before if m.startswith("frontage.") and m.split(".")[1] in names]
@@ -418,3 +418,30 @@ def test_a_github_that_cannot_be_reached_is_not_an_error_by_itself(monkeypatch):
     monkeypatch.setattr(frontage_rt.urllib.request, "urlopen", refuse)
     urls = list(frontage_rt._asset_urls("fpy-linux-x64", quiet=True))
     assert len(urls) == 2  # the two direct guesses; the caller reports the failure
+
+
+def test_the_natural_spelling_of_a_subpackage_import_counts(tmp_path):
+    """`from frontage import dsp` is what a reader writes. Missing it meant the component was
+    neither declared on the boot tag nor packed into the page, and the failure was a browser
+    console message with nothing on this side to explain it."""
+    assert build.imports("from frontage import dsp, h, mount\n", "frontage.dsp")
+    assert build.imports("from frontage import (\n    dsp,\n    h,\n)\n", "frontage.dsp")
+    assert build.imports("from frontage.dsp import load\n", "frontage.dsp")
+    assert build.imports("import frontage.dsp as dsp\n", "frontage.dsp")
+    assert not build.imports("from frontage import h, mount\n", "frontage.dsp")
+    assert not build.imports("from frontage import dspx\n", "frontage.dsp")
+
+
+def test_a_component_reaches_a_page_that_names_it_that_way(tmp_path):
+    app = write_app(tmp_path, app="from frontage import dsp, h, mount\n\nmount(lambda: h.p(dsp.loaded()), '#app')\n")
+    out = build.build(app, tmp_path / "out", quiet=True)
+    page = (out / "index.html").read_text()
+    assert "dsp=./_frontage/components/dsp/index.js" in page
+    assert (out / "_frontage" / "components" / "dsp" / "index.js").is_file()
+    manifest = json.loads((out / "_frontage" / "manifest.json").read_text())
+    assert "frontage.dsp" in manifest["modules"]
+    # And an app that does not name it carries none of it.
+    (tmp_path / "two").mkdir()
+    plain = build.build(write_app(tmp_path / "two", app=APP), tmp_path / "out2", quiet=True)
+    assert not (plain / "_frontage" / "components" / "dsp").exists()
+    assert "dsp" not in (plain / "index.html").read_text()

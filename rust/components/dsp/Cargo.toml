@@ -1,0 +1,15 @@
+[package]
+name = "dsp"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = 3          # speed, not size: this one is here to be fast
+lto = true
+panic = "abort"
+strip = true
+codegen-units = 1

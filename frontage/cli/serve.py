@@ -222,6 +222,36 @@ def dev_script(html):
     )
 
 
+def with_components(html, app):
+    """The page's boot tag with the components this app imports declared, exactly as `build`
+    writes it, and a stylesheet link for each that ships one.
+
+    Without this an app that imports `frontage.chart` — or any other component — runs when it
+    is built and not when it is served, which is the wrong way round for a dev server. The
+    assets themselves come from `_send_runtime`, which resolves `components/<name>/…` to the
+    package's `_browser/` directory.
+
+    `required` rather than `discover`, for the reason it exists: a page that imports none of
+    them should register none of them, here as much as in a build.
+    """
+    from . import build as build_cli
+
+    if "data-fr-boot" not in html:
+        return html
+    declarations, styles = [], []
+    for component in build_cli.required(Path(app), build_cli.discover()):
+        declarations.append(f"{component.name}=./_frontage/components/{component.name}/{build_cli.COMPONENT_ENTRY}")
+        if (component.browser / build_cli.COMPONENT_STYLE).is_file():
+            styles.append(
+                f'<link rel="stylesheet" href="./_frontage/components/{component.name}/{build_cli.COMPONENT_STYLE}">'
+            )
+    html = build_cli.declare(html, declarations)
+    for link in styles:
+        if link not in html:
+            html = html.replace("</head>", f"  {link}\n</head>") if "</head>" in html else link + html
+    return html
+
+
 def inject(html):
     """`html` with the dev script before `</head>` (or `</body>`, or at the end)."""
     if "data-fr-reload" in html:
@@ -360,7 +390,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def _send_html(self, path):
         try:
             with open(path, encoding="utf-8") as f:
-                body = inject(f.read()).encode("utf-8")
+                body = inject(with_components(f.read(), Path(path).parent)).encode("utf-8")
         except (OSError, UnicodeDecodeError):
             self.send_error(404)
             return
@@ -376,6 +406,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_component(self, rest):
+        """`_frontage/components/<name>/<file>`: a file out of that component's `_browser/`."""
+        from . import build as build_cli
+
+        name, _, wanted = rest.partition("/")
+        if not wanted or ".." in wanted:
+            self.send_error(404)
+            return
+        for component in build_cli.discover():
+            if component.name != name:
+                continue
+            asset = component.browser / wanted
+            if asset.is_file():
+                self._send_bytes(asset.read_bytes(), self.guess_type(str(asset)))
+                return
+        self.send_error(404)
 
     def _send_devtools(self):
         """`frontage/devtools.py` as bytecode. The page runs it (`rt.run`), which installs the
@@ -444,13 +491,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # The directory the request came from, never a configured root: one server can
             # carry several apps, and `/examples/todo/_frontage/…` must be the todo one.
             app = Path(self.translate_path(prefix))
+            if name.startswith("components/"):
+                self._send_component(name[len("components/") :])
+                return
             if name == frontage_rt.FRAMEWORK:
                 body = json.dumps({"modules": frontage_rt.framework_names()}).encode()
                 self._send_bytes(body, "application/json")
                 return
             if name == frontage_rt.MANIFEST:
                 entry = find_entry(app)
-                members, chunks = frontage_rt.split(app, entry)
+                # The app's components, exactly as `build` resolves them: without this a page
+                # that imports `frontage.chart` is served a manifest with no chart in it.
+                from . import build as build_cli
+
+                components = build_cli.required(app, build_cli.discover())
+                members, chunks = frontage_rt.split(app, entry, components)
                 names = [n for n, _ in members]
                 # `frontage.dev` is what performs a swap, and no app imports it — the page is
                 # handed its modules, it cannot fetch one it turns out to need. A build ships

@@ -257,7 +257,10 @@ def module_file(name, app):
     if name.startswith("frontage.") or name == "frontage":
         rel = name.split(".")[1:]
         package = ROOT / "frontage"
-        return package / "__init__.py" if not rel else package.joinpath(*rel[:-1], rel[-1] + ".py")
-    stem = Path(app).joinpath(*name.split("."))
+        if not rel:
+            return package / "__init__.py"
+        stem = package.joinpath(*rel)
+    else:
+        stem = Path(app).joinpath(*name.split("."))
     module = stem.with_suffix(".py")
     return module if module.is_file() else stem / "__init__.py"

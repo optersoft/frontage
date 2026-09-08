@@ -36,6 +36,7 @@ APPS = [
     ("chart", "Chart", "uPlot as a component — a 20,000-point chart from Python.", "canvas"),
     ("wasm", "Wasm library", "A WebAssembly library imported like any Python module.", "#answer"),
     ("rustlib", "Your own Rust", "A 1 KB Rust library, called from Python: 13× on the arithmetic.", "#mean"),
+    ("spectrum", "Spectrum", "An FFT, a spectrogram and a filter, in 12 KB of Rust. No server.", "#rms"),
     ("weather", "Weather", "Streamlit's Seattle Weather demo, ported: five charts, no server.", "#app canvas"),
     (
         "uber",
