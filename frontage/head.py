@@ -24,7 +24,7 @@ search result read the HTML and never run the page.
 from .reactive import RenderEffect, on_cleanup
 from .runtime import document, in_browser
 
-__all__ = ["Meta", "Title", "snapshot"]
+__all__ = ["Meta", "Title", "current_title", "snapshot"]
 
 # Every live entry, innermost last, by slot: `None` is the title, a `(attribute, name)` pair is
 # one meta tag. The last entry of a slot is what the page shows.
@@ -111,6 +111,12 @@ def Meta(content, name=None, property=None):  # noqa: A002 - `property` is the a
     slot = ("name", name) if name is not None else ("property", property)
     _register(slot, content)
     return None
+
+
+def current_title():
+    """What the page calls itself right now, from the innermost `Title` — or None."""
+    entries = _stack.get(None)
+    return _value(entries[-1][0]) if entries else None
 
 
 def snapshot():

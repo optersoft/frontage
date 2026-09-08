@@ -332,3 +332,37 @@ def test_base_path_and_document_file_count_as_root():
     router.navigate("/x")
     assert router.url() == "/app/x" and html(root) == "<p>x</p>"
     assert router.href("/") == "/app"
+
+
+# view transitions ---------------------------------------------------------------------------
+def test_a_view_transition_commits_through_the_browsers_api_when_there_is_one():
+    """The commit is where every parked effect reaches the page at once, which is the snapshot
+    boundary `document.startViewTransition` wants. Off the browser there is no such thing and
+    the commit is the ordinary one, which is what every test here sees."""
+    from frontage import reactive
+
+    calls = []
+
+    def wrapper(commit):
+        calls.append("wrapped")
+        commit()
+
+    t = reactive.Transition()
+    t.wrapper = wrapper
+    reactive._open_transitions.append(t)
+    t._open = False
+    t._maybe_commit()
+    assert calls == ["wrapped"] and t._committed
+
+
+def test_view_transition_implies_transition_and_is_off_by_default():
+    plain = Router(Route("/", "home"), mode="memory")
+    animated = Router(Route("/", "home"), mode="memory", view_transition=True)
+    assert plain.view_transition is False and plain.transition is False
+    assert animated.view_transition is True and animated.transition is True
+
+
+def test_off_the_browser_there_is_no_view_transition_to_start():
+    from frontage.reactive import view_transition
+
+    assert view_transition() is None

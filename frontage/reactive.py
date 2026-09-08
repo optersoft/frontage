@@ -1114,6 +1114,11 @@ class Transition:
         self._callbacks = []
         self._reverts = []
         self.pending = Signal(True)
+        # A function that runs the commit: `document.startViewTransition` when the caller asked
+        # for one and the browser has it. The commit is where every parked effect reaches the
+        # page at once, which is exactly the snapshot boundary that API wants.
+        self.wrapper = None
+        self._wrapping = False
 
     def _track(self):
         self._inflight += 1
@@ -1128,6 +1133,10 @@ class Transition:
         self._commit()
 
     def _commit(self):
+        if self.wrapper is not None and not self._wrapping:
+            self._wrapping = True
+            self.wrapper(self._commit)  # calls back into here with the wrapper spent
+            return
         self._committed = True
         _open_transitions.remove(self)
         saved = _current_transition()
@@ -1169,7 +1178,32 @@ class Transition:
         return f"Transition({'pending' if not self._committed else 'committed'})"
 
 
-def transition(fn, *args):
+def view_transition():
+    """`document.startViewTransition` as a commit wrapper, or None where there is no such thing.
+
+    Every browser without it — and every server — simply commits, which is what a progressive
+    enhancement means: the page changes, it does not animate.
+    """
+    from .runtime import in_browser
+
+    if not in_browser:
+        return None
+    from .runtime import create_proxy, document
+
+    start = getattr(document, "startViewTransition", None)
+    if start is None:
+        return None
+
+    def run(commit):
+        try:
+            start(create_proxy(commit))
+        except Exception:
+            commit()  # the browser refused the transition; the page still has to change
+
+    return run
+
+
+def transition(fn, *args, view=False):
     """Run `fn(*args)` (writes, typically) as a transition: the page keeps showing its
     previous state while the async work those writes started, Resources refetching and async
     memos recomputing, is in flight, and shows the new state all at once when it has settled.
@@ -1180,8 +1214,14 @@ def transition(fn, *args):
     the writes create is computed at once, under its own owners, so its resources start
     loading immediately and count toward the commit; only the step that would put it on the
     page waits. What is on screen keeps its previous nodes until then.
+
+    `view=True` commits inside `document.startViewTransition`, so the browser cross-fades the
+    old page into the new one (and animates whatever carries a `view-transition-name`). Where
+    the API does not exist the commit is the ordinary one.
     """
     t = Transition()
+    if view:
+        t.wrapper = view_transition()
     _open_transitions.append(t)
     _is_pending._write(True)
     saved = _current_transition()

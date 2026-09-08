@@ -599,9 +599,17 @@ decides, all in 0.10.0:
       with their owner exactly as they must in a browser. `tools/exports.py` was written on
       the way (the `mk exports` the export table's comment had promised for months) and
       `mk check` now checks the stub is in step.
-- [ ] **The rest of the React gaps marked "yes" in `FASTER.md` §9**: view transitions, form
-      validation in core, accessibility basics, Tailwind for apps, the "from React" and
-      "from Streamlit" chapters.
+- [x] **View transitions and accessibility basics** (2026-09-08).
+      `Router(view_transition=True)` hands the commit to `document.startViewTransition` — the
+      commit is already the one place every parked effect reaches the page, which is exactly
+      the snapshot boundary that API wants, so it is a `wrapper` on `Transition` and nothing
+      else moved. `Router(announce=True)` (the default) writes the new title into a polite live
+      region, `Router(focus="main")` moves focus into the new content, and the language server
+      has a fourth rule: an `<img>` with no `alt`. ⚠ The announcer reads `document.title`
+      rather than importing `frontage.head`, for the same reason `dev` guards its Store
+      import: a page holds only the modules its app imports.
+- [ ] **The rest of the React gaps marked "yes" in `FASTER.md` §9**: form validation in core,
+      Tailwind for apps, the "from React" and "from Streamlit" chapters.
 - [x] Open, now closed by the runtime: there is no interpreter to trim and no second core to
       keep behind a flag; `-O2` has no meaning for `.fbc` (docstrings are dropped at compile).
 - Measured and rejected, with the number, in `FASTER.md` §10: Pyodide, Python→JS,

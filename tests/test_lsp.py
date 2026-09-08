@@ -150,6 +150,25 @@ def test_nesting_finding_points_at_the_offending_tag():
     assert slice_of(src, finding) == "<div"
 
 
+def test_an_image_with_nothing_to_read_out_is_flagged():
+    src = "x = html(t'<img src=\"cat.png\">')\n"
+    (finding,) = rules.findings(src, "app.py")
+    assert finding.code == "img-alt" and finding.severity == rules.WARNING
+    assert slice_of(src, finding) == "<img"
+    assert "alt" in finding.message
+
+
+def test_an_image_that_says_it_is_decorative_is_not_flagged():
+    """`alt=""` is a decision; only the missing attribute is a finding."""
+    assert rules.findings('x = html(t\'<img src="line.png" alt="">\')\n', "app.py") == []
+    assert rules.findings('x = html(t\'<img src="cat.png" alt="A cat.">\')\n', "app.py") == []
+
+
+def test_an_alt_that_comes_from_a_hole_counts():
+    """The attribute is there; what it says is the app's business, not the rule's."""
+    assert rules.findings('x = html(t"<img src={url} alt={caption}>")\n', "app.py") == []
+
+
 def test_a_row_outside_a_body_is_flagged_where_it_sits():
     src = 'x = html(t"<table><tr><td>1</td></tr></table>")\n'
     (finding,) = rules.findings(src, "app.py")

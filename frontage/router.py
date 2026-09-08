@@ -349,7 +349,19 @@ async def _quiet(coro, route):
 
 
 class Router:
-    def __init__(self, *routes, mode="history", root=None, fallback=None, initial="/", base="", transition=False):
+    def __init__(
+        self,
+        *routes,
+        mode="history",
+        root=None,
+        fallback=None,
+        initial="/",
+        base="",
+        transition=False,
+        view_transition=False,
+        announce=True,
+        focus=None,
+    ):
         self.routes = list(routes)
         self.root = root
         self.fallback = fallback
@@ -359,6 +371,19 @@ class Router:
         # changes when they are ready, with no fallback in between. `navigate(…,
         # transition=…)` decides for one call.
         self.transition = transition
+        # `view_transition=True`: commit inside `document.startViewTransition`, so the browser
+        # cross-fades one page into the next. It implies `transition=True`, because there is
+        # nothing to animate between until the new route is built and ready in one step.
+        self.view_transition = view_transition
+        if view_transition:
+            self.transition = True
+        # A navigation that replaces the page's content is invisible to a screen reader: the
+        # URL changed and nothing said so. `announce` writes the new page's title (or its path,
+        # when it has no title) into a polite live region after every navigation. `focus` is a
+        # selector — `"main"`, typically — that focus moves to, so the next Tab starts in the
+        # new content; it is opt-in, because taking focus is something a page can get wrong.
+        self.announce = announce
+        self.focus = focus
         if mode == "memory" or not in_browser:
             # Without a browser (tests, `python -m frontage prerender`) every mode is the
             # memory one; the prerenderer says which path is being rendered.
@@ -512,13 +537,29 @@ class Router:
 
         use = self.transition if transition is None else transition
         if use:
-            t = run_transition(self._set_url, url)
+            t = run_transition(self._set_url, url, view=self.view_transition)
+            t.on_commit(self._settled)
             if after is not None:
                 t.on_commit(after)
         else:
             self._set_url(url)
+            on_mount(self._settled)
             if after is not None:
                 on_mount(after)
+
+    def _settled(self):
+        """The new route is on the page: say so, and move focus if this router was asked to."""
+        if not (self.announce or self.focus):
+            return
+        from . import a11y
+
+        if self.announce:
+            # `document.title`, not `frontage.head`: it is the same value — `Title` is what
+            # writes it — and a page holds only the modules its app imports, so a routed app
+            # that names no titles has no `frontage.head` to import.
+            a11y.announce(a11y.title() or self.url.peek())
+        if self.focus:
+            a11y.focus(self.focus)
 
     def _deferred_navigate(self, path, replace):
         # A Redirect during a render: apply once the current update has settled.

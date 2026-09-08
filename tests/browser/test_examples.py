@@ -409,3 +409,22 @@ def test_head_management_in_the_page(server, page: Page):
     expect(page.locator("#home")).to_be_visible()
     expect(page).to_have_title("Lazy routes")
     assert errors == []
+
+
+def test_a_navigation_is_announced_and_can_move_focus(server, page: Page):
+    """A page that swaps its content tells a screen reader nothing by itself. The router
+    writes the new page's title into a polite live region, and `focus=` moves focus into the
+    new content so the next Tab starts there."""
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{server}/examples/lazy/index.html")
+    expect(page.locator("#home")).to_be_visible(timeout=30_000)
+
+    page.click("#to-report")
+    expect(page.locator("#report")).to_be_visible(timeout=30_000)
+    region = page.locator("#fr-live-region")
+    expect(region).to_have_text("Report — lazy routes")
+    assert page.get_attribute("#fr-live-region", "aria-live") == "polite"
+    # Off screen, not hidden: `display:none` would stop it being read at all.
+    assert page.evaluate("getComputedStyle(document.getElementById('fr-live-region')).display") != "none"
+    assert errors == []

@@ -6,7 +6,7 @@ line at a time; the language server publishes them as diagnostics while you type
 them here rather than in the CLI is the whole point — a rule that existed twice would drift,
 and `SPEC.md` is meant to have exactly one reading.
 
-Three rules today:
+Four rules today:
 
 - A `lambda` inside a template string's braces: name the function. A rule from before the
   runtime, whose compiler accepts it; kept because a named function reads better in a hole. Only the *parenthesised* form reaches
@@ -16,6 +16,10 @@ Three rules today:
 - HTML the browser's parser rewrites (a block element inside `<p>`, `<tr>` straight under
   `<table>`, `<a>` inside `<a>`). The rendered page then differs from the template, and a
   prerendered page cannot be hydrated against it.
+- An `<img>` with no `alt`. A screen reader then reads the file name, or nothing; a decorative
+  image says so with `alt=""`, which is a decision, not an omission. The only rule here that
+  is about the reader of the page rather than about the interpreter, and it is here because
+  this is where a template's markup is already being walked.
 
 Template strings need Python 3.14 to parse. Below that the first two rules cannot fire at
 all, which is why `supported()` exists: the CLI degrades quietly, but a server that goes
@@ -23,6 +27,7 @@ silent looks broken, so it says so once.
 """
 
 import ast
+import re
 
 _TemplateStr = getattr(ast, "TemplateStr", None)
 _Interpolation = getattr(ast, "Interpolation", None)
@@ -148,8 +153,9 @@ def _source_offset(markup_offset, spans):
     return None
 
 
-def _nesting(markup):
-    """`(markup_offset, tag, message)` for each place the browser's parser would rewrite."""
+def _markup(markup):
+    """`(markup_offset, tag, message, code)` for each finding in a template's markup: what the
+    browser's parser would rewrite, and an image with nothing to read out."""
     from html.parser import HTMLParser
 
     starts = [0]
@@ -179,12 +185,20 @@ def _nesting(markup):
                         self.at(),
                         tag,
                         f"<{tag}> inside <p>: the browser closes the paragraph first; use a <div> or <span>",
+                        "html-nesting",
                     )
                 )
             if tag == "tr" and stack and stack[-1] == "table":
-                found.append((self.at(), tag, "<tr> straight under <table>: the browser inserts <tbody>; write it"))
+                found.append(
+                    (
+                        self.at(),
+                        tag,
+                        "<tr> straight under <table>: the browser inserts <tbody>; write it",
+                        "html-nesting",
+                    )
+                )
             if tag == "a" and "a" in stack:
-                found.append((self.at(), tag, "<a> inside <a>: the browser splits them"))
+                found.append((self.at(), tag, "<a> inside <a>: the browser splits them", "html-nesting"))
             if tag not in _VOID:
                 stack.append(tag)
 
@@ -201,7 +215,29 @@ def _nesting(markup):
     walker = Walk()
     walker.feed(markup)
     walker.close()
+    found += _images(markup)
     return found
+
+
+#: An `<img>` tag, where a hole (`<!--h-->`, what an interpolation collapses to) may sit inside
+#: it and carries a `>` of its own — which is why the parser above cannot answer this one.
+_IMG = re.compile(r"<img\b((?:<!--h-->|[^>])*)>", re.I)
+_ALT = re.compile(r"\balt\s*=", re.I)
+
+
+def _images(markup):
+    """Images with nothing to read out. An `alt` from a hole counts: the attribute is there,
+    and what it says is the app's business."""
+    return [
+        (
+            match.start(),
+            "img",
+            '<img> without alt: give it the words a reader would miss, or alt="" if it is decorative',
+            "img-alt",
+        )
+        for match in _IMG.finditer(markup)
+        if not _ALT.search(match.group(1))
+    ]
 
 
 def findings(source, path="<string>", line_offset=0):
@@ -235,12 +271,12 @@ def findings(source, path="<string>", line_offset=0):
         if _TemplateStr is not None and isinstance(node, _TemplateStr):
             markup, spans = _markup_of(node, lines)
             if "<" in markup:
-                for markup_offset, tag, message in _nesting(markup):
+                for markup_offset, tag, message, code in _markup(markup):
                     start = _source_offset(markup_offset, spans)
                     if start is None:
-                        add(node, message, "html-nesting", WARNING)
+                        add(node, message, code, WARNING)
                     else:
-                        add(node, message, "html-nesting", WARNING, start, start + len(tag) + 1)
+                        add(node, message, code, WARNING, start, start + len(tag) + 1)
             for part in getattr(node, "values", ()):
                 if (
                     _Interpolation is not None

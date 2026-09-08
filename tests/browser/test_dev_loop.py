@@ -86,3 +86,36 @@ def test_module_level_state_survives_a_swap(editable, page: Page):
 
     source.write_text(MODULE_STATE.format(label="Count"))
     expect(page.locator("#value")).to_have_text("Count: 2", timeout=30_000)
+
+
+VIEW_TRANSITION_APP = """from frontage import A, Route, Router, h, mount
+
+mount(
+    Router(
+        Route("/", lambda: h.h1("Home", id="home")),
+        Route("/next", lambda: h.h1("Next", id="next")),
+        root=lambda children: h.div(A("/", "home", id="to-home"), A("/next", "next", id="to-next"), children),
+        mode="hash",
+        view_transition=True,
+    ),
+    "#app",
+)
+"""
+
+
+def test_a_router_can_commit_inside_a_view_transition(editable, page: Page):
+    """`view_transition=True` hands the commit to `document.startViewTransition`, so the
+    browser animates one page into the next. The page must change either way — the API is a
+    progressive enhancement, and the test proves both halves: it was called, and it worked."""
+    base, app = editable
+    (app / "counter.py").write_text(VIEW_TRANSITION_APP)
+    page.add_init_script(
+        "window.__vt = 0;"
+        "const original = document.startViewTransition && document.startViewTransition.bind(document);"
+        "if (original) document.startViewTransition = (cb) => { window.__vt++; return original(cb); };"
+    )
+    page.goto(f"{base}/index.html")
+    expect(page.locator("#home")).to_be_visible(timeout=30_000)
+    page.click("#to-next")
+    expect(page.locator("#next")).to_be_visible(timeout=30_000)
+    assert page.evaluate("window.__vt") >= 1, "the commit did not go through startViewTransition"
