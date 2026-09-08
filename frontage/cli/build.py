@@ -69,20 +69,22 @@ def boot_tag(entry, prefix="./", declarations=()):
 
 # --- components ------------------------------------------------------------------------
 #
-# A component is a Python package that also ships browser assets. It declares itself with a
+# A component is a Python package that also ships browser assets. Frontage's own are
+# subpackages — `frontage.chart`, `frontage.table`, `frontage.map`, … — found by the
+# `_browser/` directory they carry; a third-party one declares itself with a
 # `frontage.components` entry point, which is metadata read on CPython at build time, so the
 # browser pays nothing for the mechanism:
 #
 #     [project.entry-points."frontage.components"]
-#     chart = "frontage_chart"
+#     gantt = "frontage_gantt"
 #
-# and lays its browser half out by convention, because a manifest for two files is a form to
-# fill in rather than a thing that helps:
+# Either lays its browser half out by convention, because a manifest for two files is a form
+# to fill in rather than a thing that helps:
 #
-#     frontage_chart/_browser/index.js     the module `data-fr-js` registers (required)
-#     frontage_chart/_browser/index.css    linked from the page if it exists
+#     frontage/chart/_browser/index.js     the module `data-fr-js` registers (required)
+#     frontage/chart/_browser/index.css    linked from the page if it exists
 #
-# Its Python is packed under its package path, so `import frontage_chart` works in the page —
+# Its Python is packed under its package path, so `import frontage.chart` works in the page —
 # except a module whose name starts with an underscore, which stays on CPython. That is how a
 # component keeps a server half (`_server.py`) or a build-time tool (`_compile.py`) out of a
 # page that could not import it anyway: frontage-polars shipped 15 KB of FastAPI imports to the
@@ -94,9 +96,17 @@ COMPONENT_STYLE = "index.css"
 
 
 class Component:
-    def __init__(self, name, package):
-        self.name = name  # what the app imports, and the `data-fr-js` key
+    def __init__(self, name, package, root=None):
+        self.name = name  # the `data-fr-js` key: the JavaScript module the component's Python imports
         self.package = Path(package)
+        # Where the Python lands in the archive, which is also what the app imports: a
+        # subpackage of frontage lives at `frontage/<name>`, a third-party package at its own
+        # name (`frontage_gantt`).
+        self.root = root or self.package.name
+
+    @property
+    def import_name(self):
+        return self.root.replace("/", ".")
 
     @property
     def browser(self):
@@ -111,17 +121,32 @@ class Component:
                 continue
             if path.name.startswith("_") and path.name != "__init__.py":
                 continue  # private to CPython: a server half, a compiler, a test helper
-            found.append((f"{self.package.name}/{relative.as_posix()}", path))
+            found.append((f"{self.root}/{relative.as_posix()}", path))
         return found
 
 
+def builtin():
+    """Frontage's own components: every subpackage that ships a `_browser/` directory —
+    `frontage.chart`, `frontage.table`, `frontage.map`, … (one distribution since 0.10)."""
+    package = mp.RUNTIME_DIR.parent
+    found = []
+    for sub in sorted(package.iterdir()):
+        if sub.is_dir() and (sub / BROWSER_DIR / COMPONENT_ENTRY).is_file():
+            found.append(Component(sub.name, sub, root=f"frontage/{sub.name}"))
+    return found
+
+
 def discover():
-    """Every installed component, by entry point. Never imports one: a component's Python is
-    written for the browser, and importing it here would run it on the wrong interpreter."""
+    """Every component here: frontage's own, then any third-party package that declares the
+    `frontage.components` entry point. Never imports one: a component's Python is written for
+    the browser, and importing it here would run it on the wrong interpreter."""
     from importlib import metadata, util
 
-    found = []
+    found = builtin()
+    taken = {c.name for c in found}
     for entry in metadata.entry_points(group="frontage.components"):
+        if entry.name in taken:
+            continue
         spec = util.find_spec(entry.value)
         origin = getattr(spec, "origin", None)
         if origin is None:
@@ -154,9 +179,9 @@ def required(app, installed):
     the import system here would run it on the wrong interpreter, which is why `discover()`
     refuses to import one either. `--component` bypasses discovery and therefore this too.
     """
-    by_package = {c.package.name: c for c in installed}
+    by_import = {c.import_name: c for c in installed}
     sources = "\n".join(path.read_text() for path in sorted(app.glob("*.py")))
-    wanted, frontier = set(), [name for name in by_package if imports(sources, name)]
+    wanted, frontier = set(), [name for name in by_import if imports(sources, name)]
     while frontier:
         name = frontier.pop()
         if name in wanted:
@@ -164,9 +189,9 @@ def required(app, installed):
         wanted.add(name)
         # A component may use another — a table built out of layout's container, say — and its
         # own imports are as binding as the app's.
-        body = "\n".join(path.read_text() for _, path in by_package[name].modules())
-        frontier.extend(n for n in by_package if n not in wanted and imports(body, n))
-    return [c for c in installed if c.package.name in wanted]
+        body = "\n".join(path.read_text() for _, path in by_import[name].modules())
+        frontier.extend(n for n in by_import if n not in wanted and imports(body, n))
+    return [c for c in installed if c.import_name in wanted]
 
 
 def find_entry(app):

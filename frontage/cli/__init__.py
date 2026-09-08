@@ -75,6 +75,8 @@ def main(argv=None):
         from .pyscript import main as run
     elif command == "serve":
         from .serve import main as run
+    elif command == "schema":
+        from frontage.schema._compile import main as run
     else:
         print(f"error: unknown command {command!r}\n\n{usage()}", file=sys.stderr)
         return 2

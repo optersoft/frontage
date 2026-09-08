@@ -184,10 +184,19 @@ def make_component(tmp_path, name="frontage_chart", style=True):
     return Component("chart", package)
 
 
-def test_discover_reads_entry_points_without_importing_anything():
-    # Nothing declares one in this repo, so the contract under test is "returns cleanly".
-    # Importing a component here would run browser-targeted Python on CPython.
-    assert build.discover() == []
+def test_discover_finds_the_builtin_components_without_importing_anything():
+    # Frontage's own components are found by their `_browser/` directory, and never imported:
+    # their Python is written for the browser, and running it here would be the wrong
+    # interpreter. No third-party entry point is declared in this repo.
+    import sys
+
+    before = set(sys.modules)
+    found = build.discover()
+    assert [c.name for c in found] == ["chart", "layout", "map", "remote", "schema", "supabase", "table"]
+    assert all(c.import_name == f"frontage.{c.name}" for c in found)
+    names = {c.name for c in found}
+    imported = [m for m in set(sys.modules) - before if m.startswith("frontage.") and m.split(".")[1] in names]
+    assert imported == []
 
 
 def test_a_component_ships_its_assets_its_python_and_a_declaration(tmp_path):
@@ -203,7 +212,7 @@ def test_a_component_ships_its_assets_its_python_and_a_declaration(tmp_path):
     assert 'data-fr-js="chart=./_frontage/components/chart/index.js"' in page
     assert '<link rel="stylesheet" href="./_frontage/components/chart/index.css">' in page
 
-    # The Python travels under its package name, so `import frontage_chart` works in the page.
+    # A third-party component's Python travels under its package name, so `import frontage_chart` works in the page.
     with tarfile.open(out / "_frontage" / "app.tar") as tf:
         names = sorted(tf.getnames())
     assert names == ["counter.py", "frontage_chart/__init__.py", "frontage_chart/plot.py"]
