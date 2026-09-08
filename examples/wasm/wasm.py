@@ -20,8 +20,8 @@ def again(ev):
     answer.update(lambda n: mathlib.add(n, 1))
 
 
-# What a crossing costs: Python -> JavaScript -> the other wasm module and back. Around a
-# microsecond, four MicroPython method calls. Cheap per call; the thing to avoid is bulk,
+# What a crossing costs: Python -> JavaScript -> the other wasm module and back. About 0.7
+# microseconds, six ordinary method calls. Cheap per call; the thing to avoid is bulk,
 # because the two modules have separate memories and arrays cross as a copy.
 CALLS = 2000
 start = time.ticks_us()

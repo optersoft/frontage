@@ -101,6 +101,9 @@ class Component:
         # subpackage of frontage lives at `frontage/<name>`, a third-party package at its own
         # name (`frontage_gantt`).
         self.root = root or self.package.name
+        # Frontage's own subpackages arrive with the framework; a third-party one was
+        # installed on purpose, which is what makes "installed but not imported" worth saying.
+        self.builtin = False
 
     @property
     def import_name(self):
@@ -130,7 +133,9 @@ def builtin():
     found = []
     for sub in sorted(package.iterdir()):
         if sub.is_dir() and (sub / BROWSER_DIR / COMPONENT_ENTRY).is_file():
-            found.append(Component(sub.name, sub, root=f"frontage/{sub.name}"))
+            component = Component(sub.name, sub, root=f"frontage/{sub.name}")
+            component.builtin = True
+            found.append(component)
     return found
 
 
@@ -173,9 +178,9 @@ def required(app, installed):
     dependency and costs nothing until it is imported — and it is invisible, because the extra
     ones work perfectly and only make the page bigger.
 
-    Matching is textual on purpose. A component's Python is written for MicroPython, so asking
-    the import system here would run it on the wrong interpreter, which is why `discover()`
-    refuses to import one either. `--component` bypasses discovery and therefore this too.
+    Matching is textual on purpose. A component's Python is written for the browser's runtime,
+    so asking the import system here would run it on the wrong interpreter, which is why
+    `discover()` refuses to import one either. `--component` bypasses discovery and this too.
     """
     by_import = {c.import_name: c for c in installed}
     sources = "\n".join(path.read_text() for path in sorted(app.glob("*.py")))
@@ -270,7 +275,9 @@ def build(app, out="", entry="", quiet=False, components=None):
     if components is None:
         found = list(discover())
         installed = required(app, found)
-        skipped = [c.name for c in found if c not in installed]
+        # Only a component someone installed: frontage's own subpackages are always there,
+        # and naming seven of them on every build would be noise rather than a warning.
+        skipped = [c.name for c in found if c not in installed and not c.builtin]
     else:
         installed, skipped = list(components), []
     declarations, styles = [], []
