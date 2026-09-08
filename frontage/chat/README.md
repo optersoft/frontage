@@ -80,6 +80,7 @@ Two things it does deliberately:
 
 ## Cost
 
-**~0.7 KB of JavaScript** (one `fetch` and the SSE reader loop — pulling a stream across the
-bridge chunk by chunk would cost a crossing per read) and about 200 lines of Python that
-travel with the rest of your app. Apache 2.0.
+**1.0 KB of JavaScript gzipped** — one `fetch` and the SSE reader loop, which lives in
+JavaScript because pulling a stream across the bridge read by read would cost a crossing per
+chunk — plus 0.7 KB of stylesheet and about 200 lines of Python that travel with the rest of
+your app. Apache 2.0.
