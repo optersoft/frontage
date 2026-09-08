@@ -531,9 +531,17 @@ decides, all in 0.10.0:
       keeps it one cycle and the VM closes it), `__slots__` (accepted; not enforced), and a
       size budget test (`test_the_runtime_stays_within_its_size_budget`: 300 KB gzip, 261
       today).
-- [ ] The 0.10.0 release itself: FASTER.md §11's list, the academy chapters rewritten for the
-      runtime (they still describe MicroPython), the wheel's first tag with the five compiler
-      binaries. `[human]`: the tag.
+- [x] **0.10.0 and 0.10.1 are on PyPI (2026-09-08)**, with the five `fpy` binaries on each
+      GitHub release; a clean `uvx frontage build` fetches the one for its platform and works.
+      0.10.1 adds `binascii`, which `examples/uber` needs and 0.10.0 lacked — the gallery
+      caught it after the tag. The ten chapter repositories are pinned to 0.10.1, rebuilt and
+      verified live. The academy chapters are rewritten and committed.
+- [ ] `[human]` **Two deploys finish the release.** `mk site.deploy` in this repo (the runner
+      the chapters' cards point at, the playground on the compiler build, the gallery and the
+      0.10.x wheels) — assembled and verified locally, `mk --yes site.deploy` is the command.
+      Then `mk server.deploy` in `academy/` (the `::: frontage` directive, committed and
+      pushed): **until it lands, the seven live cards in the chapters render as plain code
+      blocks**, which is why `academy-pages` is committed but not pushed.
 - [x] **`_core.sort/filter/group` as the core's first tenant.** Moot with the runtime: its
       `sorted` is a stable merge sort in Rust that calls `key` once per element — **10,000
       ordered floats sort in 2.0 ms on the wasm, 2.5 with a key** (MicroPython: 269 and
