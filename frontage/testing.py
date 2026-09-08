@@ -63,12 +63,16 @@ class App:
         # to know when a page has finished loading. `settle` asks them the same question.
         self._resources = aio._begin_prerender()
         self._memos = reactive._begin_prerender()
+        self._handle = None
         try:
             self._handle = self._run(lambda: mount(view, self.root, self.renderer, debug=debug, fallback=fallback))
+            self.settle()
         except BaseException:
-            self._teardown()
+            # A first load that fails or times out must still take the app down, or the
+            # tasks it started outlive the test and pytest reports "Task was destroyed"
+            # from a later one instead of this one.
+            self.dispose()
             raise
-        self.settle()
 
     @classmethod
     def from_module(cls, name, selector=None, **options):
@@ -126,7 +130,8 @@ class App:
         if self._disposed:
             return
         try:
-            self._run(self._handle.dispose)
+            if self._handle is not None:
+                self._run(self._handle.dispose)
         finally:
             self._teardown()
 
