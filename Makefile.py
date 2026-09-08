@@ -254,7 +254,7 @@ def site_build() -> None:
         "-m",
         "frontage",
         "build",
-        "web/playground",
+        "web/public/playground",
         "--out",
         str(WWW / "playground"),
         "--quiet",

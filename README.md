@@ -8,20 +8,18 @@ router; running on its own Python runtime compiled to WebAssembly, with the fram
 precompiled bytecode. No JavaScript, no Node, no bundler: you write Python and the browser
 runs it.
 
-> **Status: 0.8.3, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete through
-> its M5 milestone: reactive core, store, templates (`h` and `html(t"…")`), control flow and
-> boundaries, `Resource`/`Action`, a nested router, widgets, `State`, timers, the playground;
-> 0.3.0 added the command line (`export`, `tailwind`, `check`); 0.4.0 added **prerendering
-> with hydration** (M6): pages that show before Python loads; 0.5.0 adds **transitions**
-> (`transition`, `is_pending`, `Optimistic`), async memos, the debug warnings, the `frontage`
-> console script and `prerender --crawl` (M7); 0.6.0 builds the new state off screen during a
-> transition and lets the router navigate inside one (M8); 0.7.0 makes async memos the router's
-> data primitive: they count toward `is_routing`, and `prerender` settles and hydrates them (M9); 0.8.0 adds
-> `frontage serve`, a dev server that reloads the page on save; **0.9.0 replaces PyScript with a
-> direct WebAssembly boot** (M11): four requests instead of twenty-nine, 52 ms instead of 88,
-> the framework precompiled, and a dev server that swaps a module into the running page
-> without reloading it. The API is young and will move; the [browser suite](tests/browser/)
-> runs every example on Chromium each push and on Firefox and WebKit nightly.
+> **Status: 0.10.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete
+> through M12. Reactive core, store, templates (`h` and `html(t"…")`), control flow and
+> boundaries, `Resource`/`Action`, a nested router, widgets, `State`, timers, the playground
+> (0.2–0.3); **prerendering with hydration** (0.4), pages that show before Python loads;
+> **transitions**, async memos and the debug warnings (0.5–0.7); `frontage serve` (0.8);
+> **the WebAssembly boot that replaced PyScript** (0.9). **0.10.0 replaces the interpreter
+> itself**: frontage's own Python runtime, written in Rust ([RUNTIME.md](RUNTIME.md)), with
+> the reactive graph, the DOM operations and the template path native inside it. A thousand
+> rows are built in 24.8 ms where MicroPython took 71.1, the counter paints in 23 ms, and
+> `frontage build` ships only the modules your entry imports, compiled to bytecode and
+> content-hashed. The API is young and will move; the [browser suite](tests/browser/) runs
+> every example on Chromium each push and on Firefox and WebKit nightly.
 
 ```python
 from frontage import Signal, component, html, mount
@@ -50,11 +48,11 @@ mount(lambda: counter(initial=0), "#app")
 ```
 
 Signals hold state; anything callable in a template is a hole that updates in place when what
-it read changes; a component body runs once. Name the functions you put in holes: MicroPython
-does not accept a `lambda` inside a template's braces.
+it read changes; a component body runs once. Name the functions you put in holes: a `lambda`
+inside a template's braces is hard to read and `frontage check` will tell you so.
 
 **Try it** at [frontage.optersoft.com/playground](https://frontage.optersoft.com/playground/),
-which runs your code on MicroPython and keeps it in the link. **Learn it** at
+which runs your code in the browser and keeps it in the link. **Learn it** at
 [academy.optersoft.com/python/frontage](https://academy.optersoft.com/python/frontage), ten
 chapters with exercises, nine of them with an app published on GitLab Pages. **Install it** with pip,
 and `frontage build` writes a directory that runs anywhere:
@@ -63,25 +61,26 @@ and `frontage build` writes a directory that runs anywhere:
 uvx frontage build myapp        # index.html, your .py, and _frontage/ beside them
 ```
 
-| The counter, cold cache | 0.10.0 | 0.8.3 (PyScript) |
-|---|---|---|
-| requests | 6 | 29 |
-| transferred | 0.46 MB | 0.91 MB |
-| compressed | 0.19 MB | 0.33 MB |
-| to first paint | 59 ms | 88 ms |
+| The counter, cold cache | 0.10.0 | 0.9.1 (MicroPython) | 0.8.3 (PyScript) |
+|---|---|---|---|
+| requests | 17 | 6 | 29 |
+| transferred | 0.78 MB | 0.46 MB | 0.91 MB |
+| compressed | 0.32 MB | 0.19 MB | 0.33 MB |
+| to first paint | 23 ms | 59 ms | 88 ms |
 
-Most of that is the interpreter — frontage's own build of MicroPython, 108 KB of brotli
-(`FASTER.md` §2); the framework is 82 KB of precompiled bytecode, and none of it is parsed
-in the browser. Medians of five, this laptop's Chromium; DESIGN.md §12 has the
-method.
+Most of that is the runtime, 261 KB of gzip; the rest is one file per module of bytecode,
+each named by its content so a host can cache it forever, and none of it is parsed in the
+browser. It is a bigger download than MicroPython's and a much faster page: the runtime
+starts in a few milliseconds and builds a thousand rows in 24.8 ms against 71.1
+([RUNTIME.md](RUNTIME.md) §9). Medians of five, this laptop's Chromium; DESIGN.md §12 has
+the method.
 
 The same package is a small command line on your machine, stdlib only:
 
 ```sh
-uvx frontage serve              # a dev server that reloads the page whenever a file changes
-uvx frontage check app.py       # the rules MicroPython enforces and CPython does not
+uvx frontage serve              # a dev server that swaps a changed module into the live page
+uvx frontage check app.py       # the rules the browser enforces and CPython does not
 uvx frontage tailwind           # Tailwind CSS: the standalone CLI, fetched once, no Node
-uvx frontage export . --out build              # a self-contained static folder
 uvx frontage prerender . --out build --crawl   # every route the pages link to, as finished HTML
 ```
 
@@ -101,11 +100,12 @@ classes work as you type. The [Style](https://academy.optersoft.com/python/front
 
 ## Why
 
-Python in the browser exists (MicroPython and CPython both compile to WebAssembly) and the frameworks that use it
-either carry a server into the browser (Streamlit's stlite, Shiny's Shinylive: tens of
-seconds to start) or rebuild and diff the page on every change. Frontage is browser-first:
-no session, no transport, no DSL, and a state change touches only the DOM nodes that read
-it. The whole reasoning, with the frameworks it learned from, is in [DESIGN.md](DESIGN.md);
+Python in the browser exists — CPython and MicroPython both compile to WebAssembly — and the
+frameworks that use it either carry a server into the browser (Streamlit's stlite, Shiny's
+Shinylive: tens of seconds to start) or rebuild and diff the page on every change. Frontage
+is browser-first: no session, no transport, no DSL, and a state change touches only the DOM
+nodes that read it. Its runtime is its own, because the framework's hot paths are inside it:
+[RUNTIME.md](RUNTIME.md) is why, with the measurements that decided it. The whole reasoning, with the frameworks it learned from, is in [DESIGN.md](DESIGN.md);
 the behaviours it must have, one line each, are in [SPEC.md](SPEC.md).
 
 ## Develop
@@ -119,6 +119,7 @@ mk runtime.build        # build the runtime from rust/ into frontage/_runtime/ (
 mk serve                # examples and playground at http://127.0.0.1:8000/, package read live, reload on save
 mk test --browser       # every example in Chromium, on the runtime in WebAssembly
 mk build examples/todo  # a static directory that boots from WebAssembly
+cargo test --profile native   # in rust/: the runtime's own tests, against CPython
 mk site.deploy          # publish frontage.optersoft.com by hand (Cloudflare Pages): landing page, gallery, playground, wheels
 ```
 

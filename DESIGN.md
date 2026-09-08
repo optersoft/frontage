@@ -1,6 +1,6 @@
 # Frontage design
 
-**Status: implemented through M11 (0.9.0, 2026-09-07: the WebAssembly boot that replaced PyScript; M6-M9 shipped 2026-09-06). Draft 4 of 2026-09-05 is the plan it followed; §6 and §12 carry what measurement changed since.** Draft 1 kept PuePy's shape. Draft 2 was written from Leptos.
+**Status: implemented through M12 (0.10.0, 2026-09-08: frontage's own Python runtime in Rust, with the framework core native inside it — `RUNTIME.md` is that design and its measurements, and supersedes what this document says about the interpreter; 0.9.0 replaced PyScript with a WebAssembly boot). Draft 4 of 2026-09-05 is the plan it followed; §6 and §12 carry what measurement changed since.** Draft 1 kept PuePy's shape. Draft 2 was written from Leptos.
 Draft 3 added [Solid](https://github.com/solidjs/solid) (1.x, `dom-expressions`, the store,
 `solid-router`, the 2.0 release candidate), the JavaScript origin of the model and the size
 reference. This draft adds the three Python-first frameworks, [Streamlit](https://github.com/streamlit/streamlit),
