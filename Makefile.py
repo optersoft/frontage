@@ -13,9 +13,9 @@
     mk build APP [--out D]  a self-contained static directory for one app, booting from wasm
     mk export APP [--out D]  the same as a PyScript page (0.9.x only; `build` replaces it)
     mk vscode.test          the extension: manifest, snippets, client, grammar (needs npm)
-    mk gallery [--css]      build every example, measure it in Chromium, write www/gallery/
-    mk site.css [--force]   compile web/site.css (Tailwind, committed; rebuilt when stale)
-    mk site.build           frontage.optersoft.com into ./www: the gallery, wheels, playground
+    mk gallery              build every example, measure it in Chromium, write www/gallery/
+    mk site.dev             the Astro dev server for web/ (the landing page, the gallery index)
+    mk site.build           frontage.optersoft.com into ./www: the site, the gallery, wheels, playground
     mk site.deploy          build, then publish ./www to Cloudflare Pages by hand (fallback)
 
 PyPI gets the package from CI on a `vX.Y.Z` tag (.github/workflows/ci.yml);
@@ -26,8 +26,9 @@ Pages project `frontage` is connected to github.com/optersoft/frontage
 the Pages build is broken. Documentation lives on academy.optersoft.com, not
 here, and since 2026-09-06 the chapters run their apps in the page (the academy's
 `::: pyscript` frames, MicroPython, the released wheel by URL). frontage.optersoft.com
-serves its own landing page (web/index.html) and links there, plus the gallery, the
-playground and /dist/ (the wheels, which the chapters pin by URL). examples/ is
+serves its own landing page and the gallery index (web/, an Astro site on the Optersoft
+chrome `@optersoft/astro`, the sibling checkout at ../astro) and links there, plus the built
+gallery apps, the playground and /dist/ (the wheels, which the chapters pin by URL). examples/ is
 the browser suite's and the benchmark's material. `mk` with no arguments lists everything.
 """
 
@@ -169,7 +170,7 @@ def build(app: str, *, out: str = "", entry: str = "") -> None:
 
 
 @task(requires=["uv"])
-def gallery(*, out: str = "", quick: bool = False, css: bool = False) -> None:
+def gallery(*, out: str = "", quick: bool = False) -> None:
     """Build every gallery app, measure it in Chromium, and write www/gallery/.
 
     The gallery is the marketing and an acceptance test at once: every app is built with the
@@ -179,41 +180,44 @@ def gallery(*, out: str = "", quick: bool = False, css: bool = False) -> None:
     Args:
         out: destination (default www/gallery)
         quick: skip the browser and publish sizes only
-        css: recompile web/site.css with Tailwind (it is committed, and rebuilt anyway
-            when the page template or either static page changes)
     """
     args = ["python", "tools/gallery.py"]
     if out:
         args += ["--out", out]
     if quick:
         args.append("--quick")
-    if css:
-        args.append("--css")
     sh("uv", "run", "--frozen", *args)
 
 
-@task(name="site.css", requires=["uv"])
-def site_css(*, force: bool = False) -> None:
-    """Compile web/site.css from web/site.tailwind.css with Tailwind's standalone CLI.
+WEB = ROOT / "web"
+#: The chrome, a `file:../../astro` path dependency of web/package.json. On the laptop it is the
+#: sibling checkout; on a builder that has only this repo (Cloudflare's), `site.build` clones it.
+ASTRO = ROOT.parent / "astro"
+ASTRO_GIT = "https://github.com/optersoft/astro.git"
 
-    The output is committed, and `mk gallery` rebuilds it by itself whenever the pages or the
-    gallery template change, so this is only needed to force a recompile (a Tailwind version
-    bump, say).
 
-    Args:
-        force: recompile even when the stamp in site.css still matches
-    """
-    args = ["python", "tools/site_css.py"]
-    if force:
-        args.append("--force")
-    sh("uv", "run", "--frozen", *args)
+def _web_deps() -> None:
+    if not ASTRO.is_dir():
+        note(f"cloning the chrome into {ASTRO}")
+        sh("git", "clone", "--depth", "1", ASTRO_GIT, str(ASTRO))
+    if not (WEB / "node_modules").is_dir():
+        sh("npm", "ci", cwd=WEB)
+
+
+@task(name="site.dev", requires=["npm"])
+def site_dev(*args: str) -> None:
+    """The Astro dev server for web/ on :4321 (the gallery index needs `mk gallery` to have run)."""
+    _web_deps()
+    sh("npx", "astro", "dev", *args, cwd=WEB)
 
 
 @task(name="site.build", needs=[gallery])
 def site_build() -> None:
     """Assemble frontage.optersoft.com into ./www.
 
-    web/ holds the landing page, the 404, the site's stylesheet and the playground. The playground carries its own copy of
+    web/ is the Astro site: the landing page, the gallery index and the 404 (src/pages/), and
+    under public/ the playground and the runner as static files. It builds into web/dist,
+    which is merged into www/ beside the gallery apps. The playground carries its own copy of
     the WebAssembly runtime at /playground/_frontage/, which is where its boot tag points;
     `boot.js` finds the interpreter and both archives from its own URL, so nothing here
     needs a rewrite rule.
@@ -230,8 +234,9 @@ def site_build() -> None:
         shutil.move(str(gallery_built), str(keep))
     if WWW.exists():
         shutil.rmtree(WWW)
-    # site.tailwind.css is the input to site.css, not something the site serves.
-    shutil.copytree(ROOT / "web", WWW, ignore=shutil.ignore_patterns("site.tailwind.css"))
+    _web_deps()
+    sh("npx", "astro", "build", cwd=WEB)
+    shutil.copytree(WEB / "dist", WWW)
     if keep.exists():
         shutil.move(str(keep), str(WWW / "gallery"))
     runtime = ROOT / "frontage" / "_runtime"

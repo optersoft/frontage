@@ -1,0 +1,62 @@
+---
+// The gallery index: every app, with the numbers tools/gallery.py measured.
+// The apps themselves are built into www/gallery/<name>/ by `mk gallery`;
+// this page is merged in beside them.
+import Site from "../../layouts/Site.astro";
+import PageHeader from "@optersoft/astro/PageHeader.astro";
+import Card from "../../components/Card.astro";
+import { gallery } from "../../data.ts";
+
+const g = gallery();
+const how = g?.measured ? "Chromium, cold cache, first paint of the app's own content" : "sizes only";
+---
+
+<Site
+  title="Frontage gallery"
+  description="Python apps running in the browser on WebAssembly. No server, no build step, no JavaScript."
+  canonical="https://frontage.optersoft.com/gallery/"
+>
+  <PageHeader
+    label="Gallery"
+    heading="Python apps, in the browser, measured."
+    intro="Python in the browser, on its own runtime compiled to WebAssembly. Every app below is a directory of static files: no server, no build step, no JavaScript toolchain. The numbers are measured, not claimed — they come from loading each page in Chromium with a cold cache."
+  />
+
+  <div class="container mx-auto px-5 sm:px-6 py-12 sm:py-16 max-w-6xl">
+    {
+      g ? (
+        <>
+          <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {g.apps.map((app) => (
+              <Card href={`./${app.name}/`} title={app.title}>
+                <Fragment set:html={app.blurb} />
+                <div
+                  slot="foot"
+                  class="mt-1 flex gap-5 border-t border-slate-200 pt-2 text-xs tabular-nums text-slate-500 dark:border-slate-800 dark:text-slate-400"
+                >
+                  <span>
+                    <b class="font-semibold text-slate-900 dark:text-white">{Math.floor(app.bytes / 1024).toLocaleString("en")}</b> KB
+                  </span>
+                  {app.ms !== undefined && (
+                    <span>
+                      starts in <b class="font-semibold text-slate-900 dark:text-white">{app.ms}</b> ms
+                    </span>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+          <p class="mt-10 text-sm text-slate-500 dark:text-slate-400">
+            Measured {g.when} · {how} · the interpreter, the loader and the framework are{" "}
+            {g.shared_kb.toLocaleString("en")} KB of every figure and are byte-identical, so a browser downloads
+            them once for all of them.
+          </p>
+        </>
+      ) : (
+        <p class="text-slate-500 dark:text-slate-400">
+          <em>Nothing measured yet — <code>mk gallery</code> builds the apps and writes the numbers.</em>
+        </p>
+      )
+    }
+  </div>
+</Site>

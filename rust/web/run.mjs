@@ -8,7 +8,9 @@ if (!main) {
   console.error("usage: node run.mjs MAIN.fbc [name=module.fbc …]");
   process.exit(2);
 }
-const wasm = readFileSync(new URL("./frontage.wasm", import.meta.url));
+// The vendored wasm, the one a page boots; `FRONTAGE_WASM` names another (a fresh build).
+const wasmPath = process.env.FRONTAGE_WASM || new URL("../../frontage/_runtime/frontage.wasm", import.meta.url);
+const wasm = readFileSync(wasmPath);
 const t0 = performance.now();
 const rt = await load(wasm, { stdout: (s) => process.stdout.write(s), stderr: (s) => process.stderr.write(s) });
 const t1 = performance.now();

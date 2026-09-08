@@ -4,9 +4,10 @@ The gallery is the marketing and the acceptance test at once, so the numbers on 
 generated rather than typed: `mk gallery` builds each app with `frontage build`, serves the
 output, loads it in Chromium, and records what the browser actually transferred and how long
 it took to show something. If an app stops working the build fails; if it gets slower the page
-says so.
+says so. The page is web/src/pages/gallery/index.astro (the Astro site); this writes the JSON
+it renders.
 
-    mk gallery              build, measure, write www/gallery/
+    mk gallery              build, measure, write www/gallery/ and web/src/data/gallery.json
     mk gallery --quick      skip the browser; sizes only (no cold-start column)
 """
 
@@ -43,66 +44,9 @@ APPS = [
     ("tracker", "Tracker", "The whole framework in one app: routes, store, optimistic writes, a portal.", "#app"),
 ]
 
-PAGE = """<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Frontage gallery</title>
-<meta name="description" content="Python apps running in the browser on WebAssembly. No server, no build step, no JavaScript.">
-<link rel="stylesheet" href="./site.css">
-</head>
-<body class="min-h-screen bg-page text-ink dark:bg-page-dark dark:text-ink-dark font-sans antialiased">
-<div class="mx-auto max-w-5xl px-5 py-10 sm:py-14">
-
-<header class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-  <a href="/" class="text-2xl font-bold tracking-tight no-underline text-ink dark:text-ink-dark">Frontage</a>
-  <span class="text-2xl tracking-tight text-muted dark:text-muted-dark">gallery</span>
-</header>
-
-<p class="mt-4 max-w-2xl text-muted dark:text-muted-dark">Python in the browser, on its own runtime
-compiled to WebAssembly. Every app below is a directory of static files: no server, no build
-step, no JavaScript toolchain. The numbers are measured, not claimed — they come from loading
-each page in Chromium with a cold cache.</p>
-
-<nav class="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium">
-  <a href="https://academy.optersoft.com/python/frontage" class="text-brand dark:text-brand-dark hover:underline">Learn it</a>
-  <a href="/playground/" class="text-brand dark:text-brand-dark hover:underline">Playground</a>
-  <a href="https://github.com/optersoft/frontage" class="text-brand dark:text-brand-dark hover:underline">Source</a>
-</nav>
-
-<div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-{cards}
-</div>
-
-<footer class="mt-14 border-t border-line dark:border-line-dark pt-4 text-sm text-muted dark:text-muted-dark">{footer}</footer>
-</div>
-</body>
-</html>
-"""
-
-CARD = """  <a href="./{name}/"
-     class="group flex flex-col gap-2 rounded-xl border border-line dark:border-line-dark
-            bg-card dark:bg-card-dark p-5 no-underline text-ink dark:text-ink-dark
-            transition hover:-translate-y-0.5 hover:border-brand dark:hover:border-brand-dark hover:shadow-md">
-    <h2 class="text-base font-semibold group-hover:text-brand dark:group-hover:text-brand-dark">{title}</h2>
-    <p class="flex-1 text-sm text-muted dark:text-muted-dark">{blurb}</p>
-    <div class="mt-1 flex gap-5 border-t border-line dark:border-line-dark pt-2 text-xs
-                tabular-nums text-muted dark:text-muted-dark">
-      <span><b class="font-semibold text-ink dark:text-ink-dark">{kb}</b> KB</span>{timing}
-    </div>
-  </a>"""
-
-TIMING = '<span>starts in <b class="font-semibold text-ink dark:text-ink-dark">{ms}</b> ms</span>'
-
-
-def stylesheet(out, force=False):
-    """Put the site's stylesheet beside the page. Compiled only when stale — see site_css."""
-    import site_css
-
-    current = site_css.build(force=force)
-    shutil.copy(site_css.OUTPUT, out / "site.css")
-    return current
+#: Where the site's gallery page reads the result from (web/src/data/, gitignored). The page
+#: itself is web/src/pages/gallery/index.astro; this script only produces the facts.
+SITE_DATA = ROOT / "web" / "src" / "data" / "gallery.json"
 
 
 def free_port():
@@ -194,33 +138,22 @@ def shared_bytes(out, built):
 
 
 def write_index(built, out, measured):
-    cards = "\n".join(
-        CARD.format(
-            name=app["name"],
-            title=app["title"],
-            blurb=app["blurb"],
-            kb=f"{app['bytes'] // 1024:,}",
-            timing=TIMING.format(ms=app["ms"]) if measured else "",
-        )
-        for app in built
-    )
+    """Write the facts the gallery page renders: the apps, when and how they were measured, and
+    the shared denominator. One document, two copies — beside the apps (served as
+    /gallery/gallery.json) and where the Astro build reads it."""
     when = time.strftime("%Y-%m-%d")
-    how = "Chromium, cold cache, first paint of the app's own content" if measured else "sizes only"
     shared = shared_bytes(out, built) // 1024
-    footer = (
-        f"Measured {when} · {how} · the interpreter, the loader and the framework are "
-        f"{shared:,} KB of every figure and are byte-identical, so a browser downloads them "
-        "once for all of them."
-    )
-    (out / "index.html").write_text(PAGE.format(cards=cards, footer=footer))
-    (out / "gallery.json").write_text(json.dumps(built, indent=2))
+    apps = [{k: v for k, v in app.items() if k != "ready"} for app in built]
+    document = json.dumps({"apps": apps, "measured": measured, "when": when, "shared_kb": shared}, indent=2)
+    (out / "gallery.json").write_text(document)
+    SITE_DATA.parent.mkdir(parents=True, exist_ok=True)
+    SITE_DATA.write_text(document)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="mk gallery", description=__doc__)
     parser.add_argument("--out", default=str(ROOT / "www" / "gallery"))
     parser.add_argument("--quick", action="store_true", help="skip the browser; sizes only")
-    parser.add_argument("--css", action="store_true", help="recompile tools/gallery.css with Tailwind")
     args = parser.parse_args(argv)
 
     out = Path(args.out)
@@ -233,7 +166,6 @@ def main(argv=None):
     if not args.quick:
         built, measured = measure(built, out)
     write_index(built, out, measured)
-    stylesheet(out, force=args.css)
     total = sum(app["bytes"] for app in built)
     print(f"{out}: {len(built)} apps, {total:,} bytes")
     for app in built:

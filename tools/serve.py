@@ -26,8 +26,8 @@ class Handler(LiveHandler):
     routes = {
         "/examples/": ROOT / "examples",
         "/frontage/": ROOT / "frontage",
-        "/playground/": ROOT / "web" / "playground",
-        "/web/": ROOT / "web",  # `runner.html`, which the browser suite embeds as a frame
+        "/playground/": ROOT / "web" / "public" / "playground",
+        "/web/": ROOT / "web" / "public",  # `runner.html`, which the browser suite embeds as a frame
         "/build/": ROOT / "build",  # `python -m frontage prerender` output, for the browser tests
         "/profile/": ROOT / "tools" / "profile",  # the rows profile page (tools/profile_rows.py)
     }
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
-    watch = [ROOT / "examples", ROOT / "frontage", ROOT / "web" / "playground"]
+    watch = [ROOT / "examples", ROOT / "frontage", ROOT / "web" / "public" / "playground"]
     with make_server(ROOT, port=args.port, watch=watch, handler=Handler, quiet=args.quiet) as httpd:
         if not args.quiet:
             print(f"serving on http://127.0.0.1:{args.port}/examples/")

@@ -1,0 +1,31 @@
+---
+// Every page of frontage.optersoft.com: the chrome's Layout + Shell with this
+// site's brand and links. The footer is the chrome's default — the company.
+import Layout from "@optersoft/astro/Layout.astro";
+import Shell from "@optersoft/astro/Shell.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  canonical?: string;
+  noindex?: boolean;
+}
+const { title, description, canonical, noindex } = Astro.props;
+
+const header = {
+  brand: { href: "/", name: "Frontage" },
+  links: [
+    { href: "https://academy.optersoft.com/python/frontage", label: "Documentation" },
+    { href: "/gallery/", label: "Gallery" },
+    { href: "/playground/", label: "Playground" },
+    { href: "https://pypi.org/project/frontage/", label: "PyPI" },
+    { href: "https://github.com/optersoft/frontage", label: "Source" },
+  ],
+};
+---
+
+<Layout title={title} description={description} canonical={canonical} noindex={noindex} site="Frontage">
+  <Shell header={header}>
+    <slot />
+  </Shell>
+</Layout>

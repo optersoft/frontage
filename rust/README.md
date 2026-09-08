@@ -35,7 +35,8 @@ FPY_PATH=..:shim target/native/fpy --stress shim/runtests.py tests.test_reactive
 ```
 
 and the same on the wasm, compiled module by module with `fpy --compile` and passed to
-`node web/run.mjs main.fbc frontage=…fbc frontage.reactive=…fbc …`.
+`node web/run.mjs main.fbc frontage=…fbc frontage.reactive=…fbc …` (the vendored
+`frontage/_runtime/frontage.wasm`; `FRONTAGE_WASM=path` for a fresh build).
 
 An example app in a browser, with the real command (the runtime is the default):
 

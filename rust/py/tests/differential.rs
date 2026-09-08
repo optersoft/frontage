@@ -40,9 +40,9 @@ fn cases_match_cpython() {
         let (actual, err, code) = if web {
             // A case for the browser's half (`re` over RegExp): compiled to .fbc, run on the
             // wasm under node. Skipped when the wasm is not built or node is absent.
-            let wasm = Path::new(env!("CARGO_MANIFEST_DIR")).join("../web/frontage.wasm");
+            let wasm = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../frontage/_runtime/frontage.wasm");
             if !wasm.exists() {
-                eprintln!("skipping {name}: build web/frontage.wasm first");
+                eprintln!("skipping {name}: run `mk runtime.build` first");
                 continue;
             }
             let fbc = std::env::temp_dir().join(format!("{name}.fbc"));

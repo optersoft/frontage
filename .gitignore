@@ -18,3 +18,7 @@ test-results/
 /build/
 node_modules/
 *.vsix
+# web/'s Astro build and the gallery facts `mk gallery` writes for its page
+/web/dist/
+/web/.astro/
+/web/src/data/
