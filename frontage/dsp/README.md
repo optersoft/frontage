@@ -7,10 +7,10 @@ Python API over it.
 ```py
 from frontage import dsp
 
-dsp.load(samples)                                  # the signal crosses once
+dsp.load(samples)  # the signal crosses once
 frequency, power = dsp.psd(1024, 512, sample_rate=4096)
-dsp.bandpass(4096, low=20, high=300)               # in place; returns what it filtered
-rows, bins = dsp.draw(canvas, 256, 64)             # a spectrogram, straight onto a canvas
+dsp.bandpass(4096, low=20, high=300)  # in place; returns what it filtered
+rows, bins = dsp.draw(canvas, 256, 64)  # a spectrogram, straight onto a canvas
 ```
 
 ## The shape, and why
