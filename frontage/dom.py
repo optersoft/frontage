@@ -9,6 +9,21 @@ proxy per event type instead of one per handler.
 from .renderer import Renderer
 from .runtime import create_proxy, document, in_browser, to_js, warn, window
 
+
+class _NoDom:
+    """Stands in for `_dom` where the runtime has no op stream (MicroPython, Pyodide)."""
+
+    available = False
+
+    def __getattr__(self, name):
+        raise AttributeError(f"_dom.{name}: this runtime has no DOM op stream")
+
+
+try:  # the runtime's DOM op stream (rust/vm/src/dom.rs)
+    import _dom
+except ImportError:
+    _dom = _NoDom()
+
 __all__ = ["DomRenderer", "Hydration", "is_node", "resolve"]
 
 # Events that bubble, so one listener on the document can serve every element.
@@ -215,7 +230,7 @@ class Hydration:
             node = following
         parent.removeChild(start)
 
-    def find_holes(self, root):
+    def find_holes(self, root, n_elements=0, n_markers=0):
         """`find_holes` for an adopted element: only this template's own `data-fr-h` elements
         and markers. Everything between a `[` fence and its `h` is a hole's content, whose
         elements and markers belong to the templates built inside it, so it is skipped."""
@@ -389,7 +404,7 @@ class DomRenderer(Renderer):
             DomRenderer._templates[html] = template
         return template.content.firstChild.cloneNode(True)
 
-    def find_holes(self, root):
+    def find_holes(self, root, n_elements=0, n_markers=0):
         elements = []
         if root.hasAttribute("data-fr-h"):
             elements.append(root)
@@ -489,3 +504,169 @@ def _set_current_target(ev, node):
         window.Object.defineProperty(ev, "currentTarget", to_js({"configurable": True, "value": node}))
     except Exception:
         pass
+
+
+class StreamRenderer(DomRenderer):
+    """`DomRenderer` over the runtime's op stream: a node is an integer id in the glue's array,
+    every operation is appended to a buffer the glue executes in one crossing (at the end of
+    a batch of effects, before a question about the document, when control returns to
+    JavaScript), and delegated events are walked in JavaScript, which calls one Python
+    dispatcher with the id. A negative id `-m` stands for the parent of node `m`, so a hole
+    never asks for its parent. Nodes that come from JavaScript (the mount target, adopted
+    nodes while hydrating) are registered on first sight and used by id from then on."""
+
+    _template_ids = {}
+
+    def __init__(self):
+        super().__init__()
+        self._dispatcher = None
+
+    @staticmethod
+    def _id(node):
+        return node if type(node) is int else _dom.id_of(node)
+
+    def real_node(self, node):
+        return _dom.node(node) if type(node) is int else node
+
+    # -- hydration keeps the proxy path for what it walks; the nodes it hands back are ids ----
+
+    def hydratable(self, node):
+        return super().hydratable(self.real_node(node))
+
+    def begin_hydration(self, node):
+        return super().begin_hydration(self.real_node(node))
+
+    def previous_sibling(self, node):
+        sibling = _dom.query(3, self._id(node))
+        return sibling or None
+
+    # -- nodes --------------------------------------------------------------------------------
+
+    def create_element(self, tag):
+        return _dom.create_element(tag)
+
+    def create_text(self, text):
+        return _dom.create_text(str(text))
+
+    def create_marker(self, text="h"):
+        return _dom.create_comment(text)
+
+    def replace_text(self, node, text):
+        _dom.set_text(self._id(node), str(text))
+
+    def set_property(self, node, name, value):
+        node = self._id(node)
+        if name in PROPERTIES:
+            if value is True or value is False:
+                _dom.set_prop_bool(node, name, value)
+            else:
+                _dom.set_prop(node, name, "" if value is None else str(value))
+        elif name in BOOLEAN_ATTRS or value is True or value is False:
+            if value:
+                _dom.set_attr(node, name, "")
+            else:
+                _dom.remove_attr(node, name)
+        elif value is None:
+            _dom.remove_attr(node, name)
+        else:
+            _dom.set_attr(node, name, str(value))
+
+    def insert_node(self, parent, node, anchor=None):
+        if anchor is None:
+            _dom.append(self._id(parent), self._id(node))
+        else:
+            _dom.insert(self._id(parent), self._id(node), self._id(anchor))
+
+    def remove_node(self, parent, node):
+        _dom.remove(self._id(parent), self._id(node))
+
+    def is_text(self, node):
+        return _dom.query(5, self._id(node)) == 3
+
+    def parent(self, node):
+        node = self._id(node)
+        if node > 0:
+            return -node  # "the parent of node": answered without asking
+        parent = _dom.query(0, node)
+        return parent or None
+
+    def is_connected(self, node):
+        return bool(_dom.query(6, self._id(node)))
+
+    def first_child(self, node):
+        child = _dom.query(1, self._id(node))
+        return child or None
+
+    def next_sibling(self, node):
+        sibling = _dom.query(2, self._id(node))
+        return sibling or None
+
+    def mark_root(self, node):
+        pass
+
+    def toggle_class(self, node, name, on):
+        _dom.toggle_class(self._id(node), name, bool(on))
+
+    def set_style(self, node, prop, value):
+        if value is None or value is False:
+            _dom.remove_style(self._id(node), prop)
+        else:
+            _dom.set_style(self._id(node), prop, str(value))
+
+    def replace_node(self, parent, new, old):
+        _dom.replace(self._id(parent), self._id(new), self._id(old))
+
+    def dispatch_event(self, node, name, detail=None):
+        super().dispatch_event(self.real_node(node), name, detail)
+
+    # -- templates ----------------------------------------------------------------------------
+
+    def clone_template(self, html):
+        tid = StreamRenderer._template_ids.get(html)
+        if tid is None:
+            tid = _dom.define_template(html)
+            StreamRenderer._template_ids[html] = tid
+        return _dom.clone(tid)
+
+    def find_holes(self, root, n_elements=0, n_markers=0):
+        if not (n_elements or n_markers):
+            return [], []
+        first = _dom.find_holes(self._id(root), n_elements, n_markers, self.hydration_markers)
+        elements = [first + i for i in range(n_elements)]
+        markers = [first + n_elements + i for i in range(n_markers)]
+        return elements, markers
+
+    # -- events -------------------------------------------------------------------------------
+
+    def add_listener(self, node, event, handler, capture=False):
+        if event in DELEGATED and not capture:
+            return self._delegate(node, event, handler)
+        return super().add_listener(self.real_node(node), event, handler, capture)
+
+    def _delegate(self, node, event, handler):
+        node = self._id(node)
+        if self._dispatcher is None:
+            self._dispatcher = create_proxy(self._dispatch)
+            _dom.set_dispatcher(self._dispatcher)
+        self._handlers[node, event] = handler
+        _dom.listen(node, event)
+
+        def remove():
+            if self._handlers.pop((node, event), None) is not None:
+                _dom.unlisten(node, event)
+
+        return remove
+
+    def _dispatch(self, node, event, ev):
+        handler = self._handlers.get((node, event))
+        if handler is not None:
+            handler(ev)
+
+    def teardown(self):
+        super().teardown()
+        self._handlers.clear()
+        _dom.teardown()
+
+
+if _dom.available:
+    DomRenderer = StreamRenderer  # ty: ignore[invalid-assignment]

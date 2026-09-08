@@ -20,6 +20,10 @@ extern "C" {
     fn js_make_proxy(pin: u32) -> u32;
     fn js_release(h: u32);
     fn js_same(a: u32, b: u32) -> i32;
+    fn dom_flush(ptr: *const u8, len: usize);
+    fn dom_query(kind: u32, id: i32) -> f64;
+    fn dom_node(id: i32) -> u32;
+    fn dom_id_of(h: u32) -> u32;
 }
 
 /// A slot the glue filled; an error slot holds the thrown value.
@@ -114,6 +118,18 @@ fn h_release(handles: &[u32]) {
 fn h_same(a: u32, b: u32) -> bool {
     unsafe { js_same(a, b) != 0 }
 }
+fn h_dom_flush(ops: &[u8]) {
+    unsafe { dom_flush(ops.as_ptr(), ops.len()) }
+}
+fn h_dom_query(kind: u32, id: i32) -> i64 {
+    unsafe { dom_query(kind, id) as i64 }
+}
+fn h_dom_node(id: i32) -> u32 {
+    unsafe { dom_node(id) }
+}
+fn h_dom_id_of(h: u32) -> u32 {
+    unsafe { dom_id_of(h) }
+}
 
 pub static HOOKS: JsHooks = JsHooks {
     get: h_get,
@@ -129,6 +145,10 @@ pub static HOOKS: JsHooks = JsHooks {
     make_proxy: h_make_proxy,
     release: h_release,
     same: h_same,
+    dom_flush: h_dom_flush,
+    dom_query: h_dom_query,
+    dom_node: h_dom_node,
+    dom_id_of: h_dom_id_of,
 };
 
 // -- the `js` module: `js.document` is `globalThis.document` ----------------------------------

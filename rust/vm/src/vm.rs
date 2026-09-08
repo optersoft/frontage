@@ -222,6 +222,8 @@ pub struct Vm {
     pub prof: Option<Box<Profile>>,
     /// The reactive graph's module state (`core.rs`).
     pub core: crate::core::Core,
+    /// The DOM op stream (`dom.rs`).
+    pub dom: crate::dom::DomStream,
     /// Some class overrides `__getattribute__`: instance lookups must check for it.
     pub getattribute_overridden: bool,
 }
@@ -254,6 +256,7 @@ impl Vm {
             class_epoch: 1,
             prof: None,
             core: crate::core::Core::new(),
+            dom: crate::dom::DomStream::new(),
             getattribute_overridden: false,
         };
         Names::fill(&mut vm);

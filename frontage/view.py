@@ -433,7 +433,7 @@ def _build_template(element, renderer, cache=None):
     if root is None:
         root = renderer.clone_template(template.html)
         if element_holes or child_holes:
-            elements, markers = renderer.find_holes(root)
+            elements, markers = renderer.find_holes(root, len(element_holes), len(child_holes))
     if element_holes or child_holes:
         for i in range(len(element_holes)):
             node = elements[i]
@@ -687,7 +687,7 @@ def _apply_attrs(node, attrs, renderer):
 def _apply_attr(node, raw_name, value, renderer):
     kind, name = _classify(raw_name)
     if kind == "ref":
-        value.current = node
+        value.current = renderer.real_node(node)
     elif kind == "event":
         _listen(node, name, value, renderer)
     elif kind == "capture":
@@ -826,7 +826,7 @@ def _bind(node, what, signal, renderer):
         # A radio: checked when the signal equals this input's value.
         RenderEffect(
             signal,
-            lambda v, prev: renderer.set_property(node, "checked", str(v) == str(_value_of(node))),
+            lambda v, prev: renderer.set_property(node, "checked", str(v) == str(_value_of(renderer.real_node(node)))),
             target=on_screen,
         )
         _listen(node, "change", lambda ev: signal.set(_value_of(ev.target)), renderer)

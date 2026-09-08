@@ -61,7 +61,9 @@ class Graph:
 
         for path in sorted(self.app.rglob("*.py")):
             relative = path.relative_to(self.app)
-            if any(part in ("_frontage", "__pycache__", "dist", "www") or part.startswith(".") for part in relative.parts):
+            if any(
+                part in ("_frontage", "__pycache__", "dist", "www") or part.startswith(".") for part in relative.parts
+            ):
                 continue
             name = _dotted(relative)
             self.modules[name] = path

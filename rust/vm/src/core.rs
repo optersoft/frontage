@@ -446,7 +446,11 @@ fn flush(vm: &mut Vm) -> PyResult<()> {
     vm.core.render_queue.clear();
     vm.core.effect_queue.clear();
     vm.core.flushing = false;
-    r
+    r?;
+    if vm.dom_pending() {
+        vm.dom_flush()?;
+    }
+    Ok(())
 }
 
 fn queue(vm: &mut Vm, effect: Value) {

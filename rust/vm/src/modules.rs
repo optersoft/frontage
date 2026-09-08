@@ -11,6 +11,7 @@ use crate::vm::{PyResult, Vm};
 pub fn install(vm: &mut Vm) {
     vm.builtin_modules.insert("sys", mod_sys);
     vm.builtin_modules.insert("_core", crate::core::install_module);
+    vm.builtin_modules.insert("_dom", crate::dom::install_module);
     vm.builtin_modules.insert("math", mod_math);
     vm.builtin_modules.insert("time", mod_time);
     vm.builtin_modules.insert("json", mod_json);

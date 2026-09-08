@@ -29,7 +29,7 @@ def __getattr__(name):
         try:
             __import__("frontage." + name)
         except ImportError:
-            raise AttributeError("module 'frontage' has no attribute '%s'" % name)
+            raise AttributeError("module 'frontage' has no attribute '%s'" % name) from None
         return sys.modules["frontage." + name]
     qualified = "frontage." + module
     __import__(qualified)

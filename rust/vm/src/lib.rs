@@ -5,6 +5,7 @@ pub mod builtins;
 pub mod code;
 pub mod core;
 pub mod dict;
+pub mod dom;
 pub mod fbc;
 pub mod format;
 pub mod heap;

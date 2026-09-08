@@ -131,7 +131,9 @@ pub extern "C" fn run(ptr: *mut u8, len: usize) -> u32 {
         }
     };
     let filename = code.filename.to_string();
-    match vm.run_main(code, &filename) {
+    let r = vm.run_main(code, &filename);
+    let _ = vm.dom_flush();
+    match r {
         Ok(_) => 0,
         Err(exc) => {
             // `SystemExit` is a request, not an error: 2 + its code, nothing printed.
@@ -165,7 +167,9 @@ pub extern "C" fn loop_turn() -> f64 {
         let l = vm.call(f, &[], &[])?;
         let ro = vm.intern("run_once");
         let f = vm.get_attr(l, ro)?;
-        vm.call(f, &[], &[])
+        let v = vm.call(f, &[], &[])?;
+        vm.dom_flush()?;
+        Ok(v)
     })();
     match r {
         Ok(v) => {
@@ -189,7 +193,11 @@ pub extern "C" fn loop_turn() -> f64 {
 pub extern "C" fn py_call(pin: u32, argv: *const Slot, argc: usize, out: *mut Slot) -> u32 {
     let vm = vm();
     let args: Vec<Slot> = unsafe { core::slice::from_raw_parts(argv, argc) }.to_vec();
-    match js::call_pinned(vm, pin, &args) {
+    let r = js::call_pinned(vm, pin, &args).and_then(|slot| {
+        vm.dom_flush()?;
+        Ok(slot)
+    });
+    match r {
         Ok(slot) => {
             unsafe { *out = slot };
             0

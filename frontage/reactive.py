@@ -1003,16 +1003,16 @@ if _core is not None:
     # specification and CPython's implementation; here they are the native ones, with the
     # async half of Memo attached and the module state reached through accessors.
     _UNSET = _core.UNSET
-    Owner = _core.Owner
-    Signal = _core.Signal
-    Memo = _core.Memo
-    Effect = _core.Effect
-    RenderEffect = _core.RenderEffect
+    Owner = _core.Owner  # ty: ignore[invalid-assignment]
+    Signal = _core.Signal  # ty: ignore[invalid-assignment]
+    Memo = _core.Memo  # ty: ignore[invalid-assignment]
+    Effect = _core.Effect  # ty: ignore[invalid-assignment]
+    RenderEffect = _core.RenderEffect  # ty: ignore[invalid-assignment]
     Memo._start = _memo_start
     Memo._settle = _memo_settle
     Memo._release = _memo_release
     Memo._read_async = _memo_read_async
-    _current_owner = _core.get_owner
+    _current_owner = _core.get_owner  # ty: ignore[invalid-assignment]
     get_owner = _core.get_owner
     run_with_owner = _core.run_with_owner
     on_cleanup = _core.on_cleanup

@@ -83,6 +83,14 @@ pub struct JsHooks {
     pub release: fn(&[u32]),
     /// `a === b`
     pub same: fn(u32, u32) -> bool,
+    /// The DOM op stream (`dom.rs`): execute a buffer of operations.
+    pub dom_flush: fn(&[u8]),
+    /// A question about a node: `(kind, id)` → an id, a node type, or a flag (`dom.rs`).
+    pub dom_query: fn(u32, i32) -> i64,
+    /// The JavaScript node for an id, as a handle (`UNDEFINED_HANDLE` if none).
+    pub dom_node: fn(i32) -> u32,
+    /// The id of a node that came from JavaScript, registered on first sight.
+    pub dom_id_of: fn(u32) -> u32,
 }
 
 impl Vm {

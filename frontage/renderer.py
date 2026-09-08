@@ -100,7 +100,12 @@ class Renderer:
         the parse happens once per distinct string."""
         raise NotImplementedError
 
-    def find_holes(self, root):
+    def real_node(self, node):
+        """The node itself, for a renderer whose nodes are the real thing; a streaming
+        renderer answers the DOM node behind an id (a `ref`, a direct listener)."""
+        return node
+
+    def find_holes(self, root, n_elements=0, n_markers=0):
         """`(elements, markers)`: the elements carrying `data-fr-h`, ordered by that index,
         and the comment markers `<!--h-->` in document order, `root` included."""
         raise NotImplementedError
@@ -337,7 +342,7 @@ class HtmlRenderer(Renderer):
             HtmlRenderer._templates[html] = tree
         return _copy(tree)
 
-    def find_holes(self, root):
+    def find_holes(self, root, n_elements=0, n_markers=0):
         elements = {}
         markers = []
 
@@ -484,7 +489,7 @@ class RecordingRenderer(Renderer):
         self._record("clone_template")
         return self.inner.clone_template(html)
 
-    def find_holes(self, root):
+    def find_holes(self, root, n_elements=0, n_markers=0):
         self._record("find_holes")
         return self.inner.find_holes(root)
 

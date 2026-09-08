@@ -484,11 +484,21 @@ decides, all in 0.10.0:
       from here. Done the same day: `build_app.py` packs the import closure (`cli/graph.py`),
       `re` over `RegExp` (`rust/vm/src/lib/re.py`, a web case in the differential suite).
 - [ ] **The native core in the runtime** (`RUNTIME.md` §3.8, `FASTER.md` step 2 landing
-      here): the reactive graph (Signal/Memo/Effect/Owner, tracking, marking, the
-      topological run, batch) and the view's hot paths (`_children`, `_build_nodes`, holes,
-      `For`) as VM types, `reactive.py` keeping its API and its Python implementation for
-      CPython (tests, prerender). Gate: `profile_rows` create ≤ 35 ms (2× MicroPython's
-      71), the 157 tests unchanged.
+      here). Gate: `profile_rows` create ≤ 35 ms (2× MicroPython's 71), the 157 tests
+      unchanged. Measured in Chromium, create of 1,000 rows with DOM templates, each step
+      committed the same day (2026-09-08):
+      - [x] the reactive graph as VM types (`rust/vm/src/core.rs`: Signal/Memo/Effect/Owner,
+            tracking with O(1) unsubscribe, marking, the flush, batch; `reactive.py` keeps the
+            Python implementation for CPython and switches to `_core`): **74.9 → 58.8 ms**.
+      - [x] the DOM op stream (`rust/vm/src/dom.rs`, `glue.js`, `dom.py`'s `StreamRenderer`:
+            nodes are integers, operations are bytes executed in one crossing, delegated
+            events walked in JavaScript): **58.8 → 46.9 ms**; the counter boots in 29 ms
+            (62 before, MicroPython 52).
+      - [ ] the view's template path in Rust (`Template.extract`, `_build_template`, the
+            hole effects with the insert rules, `_apply_attr`, `_listen`; the Store's reads):
+            what the profiler now shows as the remaining 35 ms of Python, with the DOM side
+            under 10. The Python `view.py` stays for CPython, hydration and the HtmlRenderer;
+            the native path is taken for the streaming renderer without hydration.
 - [ ] Runtime gaps before parity with the browser suite: `match`, metaclasses and class
       keywords, generator finalisation on collection, `__slots__`, a size test in CI at 179 KB
       brotli, `frontage build --runtime frontage` folding `rust/web/build_app.py` into

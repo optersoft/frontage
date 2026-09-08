@@ -151,6 +151,124 @@ export async function load(source, options = {}) {
     flush(2);
   };
 
+  // -- the DOM op stream (vm/src/dom.rs): nodes by id, operations in one crossing ------------
+  const nodes = [null];
+  const templates = [];
+  const idOf = new WeakMap();
+  const listeners = new Map(); // id -> Set(event)
+  const delegated = new Map(); // event -> the document listener
+  let dispatcher = null;
+  let jsNext = 1 << 30; // ids for nodes JavaScript registers on its own
+  const doc = typeof document !== "undefined" ? document : null;
+  function register(node) {
+    if (node == null) return 0;
+    let id = idOf.get(node);
+    if (id === undefined) {
+      id = jsNext++;
+      nodes[id] = node;
+      idOf.set(node, id);
+    }
+    return id;
+  }
+  function putNode(id, node) {
+    nodes[id] = node;
+    idOf.set(node, id);
+    return node;
+  }
+  // A negative id is "the parent of node -id".
+  const node = (id) => (id < 0 ? nodes[-id].parentNode : nodes[id]);
+  function dispatchTo(event) {
+    return (ev) => {
+      let n = ev.target;
+      while (n && n.nodeType === 1) {
+        const id = idOf.get(n);
+        if (id !== undefined) {
+          const set = listeners.get(id);
+          if (set && set.has(event) && dispatcher && !n.disabled) {
+            try { Object.defineProperty(ev, "currentTarget", { configurable: true, value: n }); } catch (e) { /* read-only in some engines */ }
+            dispatcher(id, event, ev);
+            if (ev.cancelBubble) return;
+          }
+        }
+        n = n.parentNode;
+      }
+    };
+  }
+  function execOps(ptr, len) {
+    const v = view();
+    const end = ptr + len;
+    let i = ptr;
+    const u8 = () => v.getUint8(i++);
+    const u32 = () => { const x = v.getUint32(i, true); i += 4; return x; };
+    const i32 = () => { const x = v.getInt32(i, true); i += 4; return x; };
+    const str = () => { const n = u32(); const s = decoder.decode(bytes(i, n)); i += n; return s; };
+    while (i < end) {
+      const op = u8();
+      switch (op) {
+        case 0: { const tid = u32(); const html = str(); const t = doc.createElement("template"); t.innerHTML = html; templates[tid] = t; break; }
+        case 1: { const id = u32(); const tid = u32(); putNode(id, templates[tid].content.firstChild.cloneNode(true)); break; }
+        case 2: {
+          const root = node(i32()); const first = u32(); const nEl = u32(); const nMk = u32(); const keep = u8();
+          if (nEl) {
+            const seen = (el) => { const n = +el.getAttribute("data-fr-h"); putNode(first + n, el); if (!keep) el.removeAttribute("data-fr-h"); };
+            if (root.hasAttribute("data-fr-h")) seen(root);
+            const found = root.querySelectorAll("[data-fr-h]");
+            for (let k = 0; k < found.length; k++) seen(found[k]);
+          }
+          if (nMk) {
+            const walker = doc.createTreeWalker(root, 128);
+            let k = 0;
+            let c;
+            while ((c = walker.nextNode()) && k < nMk) if (c.data === "h") putNode(first + nEl + k++, c);
+          }
+          break;
+        }
+        case 3: { const id = u32(); putNode(id, doc.createElement(str())); break; }
+        case 4: { const id = u32(); putNode(id, doc.createTextNode(str())); break; }
+        case 5: { const id = u32(); putNode(id, doc.createComment(str())); break; }
+        case 6: { const n = node(i32()); n.data = str(); break; }
+        case 7: { const n = node(i32()); const name = str(); n.setAttribute(name, str()); break; }
+        case 8: { const n = node(i32()); n.removeAttribute(str()); break; }
+        case 9: { const n = node(i32()); const name = str(); n[name] = str(); break; }
+        case 10: { const n = node(i32()); const name = str(); n[name] = u8() !== 0; break; }
+        case 11: { const n = node(i32()); const name = str(); n.classList.toggle(name, u8() !== 0); break; }
+        case 12: { const n = node(i32()); const prop = str(); n.style.setProperty(prop, str()); break; }
+        case 13: { const n = node(i32()); n.style.removeProperty(str()); break; }
+        case 14: { const p = node(i32()); p.appendChild(node(i32())); break; }
+        case 15: { const pid = i32(); const n = node(i32()); const a = node(i32()); (pid < 0 ? a.parentNode : nodes[pid]).insertBefore(n, a); break; }
+        case 16: { const pid = i32(); const n = node(i32()); (pid < 0 ? n.parentNode : nodes[pid]).removeChild(n); break; }
+        case 17: { const pid = i32(); const n = node(i32()); const old = node(i32()); (pid < 0 ? old.parentNode : nodes[pid]).replaceChild(n, old); break; }
+        case 18: {
+          const id = i32(); const event = str();
+          let set = listeners.get(id);
+          if (!set) listeners.set(id, (set = new Set()));
+          set.add(event);
+          if (!delegated.has(event)) { const f = dispatchTo(event); delegated.set(event, f); doc.addEventListener(event, f); }
+          break;
+        }
+        case 19: { const id = i32(); const event = str(); const set = listeners.get(id); if (set) { set.delete(event); if (!set.size) listeners.delete(id); } break; }
+        case 20: { const id = i32(); const n = nodes[id]; if (n) { idOf.delete(n); listeners.delete(id); } nodes[id] = undefined; break; }
+        case 21: { dispatcher = handles[u32()]; break; }
+        case 22: { for (const [event, f] of delegated) doc.removeEventListener(event, f); delegated.clear(); listeners.clear(); break; }
+        default: throw new Error("frontage: bad DOM op " + op);
+      }
+    }
+  }
+  function domQuery(kind, id) {
+    const n = node(id);
+    if (!n) return kind === 5 ? 0 : kind === 6 ? 0 : 0;
+    switch (kind) {
+      case 0: return register(n.parentNode);
+      case 1: return register(n.firstChild);
+      case 2: return register(n.nextSibling);
+      case 3: return register(n.previousSibling);
+      case 4: return register(n.lastChild);
+      case 5: return n.nodeType;
+      case 6: return n.isConnected ? 1 : 0;
+      default: return 0;
+    }
+  }
+
   const imports = {
     host: {
       write(fd, ptr, len) {
@@ -220,6 +338,10 @@ export async function load(source, options = {}) {
         }
       },
       js_same(a, b) { return handles[a] === handles[b] ? 1 : 0; },
+      dom_flush(ptr, len) { execOps(ptr, len); },
+      dom_query(kind, id) { return domQuery(kind, id); },
+      dom_node(id) { const n = node(id); return n == null ? UNDEF_HANDLE : hold(n); },
+      dom_id_of(h) { return register(handles[h]); },
     },
   };
   const result =
