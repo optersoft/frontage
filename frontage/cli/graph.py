@@ -34,6 +34,29 @@ FRAMEWORK = "frontage"
 _INCLUDE = re.compile(r"^[ \t]*#[ \t]*frontage:[ \t]*include[ \t]+(.+?)[ \t]*$", re.M)
 
 
+def _without_templates(source):
+    """`source` with every `t"…"` literal replaced by an empty triple-quoted string of the
+    same height, or None when there is none to replace.
+
+    The lexer is the language server's, which reads t-strings as text rather than through
+    `ast` — that is the whole point here, since the interpreter doing the reading may be the
+    one that cannot parse them.
+    """
+    from ..lsp.scanner import scan_templates
+
+    found = scan_templates(source)
+    if not found:
+        return None
+    out = []
+    at = 0
+    for template in found:
+        out.append(source[at : template.start])
+        out.append('"""' + "\n" * source.count("\n", template.start, template.end) + '"""')
+        at = template.end
+    out.append(source[at:])
+    return "".join(out)
+
+
 def _dotted(relative):
     """`pages/map.py` → `pages.map`; `pages/__init__.py` → `pages`."""
     parts = list(relative.with_suffix("").parts)
@@ -91,9 +114,19 @@ class Graph:
         if name not in self._parsed:
             source = self.modules[name].read_text()
             try:
-                self._parsed[name] = (ast.parse(source, filename=str(self.modules[name])), source)
+                tree = ast.parse(source, filename=str(self.modules[name]))
             except SyntaxError as exc:
-                raise SystemExit(f"error: {self.modules[name]}: {exc.msg} (line {exc.lineno})") from exc
+                # Template strings are Python 3.14, and a build host may be older. An import
+                # cannot live inside one, so blank them and read the file that is left: the
+                # walk sees every import, and a real syntax error still reports its line.
+                blanked = _without_templates(source)
+                if blanked is None:
+                    raise SystemExit(f"error: {self.modules[name]}: {exc.msg} (line {exc.lineno})") from exc
+                try:
+                    tree = ast.parse(blanked, filename=str(self.modules[name]))
+                except SyntaxError:
+                    raise SystemExit(f"error: {self.modules[name]}: {exc.msg} (line {exc.lineno})") from exc
+            self._parsed[name] = (tree, source)
         return self._parsed[name]
 
     def _package_of(self, name):

@@ -99,6 +99,24 @@ def test_build_writes_a_page_that_boots_from_wasm(tmp_path):
     assert not (out / "pyscript.json").exists()
 
 
+def test_a_template_string_does_not_stop_the_import_walk(tmp_path):
+    """The walk reads the app with `ast`, and a build host may be older than 3.14, where a
+    t-string is a syntax error. An import cannot live inside one, so they are blanked."""
+    from frontage.cli.graph import Graph, _without_templates
+
+    source = 'import helpers\nfrom frontage import html, mount\n\n\ndef view():\n    return html(t"""\n        <p>{helpers.NAME}</p>\n    """)\n'
+    blanked = _without_templates(source)
+    assert blanked is not None
+    assert blanked.count("\n") == source.count("\n"), "line numbers must survive"
+    assert "import helpers" in blanked and "<p>" not in blanked
+    compile(blanked, "app.py", "exec")  # parses on any interpreter this package supports
+
+    app = write_app(tmp_path, app=source, helpers='NAME = "Ada"\n')
+    graph = Graph(app)
+    assert "helpers" in graph.deps("app") and "frontage" in graph.deps("app")
+    assert _without_templates("import helpers\n") is None
+
+
 def test_a_module_the_entry_does_not_import_is_not_shipped(tmp_path):
     app = write_app(tmp_path, counter=APP, helpers="X = 1\n")
     out = build.build(app, tmp_path / "out", quiet=True)
