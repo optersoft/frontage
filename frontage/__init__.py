@@ -5,116 +5,34 @@ insert rules, templates (`h` and `html(t"…")`), control flow and boundaries, R
 Action, the router, widgets, State, delegated events, and the DOM renderer.
 """
 
-from .aio import Action, Resource, interval, poll
-from .errors import FrontageError, NotReady, RenderError, format_exception
-from .flow import Dynamic, Errored, For, Loading, Match, Portal, Show, Switch
-from .reactive import (
-    Context,
-    Effect,
-    Memo,
-    Optimistic,
-    Owner,
-    RenderEffect,
-    Signal,
-    Transition,
-    batch,
-    get_owner,
-    is_pending,
-    on,
-    on_cleanup,
-    on_mount,
-    provide,
-    run_with_owner,
-    selector,
-    spawn,
-    transition,
-    tree,
-    untrack,
-    use,
-    use_transition,
-)
-from .renderer import HtmlRenderer, RecordingRenderer, Renderer
-from .router import A, ActionForm, Navigate, Redirect, Route, Router, use_location, use_navigate, use_params, use_query
-from .runtime import in_browser, platform
-from .state import State, computed, field
-from .store import Store, reconcile, snapshot
-from .template import html
-from .version import __version__
-from .view import Element, Mounted, NodeRef, Text, build, component, emit, h, mount, render_to_string, text, unique_id
+import sys
 
-__all__ = [
-    "tree",
-    "unique_id",
-    "A",
-    "Action",
-    "ActionForm",
-    "Context",
-    "Dynamic",
-    "Effect",
-    "Element",
-    "Errored",
-    "For",
-    "FrontageError",
-    "HtmlRenderer",
-    "Loading",
-    "Match",
-    "Memo",
-    "Mounted",
-    "Navigate",
-    "NodeRef",
-    "NotReady",
-    "Owner",
-    "Portal",
-    "RecordingRenderer",
-    "Redirect",
-    "RenderEffect",
-    "RenderError",
-    "Renderer",
-    "Resource",
-    "Route",
-    "Router",
-    "Show",
-    "Signal",
-    "State",
-    "Store",
-    "Switch",
-    "Text",
-    "Transition",
-    "Optimistic",
-    "is_pending",
-    "transition",
-    "use_transition",
-    "__version__",
-    "batch",
-    "build",
-    "component",
-    "computed",
-    "emit",
-    "field",
-    "format_exception",
-    "get_owner",
-    "h",
-    "html",
-    "in_browser",
-    "interval",
-    "mount",
-    "on",
-    "on_cleanup",
-    "on_mount",
-    "platform",
-    "poll",
-    "provide",
-    "reconcile",
-    "render_to_string",
-    "run_with_owner",
-    "selector",
-    "snapshot",
-    "spawn",
-    "text",
-    "untrack",
-    "use",
-    "use_location",
-    "use_navigate",
-    "use_params",
-    "use_query",
-]
+from ._exports import EXPORTS
+from .version import __version__
+
+__all__ = sorted(EXPORTS) + ["__version__"]
+
+
+def __getattr__(name):
+    """`from frontage import Signal` loads `frontage.reactive` and nothing else.
+
+    The package used to import every module up front, so a counter shipped the router, the
+    store and the template parser. Resolving names on first use (PEP 562, which MicroPython
+    supports) is what lets `frontage build` pack only the modules a page reaches — the table
+    in `_exports.py` is what both this function and the build read.
+    """
+    module = EXPORTS.get(name)
+    if module is None:
+        # `from . import reactive` inside the package: CPython resolves a submodule itself when
+        # the attribute is missing, MicroPython asks here first. A name that is neither a
+        # public name nor a module is the usual AttributeError.
+        try:
+            __import__("frontage." + name)
+        except ImportError:
+            raise AttributeError("module 'frontage' has no attribute '%s'" % name)
+        return sys.modules["frontage." + name]
+    qualified = "frontage." + module
+    __import__(qualified)
+    value = getattr(sys.modules[qualified], name)
+    globals()[name] = value  # resolved once; the next access is a plain lookup
+    return value
