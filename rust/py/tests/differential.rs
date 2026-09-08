@@ -36,7 +36,30 @@ fn cases_match_cpython() {
             }
         }
         let (expected, ref_err, ref_code) = run(&mut Command::new(cpython()).arg(file));
-        let (actual, err, code) = run(Command::new(fpy).arg("--stress").arg(file));
+        let web = std::fs::read_to_string(file).map(|s| s.starts_with("# runtime: web")).unwrap_or(false);
+        let (actual, err, code) = if web {
+            // A case for the browser's half (`re` over RegExp): compiled to .fbc, run on the
+            // wasm under node. Skipped when the wasm is not built or node is absent.
+            let wasm = Path::new(env!("CARGO_MANIFEST_DIR")).join("../web/frontage.wasm");
+            if !wasm.exists() {
+                eprintln!("skipping {name}: build web/frontage.wasm first");
+                continue;
+            }
+            let fbc = std::env::temp_dir().join(format!("{name}.fbc"));
+            let (_, cerr, ccode) = run(Command::new(fpy).arg("--compile").arg(&fbc).arg(file));
+            if ccode != 0 {
+                (String::new(), cerr, ccode)
+            } else {
+                let out = run(Command::new("node").arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../web/run.mjs")).arg(&fbc));
+                if out.2 == -1 || out.1.contains("ENOENT") {
+                    eprintln!("skipping {name}: node not found");
+                    continue;
+                }
+                out
+            }
+        } else {
+            run(Command::new(fpy).arg("--stress").arg(file))
+        };
         if expected != actual || (ref_code == 0) != (code == 0) {
             failures.push(format!(
                 "--- {name}: cpython exit {ref_code}, fpy exit {code}\n{}\n{}",

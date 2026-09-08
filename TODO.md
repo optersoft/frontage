@@ -476,14 +476,23 @@ decides, all in 0.10.0:
       **Gates: correctness met; speed at parity with MicroPython (70.1 vs 71.1 ms create),
       not 2×; size 179 KB brotli against ≤ 120, and the wasm is 80% interpreter with nothing
       removable at that scale.**
-- [ ] **`[human]` Decide where the native reactive core is built** — the only thing the
-      spike says buys the 2×: in the Rust runtime (`RUNTIME.md` §3.8: core types as VM
-      values, `Result` all the way, one compiler, a bridge we own; a runtime of our own to
-      maintain, 60–70 KB heavier over the wire, `re`/`match`/metaclasses/generator
-      finalisation still to write) or in MicroPython (`RUST.md` §3.1: a `no_std` staticlib
-      behind a C shim, upstream's tail). Until then `main` ships MicroPython and `rust/`
-      stays a spike. If the runtime is chosen, the first three items are `build`'s import
-      walk over `.fbc`, `re` over `RegExp`, and a size test in CI at the number §9 measured.
+- [x] **Decided 2026-09-08: the native reactive core is built in the Rust runtime**
+      (`RUNTIME.md` §3.8), not in MicroPython through the C shim of `RUST.md` §3.1. The
+      spike's numbers (§9) said the interpreter alone is parity and the 2× is the core; the
+      user chose the runtime that can hold the core as VM types. `main` ships MicroPython
+      until the runtime reaches parity with the browser suite; `rust/` is the release path
+      from here. Done the same day: `build_app.py` packs the import closure (`cli/graph.py`),
+      `re` over `RegExp` (`rust/vm/src/lib/re.py`, a web case in the differential suite).
+- [ ] **The native core in the runtime** (`RUNTIME.md` §3.8, `FASTER.md` step 2 landing
+      here): the reactive graph (Signal/Memo/Effect/Owner, tracking, marking, the
+      topological run, batch) and the view's hot paths (`_children`, `_build_nodes`, holes,
+      `For`) as VM types, `reactive.py` keeping its API and its Python implementation for
+      CPython (tests, prerender). Gate: `profile_rows` create ≤ 35 ms (2× MicroPython's
+      71), the 157 tests unchanged.
+- [ ] Runtime gaps before parity with the browser suite: `match`, metaclasses and class
+      keywords, generator finalisation on collection, `__slots__`, a size test in CI at 179 KB
+      brotli, `frontage build --runtime frontage` folding `rust/web/build_app.py` into
+      `cli/build.py`, `serve`'s module swap over `.fbc`, prerender + hydration.
 - [ ] **`_core.sort/filter/group` as the core's first tenant, and `frontage.table` on them.**
       Found 2026-09-08: MicroPython's `sorted` pivots on the last element and calls `key` per
       comparison — **10,000 ordered floats sort in 269 ms, 1,440 ms with a key** (shuffled:

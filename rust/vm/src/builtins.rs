@@ -377,6 +377,7 @@ pub fn install(vm: &mut Vm) {
         ("swapcase", str_swapcase),
         ("casefold", str_lower),
         ("isdigit", str_isdigit),
+        ("isascii", str_isascii),
         ("isdecimal", str_isdigit),
         ("isnumeric", str_isdigit),
         ("isalpha", str_isalpha),
@@ -2073,6 +2074,10 @@ fn str_swapcase(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult 
 fn pred_str(vm: &mut Vm, args: &[Value], name: &str, f: impl Fn(char) -> bool) -> PyResult {
     let s = this_str(vm, args, name)?;
     Ok(Value::bool(!s.is_empty() && s.chars().all(f)))
+}
+fn str_isascii(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    let s = this_str(vm, args, "isascii")?;
+    Ok(Value::bool(s.is_ascii()))
 }
 fn str_isdigit(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
     pred_str(vm, args, "isdigit", |c| c.is_ascii_digit())

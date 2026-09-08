@@ -960,6 +960,7 @@ pub const PY_MODULES: &[(&str, &str)] = &[
     ("asyncio", include_str!("lib/asyncio.py")),
     ("html", include_str!("lib/html.py")),
     ("html.parser", include_str!("lib/html_parser.py")),
+    ("re", include_str!("lib/re.py")),
     (
         "io",
         r##"
