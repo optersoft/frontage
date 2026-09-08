@@ -484,8 +484,8 @@ in 29 ms against 62; the template path native (`rust/vm/src/view.rs`: the extrac
 clone and its holes, the hole effects with the insert rules and reconcile) 46.9 → **24.8 ms,
 2.9× MicroPython's 71.1 — the ≥ 2× gate met**, with swap 2.9 ms (4.4), update 0.6 (1.4),
 effects 0.4 (4.8), text holes 2.1 (6.6). The 157 tests pass unchanged on the wasm; the
-Python implementations stay as CPython's and the specification. The wasm is 654 KB raw;
-the size gate stands where §9 left it.
+Python implementations stay as CPython's and the specification. The wasm is 654 KB raw, 209 KB
+brotli (the core is 30 KB of it); the size gate stands where §9 left it.
 
 **Reading, as written before the addendum.** The speed gate failed at parity and the size
 gate failed by half again; the correctness gate passed with room. So the runtime is real and works, and it does not by
