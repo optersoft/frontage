@@ -8,7 +8,7 @@ router; running on its own Python runtime compiled to WebAssembly, with the fram
 precompiled bytecode. No JavaScript, no Node, no bundler: you write Python and the browser
 runs it.
 
-> **Status: 0.10.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete
+> **Status: 0.10.1, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete
 > through M12. Reactive core, store, templates (`h` and `html(t"…")`), control flow and
 > boundaries, `Resource`/`Action`, a nested router, widgets, `State`, timers, the playground
 > (0.2–0.3); **prerendering with hydration** (0.4), pages that show before Python loads;
