@@ -32,6 +32,11 @@ class Handler(LiveHandler):
         "/profile/": ROOT / "tools" / "profile",  # the rows profile page (tools/profile_rows.py)
     }
 
+    def frontage_runtime_for(self, prefix):
+        # The playground and the runner compile a program in the page; frontage's runtime has
+        # no parser there, so those two stay on MicroPython whatever runtime is selected.
+        return not prefix.startswith(("/playground/", "/web/"))
+
     def translate_path(self, path):
         path = path.split("?", 1)[0].split("#", 1)[0]
         for prefix, base in self.routes.items():

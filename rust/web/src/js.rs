@@ -162,6 +162,32 @@ fn js_module_getattr(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyRe
     vm.from_slot(slot)
 }
 
+/// `module.__getattr__(name)` for a module over a JavaScript object: bound to the object.
+fn js_object_module_getattr(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    let h = vm.js_handle(args[0]).unwrap_or(GLOBAL);
+    let name = vm.expect_str(args[1], "name")?;
+    let slot = h_get(vm, h, &name)?;
+    if slot.tag == TAG_UNDEFINED {
+        return Err(vm.attribute_error(format!("the JavaScript module has no '{name}'")));
+    }
+    vm.from_slot(slot)
+}
+
+pub fn register_js_module(vm: &mut Vm, name: &str, handle: u32) {
+    let m = vm.new_module(name);
+    let d = vm.module_dict(m);
+    let obj = vm.js_object(handle);
+    vm.roots.push(obj);
+    let f = vm.native("__getattr__", js_object_module_getattr);
+    let b = vm.bound(f, obj);
+    vm.dict_set_str(d, "__getattr__", b);
+    vm.dict_set_str(d, "__js__", obj);
+    let key = vm.intern(name);
+    let modules = vm.modules;
+    vm.dict_set(modules, key, m);
+    vm.roots.pop();
+}
+
 pub fn mod_js(vm: &mut Vm) -> PyResult {
     let m = vm.new_module("js");
     let d = vm.module_dict(m);

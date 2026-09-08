@@ -94,6 +94,11 @@ impl Vm {
                     if name == self.n.func {
                         return Ok(func);
                     }
+                    if self.js_handle(func).is_some() {
+                        // A JavaScript function read off an object is bound to it, and keeps
+                        // its own attributes: `window.FormData.new(form)`, a static method.
+                        return crate::builtins::js_get_attr(self, func, name);
+                    }
                     if let Some(v) = self.func_get_attr(func, name) {
                         return Ok(v);
                     }

@@ -82,7 +82,7 @@ line-length = 120
 # that use template strings are 3.14.
 target-version = "py312"
 # tools/micropython/variant/manifest.py is read by MicroPython's build, where `include` is a builtin.
-extend-exclude = ["tools/pyscript", "www", "typings", "tools/micropython/variant"]
+extend-exclude = ["tools/pyscript", "www", "typings", "tools/micropython/variant", "rust"]
 
 [tool.ruff.per-file-target-version]
 "tests/test_m2.py" = "py314"

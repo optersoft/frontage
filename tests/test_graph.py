@@ -27,7 +27,9 @@ def test_a_counter_reaches_the_reactive_core_and_the_view_layer_and_nothing_else
     reached = g.closure(["app", "frontage"])
     assert "app" in reached
     assert {"frontage", "frontage._exports", "frontage.version", "frontage.reactive", "frontage.view"} <= reached
-    assert not {"frontage.router", "frontage.store", "frontage.template", "frontage.widgets", "frontage.state"} & reached
+    assert (
+        not {"frontage.router", "frontage.store", "frontage.template", "frontage.widgets", "frontage.state"} & reached
+    )
 
 
 def test_the_router_and_the_store_come_only_when_named(tmp_path):
@@ -37,7 +39,9 @@ def test_the_router_and_the_store_come_only_when_named(tmp_path):
 
 
 def test_a_bare_import_frontage_is_read_through_its_attributes(tmp_path):
-    app = write(tmp_path, **{"app.py": "import frontage\nn = frontage.Signal(1)\nfrontage.mount(frontage.h.p(n), '#app')\n"})
+    app = write(
+        tmp_path, **{"app.py": "import frontage\nn = frontage.Signal(1)\nfrontage.mount(frontage.h.p(n), '#app')\n"}
+    )
     reached = Graph(app).closure(["app", "frontage"])
     assert {"frontage.reactive", "frontage.view"} <= reached
     assert "frontage.router" not in reached

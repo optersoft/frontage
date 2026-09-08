@@ -252,6 +252,11 @@ hydration, transitions and async memos). **PyScript is gone from the browser pat
 
 uv, ruff, ty, pytest; `uv run --frozen …` in anything a gate runs. `mk check` is the gate;
 `mk test --browser` needs `mk pyscript.fetch` and `uv run playwright install chromium` once.
+**On frontage's own runtime**: `cargo build --profile native` in `rust/` (the `fpy` compiler)
+and the wasm per `rust/README.md`, then `FRONTAGE_RUNTIME=frontage mk test --browser` runs
+the same 28 tests on it (20 s either way), and `frontage build|serve --runtime frontage`
+target it; `cli/frontage_rt.py` is the host side. `ruff` excludes `rust/` (its Python is test
+input and the runtime's standard modules).
 Release: bump `version.py`, commit, tag `vX.Y.Z`, push the tag; CI publishes over OIDC (the
 publisher record PyPI needs is in the header of `.github/workflows/ci.yml`).
 

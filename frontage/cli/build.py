@@ -265,7 +265,10 @@ def framework_image(dest, quiet=False):
     shutil.copy2(source, dest / mp.IMAGE_NAME)
 
 
-def build(app, out="", entry="", quiet=False, components=None):
+def build(app, out="", entry="", quiet=False, components=None, runtime=""):
+    from . import frontage_rt
+
+    target = frontage_rt.selected(runtime)
     app = Path(app).resolve()
     if not app.is_dir():
         raise SystemExit(f"error: {app} is not a directory")
@@ -278,12 +281,19 @@ def build(app, out="", entry="", quiet=False, components=None):
         shutil.rmtree(out)
     shutil.copytree(app, out, ignore=IGNORE)
 
-    runtime = out / "_frontage"
-    runtime.mkdir(parents=True, exist_ok=True)
-    mp.fetch(quiet=quiet)  # a no-op once the wheel's copy is in place
-    for name in mp.WANTED + ("boot.js",):
-        shutil.copy2(mp.RUNTIME_DIR / name, runtime / name)
-    framework_image(runtime, quiet=quiet)
+    runtime_dir = out / "_frontage"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    if target == frontage_rt.MICROPYTHON:
+        mp.fetch(quiet=quiet)  # a no-op once the wheel's copy is in place
+        for name in mp.WANTED + ("boot.js",):
+            shutil.copy2(mp.RUNTIME_DIR / name, runtime_dir / name)
+        framework_image(runtime_dir, quiet=quiet)
+    else:
+        if not frontage_rt.available():
+            raise SystemExit("error: the frontage runtime is not built: see rust/README.md")
+        for name in frontage_rt.ASSETS:
+            shutil.copy2(frontage_rt.WEB / name, runtime_dir / name)
+    runtime = runtime_dir  # the name the rest of this function has always used
 
     # Components: assets beside the runtime, Python in the archive, a line in the boot tag.
     if components is None:
@@ -294,12 +304,20 @@ def build(app, out="", entry="", quiet=False, components=None):
         installed, skipped = list(components), []
     declarations, styles = [], []
     for component in installed:
-        target = runtime / "components" / component.name
-        shutil.copytree(component.browser, target, dirs_exist_ok=True)
+        assets = runtime / "components" / component.name
+        shutil.copytree(component.browser, assets, dirs_exist_ok=True)
         declarations.append(f"{component.name}=./_frontage/components/{component.name}/{COMPONENT_ENTRY}")
-        if (target / COMPONENT_STYLE).is_file():
+        if (assets / COMPONENT_STYLE).is_file():
             styles.append(f'<link rel="stylesheet" href="./_frontage/components/{component.name}/{COMPONENT_STYLE}">')
-    members = app_image(app, runtime / "app.tar", installed)
+    if target == frontage_rt.MICROPYTHON:
+        members = app_image(app, runtime / "app.tar", installed)
+    else:
+        # Frontage's own runtime: the entry's import closure, each module as bytecode, and a
+        # manifest naming them; nothing the page does not reach is shipped.
+        members = frontage_rt.closure(app, entry, installed)
+        for name, path in members:
+            (runtime / f"{name}.fbc").write_bytes(frontage_rt.compile_module(path))
+        (runtime / frontage_rt.MANIFEST).write_bytes(frontage_rt.manifest([n for n, _ in members], entry))
 
     page = out / "index.html"
     if page.exists():
@@ -339,6 +357,7 @@ def main(argv=None):
         metavar="NAME=PATH",
         help="a component package not installed yet, for developing one (repeatable)",
     )
+    parser.add_argument("--runtime", default="", help="frontage (its own runtime, from rust/) or micropython")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
     local = []
@@ -351,7 +370,7 @@ def main(argv=None):
     try:
         # An explicit --component replaces discovery, so a component under development is
         # tested as itself rather than alongside an older installed copy of the same name.
-        build(args.app, args.out, args.entry, quiet=args.quiet, components=local or None)
+        build(args.app, args.out, args.entry, quiet=args.quiet, components=local or None, runtime=args.runtime)
     except SystemExit as exc:
         print(exc, file=sys.stderr)
         return 2

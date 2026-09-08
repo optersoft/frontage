@@ -118,6 +118,14 @@ pub extern "C" fn add_module(name_ptr: *mut u8, name_len: usize, ptr: *mut u8, l
     }
 }
 
+/// A JavaScript object as a Python module named `name`, in `sys.modules`.
+#[no_mangle]
+pub extern "C" fn add_js_module(name_ptr: *mut u8, name_len: usize, handle: u32) {
+    let name = unsafe { String::from_utf8_lossy(&take(name_ptr, name_len)).into_owned() };
+    let vm = vm();
+    js::register_js_module(vm, &name, handle);
+}
+
 /// Run bytecode as `__main__`. 0 on success, 1 after printing the traceback.
 #[no_mangle]
 pub extern "C" fn run(ptr: *mut u8, len: usize) -> u32 {

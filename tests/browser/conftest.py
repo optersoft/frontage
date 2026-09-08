@@ -23,7 +23,12 @@ def _free_port():
 
 @pytest.fixture(scope="session", autouse=True)
 def server():
-    if not (RUNTIME / "micropython.wasm").exists():
+    import os
+
+    if os.environ.get("FRONTAGE_RUNTIME") in ("frontage", "rs", "rust"):
+        if not (ROOT / "rust" / "web" / "frontage.wasm").exists():
+            pytest.skip("frontage's runtime is not built: see rust/README.md")
+    elif not (RUNTIME / "micropython.wasm").exists():
         pytest.skip("no MicroPython runtime: run `mk runtime.fetch`")
     port = _free_port()
     proc = subprocess.Popen(

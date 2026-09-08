@@ -149,9 +149,12 @@ class Watcher(threading.Thread):
 
 def dev_script(html):
     """The script this page needs: a module swap if it boots from wasm, else a page reload."""
+    from . import frontage_rt
+
     tag = _BOOT_SRC.search(html)
     src = _SRC.search(tag.group(0)) if tag else None
-    if src is None:
+    if src is None or frontage_rt.selected() == frontage_rt.FRONTAGE:
+        # Frontage's own runtime reloads whole for now: its swap over `.fbc` is not written.
         return RELOAD_SCRIPT
     return SWAP_SCRIPT.format(boot=src.group(1), reload=RELOAD_PATH, module=MODULE_PATH)
 
@@ -354,12 +357,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         With nothing on disk we are serving sources, so the archives are made on the spot from
         whatever is there: that is the dev loop, where an edit needs no build step.
         """
+        from . import frontage_rt
         from . import micropython as mp
 
         try:
             on_disk = Path(self.translate_path(f"{prefix}{RUNTIME_PREFIX.strip('/')}/{name}"))
             if on_disk.is_file():
                 self._send_bytes(on_disk.read_bytes(), self.guess_type(str(on_disk)))
+                return
+            if frontage_rt.selected() == frontage_rt.FRONTAGE and self.frontage_runtime_for(prefix):
+                self._send_frontage_runtime(name, prefix)
                 return
             if name == "app.tar":
                 # The directory the request came from, never a configured root: one server can
@@ -378,6 +385,37 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self._send_bytes(asset.read_bytes(), self.guess_type(str(asset)))
         except OSError:
             self.send_error(404)
+
+    def frontage_runtime_for(self, prefix):
+        """Whether the app under `prefix` boots on frontage's own runtime when it is selected.
+        A subclass keeps a page on MicroPython: the playground and the runner compile Python
+        in the page, and the runtime carries no parser."""
+        return True
+
+    def _send_frontage_runtime(self, name, prefix):
+        """`_frontage/*` on frontage's own runtime: its three files, the manifest of the page's
+        import closure, and each module compiled on request (cached by mtime)."""
+        from . import frontage_rt
+        from .build import find_entry
+
+        if name in frontage_rt.ASSETS:
+            asset = frontage_rt.WEB / name
+            self._send_bytes(asset.read_bytes(), self.guess_type(str(asset)))
+            return
+        app = Path(self.translate_path(prefix))
+        if name == frontage_rt.MANIFEST:
+            entry = find_entry(app)
+            names = [n for n, _ in frontage_rt.closure(app, entry)]
+            self._send_bytes(frontage_rt.manifest(names, entry), "application/json")
+            return
+        if name.endswith(".fbc"):
+            source = frontage_rt.module_file(name[:-4], app)
+            if not source.is_file():
+                self.send_error(404)
+                return
+            self._send_bytes(frontage_rt.compile_module(source), "application/octet-stream")
+            return
+        self.send_error(404)
 
     def _stream(self):
         self.send_response(200)
@@ -501,8 +539,13 @@ def main(argv=None):
         metavar="PREFIX=URL",
         help="forward requests under PREFIX to URL, e.g. /api=http://127.0.0.1:8000 (repeatable)",
     )
+    parser.add_argument("--runtime", default="", help="frontage (its own runtime, from rust/) or micropython")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
+    if args.runtime:
+        from . import frontage_rt
+
+        os.environ["FRONTAGE_RUNTIME"] = frontage_rt.selected(args.runtime)
     proxies = []
     for spec in args.proxy:
         prefix, sep, upstream = spec.partition("=")

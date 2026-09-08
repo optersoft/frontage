@@ -542,8 +542,15 @@ class StreamRenderer(DomRenderer):
     def begin_hydration(self, node):
         return super().begin_hydration(self.real_node(node))
 
+    # A node hydration is walking is a proxy, and the cursor must stay one: the walk answers
+    # with the proxy path for a proxy and with ids for ids. A proxy reads the document as it
+    # is, so what is pending in the stream goes out first.
+
     def previous_sibling(self, node):
-        sibling = _dom.query(3, self._id(node))
+        if type(node) is not int:
+            _dom.flush()
+            return super().previous_sibling(node)
+        sibling = _dom.query(3, node)
         return sibling or None
 
     # -- nodes --------------------------------------------------------------------------------
@@ -587,24 +594,39 @@ class StreamRenderer(DomRenderer):
         _dom.remove(self._id(parent), self._id(node))
 
     def is_text(self, node):
-        return _dom.query(5, self._id(node)) == 3
+        if type(node) is not int:
+            _dom.flush()
+            return super().is_text(node)
+        return _dom.query(5, node) == 3
+
+    def hole_parent(self, marker):
+        return -self._id(marker)  # "the parent of node": answered without asking
 
     def parent(self, node):
-        node = self._id(node)
-        if node > 0:
-            return -node  # "the parent of node": answered without asking
+        if type(node) is not int:
+            _dom.flush()
+            return super().parent(node)
         parent = _dom.query(0, node)
         return parent or None
 
     def is_connected(self, node):
-        return bool(_dom.query(6, self._id(node)))
+        if type(node) is not int:
+            _dom.flush()
+            return super().is_connected(node)
+        return bool(_dom.query(6, node))
 
     def first_child(self, node):
-        child = _dom.query(1, self._id(node))
+        if type(node) is not int:
+            _dom.flush()
+            return super().first_child(node)
+        child = _dom.query(1, node)
         return child or None
 
     def next_sibling(self, node):
-        sibling = _dom.query(2, self._id(node))
+        if type(node) is not int:
+            _dom.flush()
+            return super().next_sibling(node)
+        sibling = _dom.query(2, node)
         return sibling or None
 
     def mark_root(self, node):

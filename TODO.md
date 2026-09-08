@@ -505,10 +505,22 @@ decides, all in 0.10.0:
             holes 2.1 (6.6). The Python left per row is the author's `h` calls (`_children`,
             7 ms of a 32 ms profiled run) and the Store's reads (9 ms): the next tenants, if
             wanted — the gate no longer asks for them.
-- [ ] Runtime gaps before parity with the browser suite: `match`, metaclasses and class
-      keywords, generator finalisation on collection, `__slots__`, a size test in CI at 179 KB
-      brotli, `frontage build --runtime frontage` folding `rust/web/build_app.py` into
-      `cli/build.py`, `serve`'s module swap over `.fbc`, prerender + hydration.
+- [x] **The browser suite passes on the runtime, 28 of 28 (2026-09-08, the same evening).**
+      `frontage build --runtime frontage` and `frontage serve --runtime frontage` (or
+      `FRONTAGE_RUNTIME=frontage`, which the suite reads: `FRONTAGE_RUNTIME=frontage mk test
+      --browser`) pack the entry's import closure as `.fbc` with a manifest, through
+      `cli/frontage_rt.py` and the `fpy` binary from `rust/target/`; the playground and the
+      runner stay on MicroPython, which has the parser. Found on the way, each now a test: an
+      async method called with keywords bound its receiver twice; a JavaScript constructor
+      read off an object (`window.FormData`) had no `.new`; hydration's cursor must stay on
+      proxies and every proxy read flushes the op stream first; a floating hole's parent is
+      a question, not `-marker`. Prerender + hydration work unchanged.
+- [ ] Runtime gaps that the suite does not reach: `match`, metaclasses and class keywords,
+      generator finalisation on collection, `__slots__`, a size test in CI (209 KB brotli
+      today), `serve`'s module swap over `.fbc` (the runtime page reloads whole), `fpy` in
+      the wheel (a native wheel per platform, or the compiler as a second wasm on the host —
+      the decision before 0.10 can ship on this runtime), the playground on the runtime
+      (needs the compiler in the page: the same decision).
 - [ ] **`_core.sort/filter/group` as the core's first tenant, and `frontage.table` on them.**
       Found 2026-09-08: MicroPython's `sorted` pivots on the last element and calls `key` per
       comparison — **10,000 ordered floats sort in 269 ms, 1,440 ms with a key** (shuffled:

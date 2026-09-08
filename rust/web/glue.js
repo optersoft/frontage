@@ -236,7 +236,13 @@ export async function load(source, options = {}) {
         case 13: { const n = node(i32()); n.style.removeProperty(str()); break; }
         case 14: { const p = node(i32()); p.appendChild(node(i32())); break; }
         case 15: { const pid = i32(); const n = node(i32()); const a = node(i32()); (pid < 0 ? a.parentNode : nodes[pid]).insertBefore(n, a); break; }
-        case 16: { const pid = i32(); const n = node(i32()); (pid < 0 ? n.parentNode : nodes[pid]).removeChild(n); break; }
+        case 16: {
+          const pid = i32(); const nid = i32(); const n = node(nid);
+          const p = pid < 0 ? n.parentNode : nodes[pid];
+          if (!n || n.parentNode !== p) throw new Error(`frontage: node ${nid} is not a child of ${pid} (a stale removal)`);
+          p.removeChild(n);
+          break;
+        }
         case 17: { const pid = i32(); const n = node(i32()); const old = node(i32()); (pid < 0 ? old.parentNode : nodes[pid]).replaceChild(n, old); break; }
         case 18: {
           const id = i32(); const event = str();
@@ -381,6 +387,11 @@ export async function load(source, options = {}) {
       const [np, nl] = putString(name);
       const p = put(fbc);
       ex.add_module(np, nl, p, fbc.length);
+    },
+    /// A JavaScript object as an importable Python module: `import name` gives its attributes.
+    registerJsModule(name, object) {
+      const [np, nl] = putString(name);
+      ex.add_js_module(np, nl, hold(object));
     },
     /// 0: ran; 1: raised (the traceback went to stderr); 2 + n: `sys.exit(n)`.
     run(fbc) {

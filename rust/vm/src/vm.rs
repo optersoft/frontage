@@ -1935,14 +1935,17 @@ impl Vm {
                 k = 1;
             }
             buf[k..n].copy_from_slice(&self.stack[first..]);
-            self.call(callee, &buf[..n], kw)
+            // `target`, not `callee`: a bound method's receiver is already in front, and
+            // `call` on the Bound would put it there a second time (an async method with
+            // keywords was "got multiple values for argument").
+            self.call(target, &buf[..n], kw)
         } else {
             let mut args: Vec<Value> = Vec::with_capacity(n);
             if !this.is_undef() {
                 args.push(this);
             }
             args.extend_from_slice(&self.stack[first..]);
-            self.call(callee, &args, kw)
+            self.call(target, &args, kw)
         };
         self.stack.truncate(callee_at);
         self.stack.push(r?);

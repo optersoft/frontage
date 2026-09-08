@@ -100,6 +100,11 @@ class Renderer:
         the parse happens once per distinct string."""
         raise NotImplementedError
 
+    def hole_parent(self, marker):
+        """The parent of a template's marker, which is always attached: a streaming renderer
+        answers it without asking the document."""
+        return self.parent(marker)
+
     def real_node(self, node):
         """The node itself, for a renderer whose nodes are the real thing; a streaming
         renderer answers the DOM node behind an id (a `ref`, a direct listener)."""

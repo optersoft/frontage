@@ -150,6 +150,13 @@ class Task(Future):
         except BaseException as e:
             self._loop._current = previous
             Future.set_exception(self, e)
+            if not self._callbacks:
+                # Nobody awaits this task: say so now, the way CPython's loop logs it, rather
+                # than let a failing task vanish.
+                import sys
+
+                sys.stderr.write("Task exception was never retrieved: %s\n" % (self._name,))
+                sys.print_exception(e)
             return
         self._loop._current = previous
         if isinstance(result, Future):

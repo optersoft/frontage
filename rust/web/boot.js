@@ -32,6 +32,19 @@ async function boot() {
   ]);
   const modules = await Promise.all(manifest.modules.map(async (name) => [name, await bytes(asset(`${name}.fbc`))]));
   for (const [name, fbc] of modules) rt.addModule(name, fbc);
+  // JavaScript modules the app asked for (`data-fr-js="name=./lib.js, ./other.js"`): the
+  // glue around a C or Rust library compiled to WebAssembly. Named ones become Python
+  // modules. Resolved from `../` of this file, the app's own directory in every layout.
+  const appRoot = new URL("../", import.meta.url);
+  for (const item of (tag.dataset.frJs || "").split(",")) {
+    const spec = item.trim();
+    if (!spec) continue;
+    const eq = spec.indexOf("=");
+    const name = eq > 0 ? spec.slice(0, eq).trim() : "";
+    const specifier = eq > 0 ? spec.slice(eq + 1).trim() : spec;
+    const namespace = await import(new URL(specifier, appRoot).href);
+    if (name) rt.registerJsModule(name, namespace);
+  }
   const main = await bytes(asset(`${entry}.fbc`));
   window.frontage = rt;
   const code = rt.run(main);

@@ -454,7 +454,7 @@ def _build_template(element, renderer, cache=None):
         for i in range(len(child_holes)):
             marker = markers[i]
             child = child_holes[i]
-            parent = renderer.parent(marker)
+            parent = renderer.hole_parent(marker)
             kind = type(child)
             if kind is Text:
                 # Static text keeps its marker in prerendered HTML, so hydration can adopt it.
@@ -559,7 +559,7 @@ def _mount_hole(parent, accessor, renderer, marker=None):
             state.current = [node]
             state.text = node
             if hyd is not None:
-                _finish_hydration(state, target, marker, hyd)
+                _finish_hydration(state, target, marker, hyd, renderer)
             return
         state.text = None
         if state.current or hyd is not None:
@@ -569,7 +569,7 @@ def _mount_hole(parent, accessor, renderer, marker=None):
                 _insert(renderer, target, node, marker)
         state.current = payload
         if hyd is not None:
-            _finish_hydration(state, target, marker, hyd)
+            _finish_hydration(state, target, marker, hyd, renderer)
 
     def on_screen():
         target = parent if parent is not None else renderer.parent(marker)
@@ -593,11 +593,13 @@ def _mount_hole(parent, accessor, renderer, marker=None):
     return marker
 
 
-def _finish_hydration(state, target, marker, hyd):
+def _finish_hydration(state, target, marker, hyd, renderer):
     """After the first apply of a hydrated hole: drop the fence and what nobody adopted."""
     start, state.start = state.start, None
     if start is not None:
-        hyd.finish(target, start, marker, state.claimed or [], state.current)
+        # The cursor walks real nodes; a streaming renderer's ids are turned back into them.
+        current = [renderer.real_node(n) for n in state.current]
+        hyd.finish(renderer.real_node(target), start, marker, state.claimed or [], current)
         state.claimed = None
 
 
