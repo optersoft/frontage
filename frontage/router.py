@@ -146,13 +146,17 @@ def _join(prefix, path):
 class Route:
     """One level of the route tree.
 
+    `title=` is what the page calls itself while this route is on screen: a string, or a
+    function of the route's params. It is the `frontage.head.Title` this level would otherwise
+    write itself, so the innermost route with one wins and leaving it puts the outer one back.
+
     `lazy="pages.map:map_page"` in place of a component makes this route a **chunk**: the
     module is left out of the first payload and fetched the first time the route is shown
     (`frontage.chunks`). While it is in flight the route shows the nearest `Loading`
     fallback and counts toward `is_routing`, and a link to it starts the fetch on hover.
     """
 
-    def __init__(self, path, component=None, children=None, preload=None, lazy=None):
+    def __init__(self, path, component=None, children=None, preload=None, lazy=None, title=None):
         if component is None and lazy is None:
             raise TypeError(f"Route({path!r}) needs a component or lazy=")
         self.path = path
@@ -161,6 +165,7 @@ class Route:
         self.component = component if component is not None else chunks.component(lazy)
         self.children = list(children or [])
         self.preload = preload
+        self.title = title
 
     def __repr__(self):
         return f"Route({self.path!r})"
@@ -454,6 +459,13 @@ class Router:
                         provide(key, scope)
                 level = _LevelContext(self, depth)
                 provide(_LEVEL, level)
+                if route.title is not None:
+                    # Imported here, not at the top: a page holds only the modules it reaches,
+                    # and an app that names no titles should not carry the one that writes them.
+                    from .head import Title
+
+                    params = chain[depth].params
+                    Title(route.title if not callable(route.title) else lambda: route.title(params))
                 try:
                     if route.preload is not None:
                         self._preload_one(route, chain[depth].params, "navigate")

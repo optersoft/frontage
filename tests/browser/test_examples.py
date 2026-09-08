@@ -388,3 +388,24 @@ def test_lazy_route_under_the_dev_server(server, page: Page):
     page.click("#to-report")
     expect(page.locator("#summary")).to_have_text("600 rides, busiest at 02:00", timeout=30_000)
     assert errors == []
+
+
+def test_head_management_in_the_page(server, page: Page):
+    """`Title` and `Meta` write to the document, and a route's own title wins while it shows."""
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{server}/examples/lazy/index.html")
+    expect(page.locator("#home")).to_be_visible(timeout=30_000)
+    expect(page).to_have_title("Lazy routes")
+    assert page.get_attribute("meta[name='description']", "content") == (
+        "One route in a chunk of its own, fetched when someone asks for it."
+    )
+
+    page.click("#to-report")
+    expect(page.locator("#report")).to_be_visible(timeout=30_000)
+    expect(page).to_have_title("Report — lazy routes")
+    # Back to a route whose title is the shell's: the route's own title goes with it.
+    page.go_back()
+    expect(page.locator("#home")).to_be_visible()
+    expect(page).to_have_title("Lazy routes")
+    assert errors == []

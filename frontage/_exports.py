@@ -21,6 +21,8 @@ EXPORTS = {
     "Portal": "flow",
     "Show": "flow",
     "Switch": "flow",
+    "Meta": "head",
+    "Title": "head",
     "Context": "reactive",
     "Effect": "reactive",
     "Memo": "reactive",

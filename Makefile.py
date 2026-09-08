@@ -80,6 +80,8 @@ def lint(*, fix: bool = False) -> None:
     sh("uv", "run", "--frozen", "ruff", "format", *([] if fix else ["--check"]), ".")
     # The rules the browser interpreters enforce and a desktop Python does not.
     sh("uv", "run", "--frozen", "python", "-m", "frontage", "check", "examples", "web", "frontage")
+    # The package resolves its public names lazily; the stub is what an editor and ty read.
+    sh("uv", "run", "--frozen", "python", "tools/exports.py", "--check")
 
 
 @task(requires=["uv"])

@@ -8,6 +8,7 @@ the click usually lands on a chunk that has already arrived. Until it does, the 
 """
 
 from frontage import A, Errored, Loading, Route, Router, h, mount
+from frontage.head import Meta, Title
 from frontage.router import use_router
 
 
@@ -22,6 +23,10 @@ def home():
 def shell(children):
     router = use_router()
     return h.div(
+        # What the page calls itself when no route says otherwise, and what a link preview
+        # reads. A route with a `title=` of its own wins while it is on screen.
+        Title("Lazy routes"),
+        Meta("One route in a chunk of its own, fetched when someone asks for it.", name="description"),
         h.nav(
             A("/", "Home"),
             A("/report", "Report", id="to-report"),
@@ -39,8 +44,8 @@ def shell(children):
 
 mount(
     Router(
-        Route("/", home),
-        Route("/report", lazy="pages.report"),
+        Route("/", home, title="Lazy routes"),
+        Route("/report", lazy="pages.report", title="Report — lazy routes"),
         root=shell,
         mode="hash",
     ),

@@ -1,147 +1,60 @@
-# Generated from _exports.py by `mk exports`: the static view of the lazy package, for editors and ty.
+# Generated from _exports.py by `tools/exports.py`: the static view of the lazy package,
+# for editors and ty.
 
 from .aio import Action as Action
 from .aio import Resource as Resource
 from .aio import interval as interval
 from .aio import poll as poll
-from .errors import (
-    FrontageError as FrontageError,
-)
-from .errors import (
-    NotReady as NotReady,
-)
-from .errors import (
-    RenderError as RenderError,
-)
-from .errors import (
-    format_exception as format_exception,
-)
-from .flow import (
-    Dynamic as Dynamic,
-)
-from .flow import (
-    Errored as Errored,
-)
-from .flow import (
-    For as For,
-)
-from .flow import (
-    Loading as Loading,
-)
-from .flow import (
-    Match as Match,
-)
-from .flow import (
-    Portal as Portal,
-)
-from .flow import (
-    Show as Show,
-)
-from .flow import (
-    Switch as Switch,
-)
-from .reactive import (
-    Context as Context,
-)
-from .reactive import (
-    Effect as Effect,
-)
-from .reactive import (
-    Memo as Memo,
-)
-from .reactive import (
-    Optimistic as Optimistic,
-)
-from .reactive import (
-    Owner as Owner,
-)
-from .reactive import (
-    RenderEffect as RenderEffect,
-)
-from .reactive import (
-    Signal as Signal,
-)
-from .reactive import (
-    Transition as Transition,
-)
-from .reactive import (
-    batch as batch,
-)
-from .reactive import (
-    get_owner as get_owner,
-)
-from .reactive import (
-    is_pending as is_pending,
-)
-from .reactive import (
-    on as on,
-)
-from .reactive import (
-    on_cleanup as on_cleanup,
-)
-from .reactive import (
-    on_mount as on_mount,
-)
-from .reactive import (
-    provide as provide,
-)
-from .reactive import (
-    run_with_owner as run_with_owner,
-)
-from .reactive import (
-    selector as selector,
-)
-from .reactive import (
-    spawn as spawn,
-)
-from .reactive import (
-    transition as transition,
-)
-from .reactive import (
-    tree as tree,
-)
-from .reactive import (
-    untrack as untrack,
-)
-from .reactive import (
-    use as use,
-)
-from .reactive import (
-    use_transition as use_transition,
-)
+from .errors import FrontageError as FrontageError
+from .errors import NotReady as NotReady
+from .errors import RenderError as RenderError
+from .errors import format_exception as format_exception
+from .flow import Dynamic as Dynamic
+from .flow import Errored as Errored
+from .flow import For as For
+from .flow import Loading as Loading
+from .flow import Match as Match
+from .flow import Portal as Portal
+from .flow import Show as Show
+from .flow import Switch as Switch
+from .head import Meta as Meta
+from .head import Title as Title
+from .reactive import Context as Context
+from .reactive import Effect as Effect
+from .reactive import Memo as Memo
+from .reactive import Optimistic as Optimistic
+from .reactive import Owner as Owner
+from .reactive import RenderEffect as RenderEffect
+from .reactive import Signal as Signal
+from .reactive import Transition as Transition
+from .reactive import batch as batch
+from .reactive import get_owner as get_owner
+from .reactive import is_pending as is_pending
+from .reactive import on as on
+from .reactive import on_cleanup as on_cleanup
+from .reactive import on_mount as on_mount
+from .reactive import provide as provide
+from .reactive import run_with_owner as run_with_owner
+from .reactive import selector as selector
+from .reactive import spawn as spawn
+from .reactive import transition as transition
+from .reactive import tree as tree
+from .reactive import untrack as untrack
+from .reactive import use as use
+from .reactive import use_transition as use_transition
 from .renderer import HtmlRenderer as HtmlRenderer
 from .renderer import RecordingRenderer as RecordingRenderer
 from .renderer import Renderer as Renderer
-from .router import (
-    A as A,
-)
-from .router import (
-    ActionForm as ActionForm,
-)
-from .router import (
-    Navigate as Navigate,
-)
-from .router import (
-    Redirect as Redirect,
-)
-from .router import (
-    Route as Route,
-)
-from .router import (
-    Router as Router,
-)
-from .router import (
-    use_location as use_location,
-)
-from .router import (
-    use_navigate as use_navigate,
-)
-from .router import (
-    use_params as use_params,
-)
-from .router import (
-    use_query as use_query,
-)
+from .router import A as A
+from .router import ActionForm as ActionForm
+from .router import Navigate as Navigate
+from .router import Redirect as Redirect
+from .router import Route as Route
+from .router import Router as Router
+from .router import use_location as use_location
+from .router import use_navigate as use_navigate
+from .router import use_params as use_params
+from .router import use_query as use_query
 from .runtime import in_browser as in_browser
 from .runtime import platform as platform
 from .state import State as State
@@ -152,41 +65,17 @@ from .store import reconcile as reconcile
 from .store import snapshot as snapshot
 from .template import html as html
 from .version import __version__ as __version__
-from .view import (
-    Element as Element,
-)
-from .view import (
-    Mounted as Mounted,
-)
-from .view import (
-    NodeRef as NodeRef,
-)
-from .view import (
-    Text as Text,
-)
-from .view import (
-    build as build,
-)
-from .view import (
-    component as component,
-)
-from .view import (
-    emit as emit,
-)
-from .view import (
-    h as h,
-)
-from .view import (
-    mount as mount,
-)
-from .view import (
-    render_to_string as render_to_string,
-)
-from .view import (
-    text as text,
-)
-from .view import (
-    unique_id as unique_id,
-)
+from .view import Element as Element
+from .view import Mounted as Mounted
+from .view import NodeRef as NodeRef
+from .view import Text as Text
+from .view import build as build
+from .view import component as component
+from .view import emit as emit
+from .view import h as h
+from .view import mount as mount
+from .view import render_to_string as render_to_string
+from .view import text as text
+from .view import unique_id as unique_id
 
 __all__: list[str]

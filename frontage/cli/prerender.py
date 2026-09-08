@@ -13,12 +13,14 @@ handlers). Resource and async memo values must be JSON, and a failed load fails 
 
 import argparse
 import asyncio
+import html as html_module
 import importlib.util
 import json
 import re
 import sys
 from pathlib import Path
 
+from .. import head
 from . import PROG
 from . import build as build_cli
 
@@ -117,6 +119,11 @@ async def render_mount(view, debug, fallback, timeout, selector="#app"):
             json.dumps(values)
         except TypeError as exc:
             raise RuntimeError(f"a settled value is not JSON ({exc}); hydration needs JSON values") from None
+        # Taken before the dispose below: `Title` and `Meta` take their entry away with their
+        # owner, exactly as they must in a browser, so after the dispose the page says nothing.
+        # A list rather than a return value, because a page may hold several mounts and the
+        # signature of this one is what two test modules read.
+        heads.append(head.snapshot())
         return html, values
     finally:
         handle.dispose()
@@ -221,6 +228,56 @@ def _element_span(page_html, element_id):
     return finder.span
 
 
+#: What each mount said about itself, in render order, for the route being written.
+heads = []
+
+
+def _merge(snapshots):
+    """Several mounts on one page: the last one to say something has the last word."""
+    title, meta = None, []
+    for snapshot in snapshots:
+        if snapshot.get("title") is not None:
+            title = snapshot["title"]
+        for item in snapshot.get("meta") or []:
+            meta = [kept for kept in meta if kept[:2] != item[:2]] + [item]
+    return {"title": title, "meta": meta}
+
+
+def apply_head(page_html, head):
+    """`page_html` with the title and meta tags the page set through `frontage.head`.
+
+    A crawler, a link preview and a search result read this HTML and never run the page, so a
+    per-route title has to be *in* it. An existing `<title>` is replaced and an existing meta
+    tag of the same name is rewritten, so the static page keeps whatever it says by hand and
+    the app has the last word on what it set itself.
+    """
+    title = head.get("title")
+    if title is not None:
+        text = html_module.escape(str(title))
+        if re.search(r"<title\b[^>]*>.*?</title>", page_html, re.I | re.S):
+            page_html = re.sub(
+                r"<title\b[^>]*>.*?</title>", f"<title>{text}</title>", page_html, count=1, flags=re.I | re.S
+            )
+        else:
+            page_html = _into_head(page_html, f"<title>{text}</title>")
+    for attribute, name, content in head.get("meta") or []:
+        tag = f'<meta {attribute}="{html_module.escape(name, quote=True)}" content="{html_module.escape(str(content), quote=True)}">'
+        pattern = rf"<meta\b[^>]*\b{attribute}\s*=\s*[\"\']{re.escape(name)}[\"\'][^>]*>"
+        if re.search(pattern, page_html, re.I):
+            page_html = re.sub(pattern, tag, page_html, count=1, flags=re.I)
+        else:
+            page_html = _into_head(page_html, tag)
+    return page_html
+
+
+def _into_head(page_html, tag):
+    for closing in ("</head>", "</body>"):
+        i = page_html.lower().find(closing)
+        if i >= 0:
+            return page_html[:i] + tag + page_html[i:]
+    return tag + page_html
+
+
 def add_replay(page_html):
     if "__frontage_replay" in page_html:
         return page_html
@@ -302,6 +359,8 @@ def prerender(
     seen = set(queue)
     while queue:
         route = queue.pop(0)
+        head.forget()  # each route says what it says; nothing carries over from the last
+        del heads[:]
         mounts = import_app(entry_path, route)
         if not mounts:
             raise RuntimeError(f"{entry} never called mount(view, '#id') while importing for {route}")
@@ -316,6 +375,7 @@ def prerender(
                     if path not in seen and len(seen) < limit:
                         seen.add(path)
                         queue.append(path)
+        html = apply_head(html, _merge(heads))
         html = add_replay(html)
         parts = [p for p in route.strip("/").split("/") if p]
         target = out.joinpath(*parts) / "index.html" if parts else out / "index.html"

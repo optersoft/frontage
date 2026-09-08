@@ -183,3 +183,36 @@ def test_prerender_tracker_routes_and_the_memo_loaded_detail(tmp_path):
     assert "Signals lose a subscriber after dispose" in detail and 'id="error"' not in detail
     _, _, values = results[2].mounts[0]
     assert isinstance(values, dict) and values["memos"]  # the detail's async memo, by ordinal
+
+
+def test_prerender_writes_each_route_its_own_title_and_meta(tmp_path):
+    """The point of head management: the HTML a crawler reads already says the right thing,
+    per route, without running the page."""
+    app = tmp_path / "site"
+    app.mkdir()
+    (app / "index.html").write_text(
+        "<!DOCTYPE html>\n<html><head><title>Placeholder</title>"
+        '<meta name="description" content="the static one"></head>\n'
+        '<body><main id="app">Loading…</main>\n</body></html>\n'
+    )
+    (app / "app.py").write_text(
+        "from frontage import Route, Router, h, mount\n"
+        "from frontage.head import Meta, Title\n"
+        "def about():\n"
+        "    return h.div(Title('About us'), Meta('Who we are.', name='description'),\n"
+        "                 Meta('About us', property='og:title'), h.h1('about'))\n"
+        "router = Router(Route('/', lambda: h.h1('home'), title='Home'), Route('/about', about), mode='history')\n"
+        "mount(router, '#app')\n"
+    )
+    prerender(app, tmp_path / "out", routes=("/", "/about"))
+    home = (tmp_path / "out" / "index.html").read_text()
+    about = (tmp_path / "out" / "about" / "index.html").read_text()
+
+    assert "<title>Home</title>" in home and "Placeholder" not in home
+    assert "<title>About us</title>" in about
+    # The page's own meta tag is rewritten in place, not duplicated.
+    assert about.count('name="description"') == 1
+    assert 'content="Who we are."' in about and "the static one" not in about
+    assert '<meta property="og:title" content="About us">' in about
+    # A route that sets no meta keeps the page's own.
+    assert 'content="the static one"' in home
