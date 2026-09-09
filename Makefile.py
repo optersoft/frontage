@@ -24,10 +24,10 @@ Pages project `frontage` is connected to github.com/optersoft/frontage
 (2026-09-06), so a push to `main` builds and deploys frontage.optersoft.com.
 `mk site.deploy` is the hand deploy from before that, kept as a fallback when
 the Pages build is broken. Documentation lives on academy.optersoft.com, not
-here, and since 2026-09-06 the chapters run their apps in the page (the academy's
-`::: pyscript` frames, MicroPython, the released wheel by URL). frontage.optersoft.com
-serves its own landing page and the gallery index (web/, an Astro site on the Optersoft
-chrome `@optersoft/astro`, the sibling checkout at ../astro) and links there, plus the built
+here, and the chapters run their apps in the page (one boot tag, `frontage build`
+in each chapter's pipeline, the released wheel). frontage.optersoft.com serves its
+own landing page and the gallery index (web/, **a frontage site** on the Optersoft
+chrome `optersoft_brand`, the sibling checkout at ../brand) and links there, plus the built
 gallery apps, the playground and /dist/ (the wheels, which the chapters pin by URL). examples/ is
 the browser suite's and the benchmark's material. `mk` with no arguments lists everything.
 """

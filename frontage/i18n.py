@@ -23,6 +23,7 @@ Nothing here is browser code. It runs where the page is rendered, which for a si
 CPython at build time.
 """
 
+from .head import Tag
 from .view import h
 
 __all__ = ["alternates", "hreflang", "switcher"]
@@ -43,13 +44,18 @@ def hreflang(site, path, x_default=True):
     A crawler reads these and nothing else to learn that `/blog/` and `/es/blog/` are the
     same page in two languages; a page that sets them from script sets them for nobody. They
     are absolute when `BASE` is set, because that is what the tag is specified to carry.
+
+    They go through `frontage.head.Tag`, so this **renders nothing where it stands** and the
+    tags land in `<head>`. A layout writes it among its children like a `Title`; returning
+    the `<link>`s themselves would have put them in the body, where they are valid HTML that
+    no crawler reads.
     """
     found = alternates(site, path)
-    tags = [h.link(rel="alternate", hreflang=locale, href=site.url(other)) for locale, other in found]
+    tags = [Tag(h.link(rel="alternate", hreflang=locale, href=site.url(other))) for locale, other in found]
     if x_default and found:
         default = site.default_locale
         target = next((other for locale, other in found if locale == default), found[0][1])
-        tags.append(h.link(rel="alternate", hreflang=X_DEFAULT, href=site.url(target)))
+        tags.append(Tag(h.link(rel="alternate", hreflang=X_DEFAULT, href=site.url(target))))
     return tags
 
 

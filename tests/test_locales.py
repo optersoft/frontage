@@ -11,7 +11,7 @@ import pytest
 from frontage.cli.site import LOCALE, Route, Site, SiteError, build
 from frontage.content import collection
 from frontage.i18n import hreflang, switcher
-from frontage.view import render_to_string
+from frontage.view import h, render_to_string
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / "examples" / "locales"
@@ -88,12 +88,27 @@ def test_site_paths_is_one_build_per_locale():
 
 
 def test_hreflang_names_every_locale_and_a_default():
+    """⚠ In the HEAD, and rendering nothing where it stands. Returning the `<link>`s
+    themselves put them in the body, which is valid HTML no crawler reads."""
+    from frontage import head
+    from frontage.renderer import HtmlRenderer
+    from frontage.view import mount
+
+    head.forget()
     site = Site("https://x.test", pages=["/a/", "/es/a/", "/ca/a/"], locales=THREE)
-    html = render_to_string(lambda: hreflang(site, "/es/a/"))
-    assert '<link rel="alternate" hreflang="en" href="https://x.test/a/">' in html
-    assert '<link rel="alternate" hreflang="ca" href="https://x.test/ca/a/">' in html
+    renderer = HtmlRenderer()
+    root = renderer.create_element("div")
+    # Read before the dispose: a head tag goes away with its owner, exactly as it must.
+    handle = mount(lambda: h.div(hreflang(site, "/es/a/")), root, renderer)
+    body = "".join(child.to_html() for child in root.children)
+    tags = head.snapshot()["tags"]
+    handle.dispose()
+    head.forget()
+    assert body == "<div></div>", "hreflang must render nothing where it stands"
+    assert '<link rel="alternate" hreflang="en" href="https://x.test/a/">' in tags
+    assert '<link rel="alternate" hreflang="ca" href="https://x.test/ca/a/">' in tags
     # x-default points at the default locale's copy, which is what a search engine falls back to.
-    assert '<link rel="alternate" hreflang="x-default" href="https://x.test/a/">' in html
+    assert '<link rel="alternate" hreflang="x-default" href="https://x.test/a/">' in tags
 
 
 def test_the_switcher_is_links_and_the_current_one_is_not():

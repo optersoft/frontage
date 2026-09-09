@@ -430,6 +430,12 @@ third site, and the one with the most islands per page, once D lands.
   `<!--h-->` and `data-fr-h` in 31 pages of HTML, for a page with no runtime to walk them —
   1.7% of the bytes and, worse, the one thing in a view-source that a reader cannot account
   for. `render_mount(static=True)` renders without them; islands keep their own pass. (0.13.6)
+- **The framework's own helper had the same bug, one release later.**
+  `frontage.i18n.hreflang(site, path)` returned `<link>` elements, so every site built on it
+  — the two examples and the chapter that teaches it — put its alternates in the body. It
+  goes through `Tag` now and renders nothing where the layout writes it. The lesson is not
+  about hreflang: **any helper that returns a head element is wrong by construction**, and
+  the only way to be right was for the head to be somewhere a component could reach. (0.13.7)
 - **A `404.html` is a page that names its own path.** `frontage site` writes `<url>/index.html`,
   and a host looking for `404.html` would never find `/404/`. A page module may set `PATH`,
   and a URL that does not end in `/` is written as that file. (0.13.3)
