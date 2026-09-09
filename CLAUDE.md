@@ -236,13 +236,20 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
   in `mk lint` because the pages are another repo). Each chapter app boots from wasm: one
   `data-fr-boot` tag and a pipeline running `frontage build`. Verify a deploy with
   `curl -sL https://optersoft.gitlab.io/python/frontage-<c>/ | grep -c data-fr-boot` — the old
-  check read `frontage/version.py`, which no longer exists as a file.
+  check read `frontage/version.py`, which no longer exists as a file. ⚠ **Islands is the
+  exception**: a static page has *no* boot tag, so its check is `grep -c data-fr-islands`.
   **Each chapter's app is a repository** at `gitlab.com/optersoft/python/frontage-<chapter>`
   (checkout `~/xtec/python-frontage-<chapter>`), exported to GitLab Pages by its pipeline with
   the `frontage` on PyPI; the page's code blocks must match its `app/app.py`, and a wheel bump
-  is a commit in nine repos too (the two pipeline files pin `pip install frontage==X.Y.Z`;
-  Ship's copies of them say the same). ⚠ The chapters still describe MicroPython (0.9.x); the
-  0.10 release rewrites what they say about the runtime.
+  is a commit in **eleven** repos too (the two pipeline files pin `pip install
+  frontage==X.Y.Z`; Ship's copies of them say the same). ✅ **The chapters are current as of
+  0.11.2** (2026-09-09): seventeen pages, `islands.md` added, every pipeline on 0.11.2, and
+  every chapter app rebuilt and `frontage check`ed against the published wheel. The claim that
+  they "still describe MicroPython" was itself stale — only `prerender.md` still had
+  PyScript-era wording (`core.js`, "exactly as `export` does"), and it is gone.
+  ⚠ **A live-code block (`::: frontage`) is an iframe onto `frontage.optersoft.com/runner.html`,
+  which is deployed by hand** (`mk site.deploy`, wrangler, `dangerous=True`). A chapter whose
+  live block needs a runtime change is not published until that runs, and nothing will say so.
 - **Pages that load Tailwind's browser build import `theme.css` + `utilities.css` only**: the
   full import brings preflight, which restyles the page around the app. Keep the specifiers
   **bare** (`tailwindcss/theme.css`): Tailwind's script resolves them against what it has

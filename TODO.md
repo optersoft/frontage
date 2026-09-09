@@ -574,6 +574,18 @@ decides, all in 0.10.0:
       box, so the observer has to watch the island's **children**; `frontage.island` needs
       absolute imports because a relative one under `__main__` resolves against `__main__`;
       and an island needs a hydration data block of its own rather than the page's.
+- [x] **The academy covers islands, and is current on 0.11.2 (2026-09-09).** A seventeenth
+      chapter, `python/frontage/islands.md`, with its repository
+      `gitlab.com/optersoft/python/frontage-islands` — a theme toggle on `idle` and a chart on
+      `visible` named as a string, so its module and its data are a chunk. Every labelled code
+      block in the page is that repository's file byte for byte. Around it: all eleven
+      pipelines moved 0.10.1 → 0.11.2 and the prerender job lost `--no-pyscript` (a flag that
+      went with PyScript and now fails the build); `prerender.md` lost "before `core.js` has
+      arrived" and "exactly as `export` does" and gained the hand-off to islands; `style.md`
+      no longer builds its CSS "before the export"; `index.md` counts seventeen. All eleven
+      chapters rebuilt and `frontage check`ed against the published wheel, all eleven
+      pipelines green, all eleven pages live. The claim in `CLAUDE.md` that the chapters
+      "still describe MicroPython (0.9.x)" was itself two releases stale.
 - [ ] **0.11 next: `ISLAND.md` steps D–G, each a release.** Content collections over
       `frontage.schema` with Markdown (D); `frontage site` with file routing, `static_paths`,
       layouts and endpoints (E); locales (F); the Optersoft chrome as a component package
