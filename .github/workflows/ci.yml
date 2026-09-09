@@ -73,6 +73,11 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - run: uv sync --all-groups --frozen
+      # `--with-deps` runs `apt-get update`, which fails if *any* configured repository has a
+      # bad index — and the runner image ships Google's Chrome repository, which served a
+      # "Hash Sum mismatch" for hours on 2026-09-09 and took the browser job down with it.
+      # We install Playwright's own Chromium; we have never needed that repository.
+      - run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list
       - run: uv run --frozen playwright install --with-deps chromium
       - run: uv run --frozen pytest -q tests/browser --browser chromium
       - uses: actions/upload-artifact@v4
@@ -98,6 +103,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - run: uv sync --all-groups --frozen
+      - run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list  # see the browser job
       - run: uv run --frozen playwright install --with-deps ${{ matrix.browser }}
       - run: uv run --frozen pytest -q tests/browser --browser ${{ matrix.browser }}
 
