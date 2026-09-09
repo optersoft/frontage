@@ -22,6 +22,7 @@ USAGE = """usage: {prog} <command> [options]
 commands:
   build      compile an app and copy it with the runtime into a directory that runs anywhere
   prerender  build, then write each route as finished HTML that the browser hydrates
+  site       a directory of pages as a directory of files: file routing, layouts, endpoints
   tailwind   run the Tailwind CSS standalone CLI over the project (downloaded once)
   check      flag code a template will reject (lambda in a t-string, html(f"…"))
   schema     Pydantic models or a JSON Schema in, a `frontage.schema` module out
@@ -59,6 +60,8 @@ def main(argv=None):
         from .build import main as run
     elif command == "prerender":
         from .prerender import main as run
+    elif command == "site":
+        from .site import main as run
     elif command == "tailwind":
         from .tailwind import main as run
     elif command == "check":

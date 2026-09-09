@@ -148,7 +148,18 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - N7 `frontage serve --prerender` renders each page on the host the way the pipeline does, rebuilding when a file changes: the dev loop for a page that cannot run in the browser at all. [0.12]
 - N8 `frontage.content` needs `markdown-it-py`, `mdit-py-plugins` and `PyYAML` — the `content` extra — and says so in a sentence naming it. A page never downloads a Markdown renderer. [0.12]
 
-## 12. The layer above (M5)
+## 12. Sites (0.13)
+
+- S1 `frontage site DIR` builds a directory of pages into a directory of files. `pages/` is the site map: `index.py` is `/`, `about.py` is `/about/`, `blog/index.py` is `/blog/`, `blog/[slug].py` is one page per `static_paths()`, `docs/[...path].py` takes the rest of the path. Nothing configures the routing; the tree is it. [0.13]
+- S2 A page module defines `page(**params)` returning a view. A dynamic one also defines `static_paths()` returning a list of param dicts — Astro's `getStaticPaths` — and a page whose name is bracketed without one is an error saying so. A page or endpoint whose signature names `site` is handed the `Site`: `pages` (every URL the build made) and `base`/`url()` from `BASE` in `site.py`. [0.13]
+- S3 A layout is an ordinary component taking `children`; there is no layout concept in the framework. Per-page titles and meta tags are `frontage.head`'s `Title`/`Meta`, written into that page's `<head>`. [0.13]
+- S4 An endpoint is a module defining `get()` returning a string or bytes, written at its own name: `sitemap.xml.py` is `/sitemap.xml`. A bracketed name is never an endpoint, whatever dots it contains. [0.13]
+- S5 Every page is rendered on CPython as a static page: **no boot tag, no manifest, no runtime**, and a site with no island anywhere writes no `_frontage/` at all. The islands across every page decide what is written, once, beside the pages, with each island's module a chunk. [0.13]
+- S6 `public/` is copied as it is, `_headers` is written when there is a runtime to cache, and `_redirects` comes from a `redirects()` in `site.py` returning `(from, to)` or `(from, to, status)`. `--tailwind` builds the stylesheet and links it into every page. [0.13]
+- S7 The document each page goes into is the site's `index.html` — an element with `id="app"` is where the page goes, and the default template makes that the `<body>` so a page's markup is the body's children. A template without one is an error. [0.13]
+- S8 `frontage serve --prerender` on a directory with a `pages/` builds the site and serves it, rebuilding when a file changes; the site's own modules are dropped from `sys.modules` between builds, so a collection re-reads its directory. [0.13]
+
+## 13. The layer above (M5)
 
 - L1 `State` subclasses declare fields with `field(default)`; each instance gets a signal per field; reading the attribute tracks, assigning writes; `@computed` is a memo per instance; methods are handlers; `signal(name)` returns the Signal. Works on MicroPython (no `__getattribute__`, no `__mro__`). [M5]
 - L2 `frontage.widgets`: `text_input`, `textarea`, `number_input`, `slider`, `checkbox`, `select`, `radio_group`, `button`, each bound to a Signal, with an optional label and a class hook. [M5]

@@ -356,6 +356,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         route = self.path.split("?", 1)[0]
+        if self.prerender and _PRERENDER["site"]:
+            # A site has no file at `/blog/`: the build makes one. Rebuild if anything moved,
+            # then serve the built directory instead of the sources — every path below,
+            # `_frontage/` included, resolves there.
+            self._rebuild()
+            self.directory = str(_PRERENDER["out"])
         if self._upstream() is not None:
             self._proxy()
             return
@@ -389,7 +395,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         http.server.SimpleHTTPRequestHandler.do_GET(self)
 
     def _send_html(self, path):
-        if self.prerender:
+        if self.prerender and not _PRERENDER["site"]:
             rendered = self._prerendered(path)
             if rendered is not None:
                 path = rendered
@@ -405,28 +411,39 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _prerendered(self, path):
-        """`--prerender`: the page as `frontage prerender` writes it, rebuilt when a file changes.
+    def _rebuild(self):
+        """`--prerender`: build the app or the site the way the pipeline does, when it moved.
 
         A **content** page cannot run in the browser at all — `frontage.content` reads the
-        disk, renders Markdown and imports PyYAML, none of which exists there — so the dev
-        loop for one has to be the build. It is the same command the pipeline runs, into a
-        directory of its own, and it is re-run only when something under the app has changed;
-        the reload script and the file watcher are unchanged, so a save still shows up.
+        disk, renders Markdown and imports PyYAML, none of which exists there — and a **site**
+        has no file at `/blog/` until something makes one. So the dev loop for either has to
+        be the build. It is the same command the pipeline runs, into a directory of its own,
+        and it is re-run only when something under the app has changed; the reload script and
+        the file watcher are unchanged, so a save still shows up.
         """
-        from . import prerender as prerender_cli
-
         stamp = self.watcher.snapshot() if self.watcher else None
         with _PRERENDER_LOCK:
-            if stamp != _PRERENDER["stamp"]:
-                try:
+            if stamp == _PRERENDER["stamp"]:
+                return
+            try:
+                if _PRERENDER["site"]:
+                    from . import site as site_cli
+
+                    site_cli.build(self.app_root, _PRERENDER["out"], quiet=True)
+                else:
+                    from . import prerender as prerender_cli
+
                     prerender_cli.prerender(self.app_root, _PRERENDER["out"], quiet=True)
-                    _PRERENDER["error"] = None
-                except Exception as exc:  # a half-typed page keeps the last one on screen
-                    _PRERENDER["error"] = f"{type(exc).__name__}: {exc}"
-                    if not self.quiet:
-                        print(f"prerender failed: {_PRERENDER['error']}", file=sys.stderr)
-                _PRERENDER["stamp"] = stamp
+                _PRERENDER["error"] = None
+            except Exception as exc:  # a half-typed page keeps the last one on screen
+                _PRERENDER["error"] = f"{type(exc).__name__}: {exc}"
+                if not self.quiet:
+                    print(f"build failed: {_PRERENDER['error']}", file=sys.stderr)
+            _PRERENDER["stamp"] = stamp
+
+    def _prerendered(self, path):
+        """The built copy of one HTML file, for an app (a site serves its build wholesale)."""
+        self._rebuild()
         out, root = _PRERENDER["out"], self.app_root
         if out is None or root is None:
             return None
@@ -641,8 +658,15 @@ Handler.extensions_map.update({".wasm": "application/wasm", ".mjs": "text/javasc
 
 #: `--prerender`'s output and the file stamp it was made from, shared by every request
 #: thread: one build at a time, and only when something changed.
-_PRERENDER = {"out": None, "stamp": None, "error": None}
+_PRERENDER: dict = {"out": None, "stamp": None, "error": None, "site": False}
 _PRERENDER_LOCK = threading.Lock()
+
+
+def site_pages():
+    """The directory whose presence makes a directory a site rather than an app."""
+    from .site import PAGES
+
+    return PAGES
 
 
 def make_server(
@@ -680,6 +704,7 @@ def make_server(
         import tempfile
 
         _PRERENDER["out"] = tempfile.mkdtemp(prefix="frontage-prerender-")
+        _PRERENDER["site"] = (Path(Bound.app_root) / site_pages()).is_dir()
     Bound.proxies = tuple(proxy)
     # The plain handler serves `directory`; a subclass with its own `translate_path` needs none.
     factory = functools.partial(Bound, directory=str(directory)) if handler is Handler else Bound
@@ -754,7 +779,8 @@ def main(argv=None):
         return 2
     url = f"http://{args.host}:{args.port}/"
     if not args.quiet:
-        how = "rebuilds the page" if args.prerender else (f"swaps {entry}.py in place" if entry else "reloads the page")
+        built = "rebuilds the site" if (directory / site_pages()).is_dir() else "rebuilds the page"
+        how = built if args.prerender else (f"swaps {entry}.py in place" if entry else "reloads the page")
         print(f"serving {directory.resolve()} on {url}  ({how} when a file changes)")
         for prefix, upstream in proxies:
             print(f"  {prefix} -> {upstream}")

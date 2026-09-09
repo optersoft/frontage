@@ -8,7 +8,7 @@ router; running on its own Python runtime compiled to WebAssembly, with the fram
 precompiled bytecode. No JavaScript, no Node, no bundler: you write Python and the browser
 runs it.
 
-> **Status: 0.12.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete
+> **Status: 0.13.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete
 > through M12. Reactive core, store, templates (`h` and `html(t"…")`), control flow and
 > boundaries, `Resource`/`Action`, a nested router, widgets, `State`, timers, the playground
 > (0.2–0.3); **prerendering with hydration** (0.4), pages that show before Python loads;
@@ -24,7 +24,9 @@ runs it.
 > hydrated when its trigger fires ([ISLAND.md](ISLAND.md)). **0.12 gives such a page
 > something to say**: `frontage.content` reads a directory of Markdown whose front matter a
 > `frontage.schema` record checks, renders it on CPython at build time, and turns a
-> `::: island` container in the prose into one. The API is young and will move;
+> `::: island` container in the prose into one. **0.13 makes it a site**: `frontage site` is
+> `pages/` as the site map, one page per entry, layouts and endpoints, and every page static
+> unless it says otherwise. The API is young and will move;
 > the [browser suite](tests/browser/) runs every example on Chromium each push and on Firefox
 > and WebKit nightly.
 
@@ -140,6 +142,26 @@ for post in posts.entries():
 A file whose front matter does not match fails the build, naming the file and the field, and
 a `::: island widgets:reactions when="visible"` container in a post is an island where it
 stands. `pip install "frontage[content]"`; `examples/blog` is a blog in one page.
+
+A whole site is a directory, and the directory is the site map:
+
+```
+site/
+  pages/index.py          → /
+  pages/about.py          → /about/
+  pages/blog/index.py     → /blog/
+  pages/blog/[slug].py    → /blog/<slug>/, one per static_paths()
+  pages/sitemap.xml.py    → /sitemap.xml, a module with a get()
+  layouts/site.py         a component taking children; no new concept
+  content/posts/*.md      the collection above
+  public/                 copied as it is
+```
+
+`frontage site` renders every page on your machine and writes it where its path says. A page
+with nothing interactive on it carries **no script at all**; the runtime is written once,
+beside the pages, only if some page has an island. `frontage serve --prerender` is the same
+build with a file watcher in front of it. `examples/site` is seven pages, six of which fetch
+nothing.
 
 Tailwind with no build at all: the playground loads Tailwind's browser build, so utility
 classes work as you type. The [Style](https://academy.optersoft.com/python/frontage/style),

@@ -608,10 +608,34 @@ decides, all in 0.10.0:
       twelfth chapter repository, and the first whose pipeline installs an extra
       (`"frontage[content]==0.12.0"`). All twelve pipelines on 0.12.0, all twelve apps
       rebuilt and `frontage check`ed against the published wheel, all twelve pages live.
-- [ ] **0.12 next: `ISLAND.md` steps E–G, each a release.** `frontage site` with file
-      routing, `static_paths`, layouts and endpoints (E); locales (F); the Optersoft chrome as
-      a component package (G). Acceptance: `web/` and then `site/` rebuilt from it and
+- [x] **0.13.0: `frontage site` — `ISLAND.md` step E (2026-09-09).** A directory of pages as
+      a directory of files. `pages/` is the site map (`index.py` → `/`, `blog/[slug].py` →
+      one page per `static_paths()`, `docs/[...path].py` → the rest of the path), a layout is
+      an ordinary component taking `children`, an endpoint is a module with a `get()` written
+      at its own name (`sitemap.xml.py`), `public/` is copied, `_redirects` comes from
+      `site.py`. A page or endpoint whose signature names `site` is handed every URL the build
+      made — which is how the sitemap knows them. Every page is static: the example's six
+      ordinary pages fetch nothing under `_frontage/`, and the runtime is written once,
+      beside them, only because the seventh has an island. `frontage serve --prerender` builds
+      and serves a site with live rebuild. `examples/site`, `tests/test_site.py`,
+      `tests/browser/test_site.py`, `SPEC.md` §12.
+      Four things the plan did not know: a page must be **called inside its mount** or an
+      `::: island` in the Markdown it renders comes out inline; a collection must resolve its
+      directory on first use, because a site imports every page before it renders one; a dev
+      rebuild must drop the site's modules from `sys.modules` or the pages come out fresh and
+      their content does not; and `[...path]` has a dot in it, so `Path.suffix` called the
+      rest route an endpoint named `path]`.
+      ⚠ E's gate in the plan was "`web/` rebuilt from frontage" — that is F+G's, since `web/`
+      is on `@optersoft/astro`. E's own gate is the one above.
+- [ ] **0.13 next: `ISLAND.md` steps F and G, each a release.** Locales — the `pages/[lang]/`
+      convention and a `hreflang()` helper (F); the Optersoft chrome as a component package in
+      `optersoft/brand` (G). Acceptance: `web/` and then `site/` rebuilt from frontage and
       `astro/` retired for them.
+- [ ] The gallery cannot show a *site*. `tools/gallery.py` builds one app per card with
+      `frontage build` or `frontage prerender`; `frontage site` is a third command and a card
+      would be a whole tree rather than a page. Either teach it a `SITE` set whose card
+      measures the site's entry page, or accept that the blog card is the one that carries
+      the number and say so on the page.
 - [ ] **The chrome is a project of its own — `optersoft/brand` (decided 2026-09-09, David).**
       Not a `frontage` subpackage and not `astro/` renamed: `frontage` is Apache-2.0 and
       shipped to strangers, and the chrome is one company's logo, fonts, palette and footer.

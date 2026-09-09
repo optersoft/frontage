@@ -1,8 +1,8 @@
 # Frontage for sites: static generation and islands — the 0.11 plan
 
-**Status: steps A, B and C shipped in 0.11 and **D in 0.12.0** (2026-09-09) — `frontage/island.py`,
+**Status: steps A–C shipped in 0.11, **D in 0.12.0 and E in 0.13.0** (2026-09-09) — `frontage/island.py`,
 `_runtime/island.js`, `examples/islands`, `tests/test_island.py` and
-`tests/browser/test_island.py`; then `frontage/content/`, `examples/blog`, `tests/test_content.py` and `tests/browser/test_content.py`. E through G are unbuilt.** The question this answers is "can
+`tests/browser/test_island.py`; then `frontage/content/`, `examples/blog`, `tests/test_content.py` and `tests/browser/test_content.py`; then `frontage/cli/site.py`, `examples/site`, `tests/test_site.py` and `tests/browser/test_site.py`. F and G are unbuilt.** The question this answers is "can
 frontage do what Astro does for a content site", and the answer is *most of it, better in
 one respect, and three things deliberately not* — with the site you are reading this from
 (`web/`, an Astro site) and optersoft.com (`site/`, Astro, three locales, 27 pages) as the
@@ -294,7 +294,7 @@ Markdown shows on reload with nothing to build.
 | ✅ **B. islands as chunks** (0.11.0) | `island("mod:name")` is a chunk root, props as JSON on the wrapper | a page with a toggle and a chart fetches the chart's modules only when the chart is seen |
 | ✅ **C. zero-runtime pages** (0.11.0) | `mount(…, when="never")`; the boot tag and its preload hints written only where an island is | a built content page makes no `_frontage/` request |
 | ✅ **D. content** (0.12.0) | `frontage.content`: collections, front matter through `frontage.schema`, Markdown with `:::`, an `::: island` container in prose | a collection with a bad front matter fails the build naming the file and the field |
-| **E. pages** | `frontage site`, file routing, `static_paths`, layouts, endpoints, `_redirects` | `web/` rebuilt from frontage, byte-comparable HTML, the gallery cards as `never` islands |
+| ✅ **E. pages** (0.13.0) | `frontage site`, file routing, `static_paths`, layouts, endpoints, `_redirects`, `public/` | six pages of the example ship no runtime and the seventh boots it on scroll; `web/` rebuilt is F+G's gate, not this one |
 | **F. locales** | the `[lang]` convention, `hreflang()` | `site/` rebuilt: 27 pages, three locales, the theme toggle and language switcher as `idle` islands, sitemap from an endpoint |
 | **G. the chrome** | a **repository of its own**, `optersoft/brand`: a frontage component the two sites import | both sites on it, `astro/` retired for them |
 
@@ -357,6 +357,26 @@ third site, and the one with the most islands per page, once D lands.
   `frontage serve --prerender` renders each page on the host, the way the pipeline does, and
   re-renders when a file changes. That is a step toward §3.6's dev server, not a substitute
   for it. (0.12.0)
+- **A page has to be called inside its mount, not before it.** The site build first rendered
+  `page(**params)` and passed the view to the mount — and every `::: island` in the Markdown
+  that page rendered came out inline, because `prerender.static` was not up yet. The page is
+  now the mount's own function. (0.13.0)
+- **A collection resolves its directory on first use, not at construction.** A site imports
+  every page module before it renders anything, so a module-level `collection("posts", Post)`
+  runs before the build has said which directory it is building. (0.13.0)
+- **A dev rebuild has to forget the site's modules.** `from posts import posts` is an
+  ordinary import and stays in `sys.modules`, so the second build reused the first build's
+  collection: the pages came out fresh and their content did not, which looks exactly like a
+  broken file watcher. The build drops every module whose file is under the site root.
+  (0.13.0)
+- **`[...path]` has a dot in it**, so `Path.suffix` finds `.path]` and the route that swallows
+  the rest of a URL was classified as an endpoint called `path]`. A bracketed name is never an
+  endpoint. (0.13.0)
+- **The gate for E is not `web/`.** "byte-comparable HTML" against an Astro build was never
+  going to be literal, and `web/` uses `@optersoft/astro`, which is step G. E's own gate is
+  the one it can meet alone: the example site's six ordinary pages fetch nothing under
+  `_frontage/` and the seventh boots the runtime when a reader scrolls to its island. The
+  `web/` rebuild is the acceptance test for E+F+G together, and it stays in the table.
 - **The naming question answered itself.** `island(view, when=)` and `mount(view, target,
   when=)` are two names because they take different second arguments; `when=` is the same
   word in both, and `"never"` on a mount is what makes the page static.

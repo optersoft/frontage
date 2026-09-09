@@ -173,9 +173,16 @@ class Collection:
     def __init__(self, name, schema=None, root=None, suffixes=SUFFIXES):
         self.name = name
         self.schema = schema
-        self.root = Path(root) if root is not None else content_root() / name
+        # Resolved on first use, not here: a site's modules are imported before any page is
+        # rendered, so a module-level `collection("posts", Post)` runs before the build has
+        # said which directory it is building.
+        self._root = Path(root) if root is not None else None
         self.suffixes = tuple(suffixes)
         self._entries = None
+
+    @property
+    def root(self):
+        return self._root if self._root is not None else content_root() / self.name
 
     def __repr__(self):
         return f"<Collection {self.name!r} at {self.root}>"

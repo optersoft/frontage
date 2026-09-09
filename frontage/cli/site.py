@@ -1,0 +1,508 @@
+"""`python -m frontage site DIR`: a directory of pages as a directory of files.
+
+A site is `pages/`, and the tree is the site map:
+
+    site/
+      pages/
+        index.py            → /
+        about.py            → /about/
+        blog/index.py       → /blog/
+        blog/[slug].py      → /blog/<slug>/, one per `static_paths()`
+        docs/[...path].py   → /docs/<anything>/, one per `static_paths()`
+        sitemap.xml.py      → /sitemap.xml, an endpoint
+      layouts/site.py       a component taking `children`; no new concept
+      content/posts/*.md    a collection (`frontage.content`)
+      public/               copied as it is
+      site.py               optional: `redirects()`, `BASE`
+
+A **page** module defines `page(**params)` returning a view, and a dynamic one — a file whose
+name is `[slug]` or `[...path]` — also defines `static_paths()` returning the params to build,
+which is Astro's `getStaticPaths` in Python. An **endpoint** defines `get()` instead, returning
+a string or bytes, or `(body, content_type)`; it is written at its own name, so `sitemap.xml.py`
+is `/sitemap.xml`. A page that takes an argument named `site` is handed the same object an
+endpoint is: `pages` (every URL the build made) and `base`.
+
+Every page is rendered on CPython, and **a page with nothing interactive on it ships no
+runtime**: no boot tag, no manifest, not one request under `_frontage/`. What comes alive is
+the `island`s in it (`frontage.island`), each on a trigger of its own, and the runtime is
+written once, beside the pages, only if some page has one.
+"""
+
+import argparse
+import inspect
+import shutil
+import sys
+from pathlib import Path
+
+from . import PROG, frontage_rt
+from . import build as build_cli
+
+PAGES = "pages"
+LAYOUTS = "layouts"
+PUBLIC = "public"
+CONFIG = "site.py"
+TEMPLATE = "index.html"
+
+#: The document every page goes into when the site has no `index.html` of its own. The body
+#: *is* the mount target, so a page's own markup is the body's children and no wrapper div
+#: stands between the layout and the document.
+DEFAULT_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>{title}</title>
+</head>
+<body id="app">
+</body>
+</html>
+"""
+
+IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".*")
+
+
+class SiteError(Exception):
+    """A site that cannot be built, said in one sentence a person can act on."""
+
+
+class Site:
+    """What a page or an endpoint is handed when it asks: the URLs, and the site's own."""
+
+    def __init__(self, base="", pages=()):
+        self.base = base.rstrip("/")
+        self.pages = list(pages)
+
+    def url(self, path):
+        """An absolute URL for a path, when `BASE` is set; the path itself when it is not."""
+        return f"{self.base}{path}" if self.base else path
+
+    def __repr__(self):
+        return f"<Site {self.base or '(no BASE)'}: {len(self.pages)} pages>"
+
+
+# --- the routes a directory describes ---------------------------------------------------------
+
+
+class Route:
+    """One file under `pages/`, and the URL or URLs it makes."""
+
+    def __init__(self, path, root):
+        self.path = Path(path)
+        self.relative = self.path.relative_to(root)
+        self.module = None
+
+    @property
+    def name(self):
+        """A dotted name for the module, unique per file and never imported by it."""
+        return "_frontage_page_" + "_".join(_slug(part) for part in self.relative.with_suffix("").parts)
+
+    @property
+    def parts(self):
+        """The URL segments before the file's own, e.g. `blog` for `pages/blog/[slug].py`."""
+        return list(self.relative.parts[:-1])
+
+    @property
+    def stem(self):
+        return self.relative.stem
+
+    @property
+    def is_endpoint(self):
+        """`sitemap.xml.py` is one by its name; anything else is one by defining `get`.
+
+        A bracketed name is never one, whatever it looks like: `[...path]` has a dot in it,
+        so `Path.suffix` finds `.path]` and calls a rest route a file called `path]`.
+        """
+        if self.parameter is not None:
+            return False
+        return bool(Path(self.stem).suffix) or (self.module is not None and hasattr(self.module, "get"))
+
+    @property
+    def parameter(self):
+        """`slug` for `[slug].py`, `path` for `[...path].py`, else None."""
+        if self.stem.startswith("[") and self.stem.endswith("]"):
+            return self.stem[1:-1].lstrip(".")
+        return None
+
+    @property
+    def rest(self):
+        """Does `[...path]` swallow the rest of the URL?"""
+        return self.stem.startswith("[...")
+
+    def url(self, params=None):
+        """The URL this file makes, for these params."""
+        parts = list(self.parts)
+        if self.is_endpoint:
+            return "/" + "/".join(parts + [self.stem])
+        name = self.parameter
+        if name is not None:
+            value = str((params or {}).get(name, "")).strip("/")
+            if not value:
+                raise SiteError(f"{self.relative}: static_paths() gave no {name!r} for one of its pages")
+            parts += value.split("/")
+        elif self.stem != "index":
+            parts.append(self.stem)
+        return "/" + "".join(part + "/" for part in parts)
+
+
+def _slug(part):
+    return "".join(c if c.isalnum() else "_" for c in part)
+
+
+def routes(root):
+    """Every page and endpoint under `pages/`, in the order a person would list them."""
+    pages = Path(root) / PAGES
+    if not pages.is_dir():
+        raise SiteError(f"{Path(root)} is not a site: it has no {PAGES}/ directory")
+    found = [
+        Route(path, pages)
+        for path in sorted(pages.rglob("*.py"))
+        if "__pycache__" not in path.parts and path.name != "__init__.py"
+    ]
+    if not found:
+        raise SiteError(f"{pages} has no pages: a page is a module with a `page()` in it")
+    return found
+
+
+# --- rendering ---------------------------------------------------------------------------------
+
+
+def load(route, root):
+    """Import one page module, with the site root on the path so `layouts.site` resolves.
+
+    By file, not by name: `[slug].py` is not an identifier, and two `index.py` files in
+    different directories are two modules however you spell it.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(route.name, route.path)
+    if spec is None or spec.loader is None:
+        raise SiteError(f"{route.relative}: cannot be imported")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[route.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        sys.modules.pop(route.name, None)
+        raise SiteError(f"{route.relative}: {type(exc).__name__}: {exc}") from exc
+    route.module = module
+    return module
+
+
+def targets(route):
+    """`[params]` for this route: one empty dict for a static page, `static_paths()` for a
+    dynamic one — and a sentence rather than a traceback when a dynamic page has none."""
+    if route.parameter is None:
+        return [{}]
+    paths = getattr(route.module, "static_paths", None)
+    if paths is None:
+        raise SiteError(
+            f"{route.relative}: a page whose name is [{route.parameter}] is built once per value, "
+            "so it needs a `static_paths()` returning the params — like Astro's getStaticPaths"
+        )
+    found = paths()
+    if not isinstance(found, (list, tuple)):
+        raise SiteError(f"{route.relative}: static_paths() returns a list of dicts, not {type(found).__name__}")
+    return [dict(item) if isinstance(item, dict) else {route.parameter: item} for item in found]
+
+
+def call(function, params, site):
+    """Call a page or an endpoint with what it asked for: its params, and `site` if named."""
+    try:
+        signature = inspect.signature(function)
+    except (TypeError, ValueError):
+        return function(**params)
+    wanted = dict(params)
+    if "site" in signature.parameters and "site" not in wanted:
+        wanted["site"] = site
+    return function(**wanted)
+
+
+def render(route, params, url, root, site, timeout=30.0, debug=True):
+    """One page: its view rendered to HTML, its islands rendered in passes of their own.
+
+    Returns `(inner html, [(island, html, values)], head snapshot)`. The page is rendered the
+    way a `when="never"` mount is — `static` is up, so an `island` in it registers instead of
+    drawing — because that is what a page of a site *is*.
+    """
+    import asyncio
+
+    from .. import head
+    from ..runtime import prerender
+    from ..view import _ids
+    from . import prerender as prerender_cli
+
+    function = getattr(route.module, "page", None)
+    if function is None:
+        raise SiteError(f"{route.relative}: a page module defines `page()` returning a view")
+    head.forget()
+    del prerender_cli.heads[:]
+    _ids[0] = 0
+    prerender.path = url
+    prerender.app = str(root)
+    prerender.islands = []
+    # The page is *called inside the mount*, not before it: an `island` — in the page's own
+    # code or in a `::: island` container in the Markdown it renders — registers only while
+    # the static pass is up, and the static pass is what `render_mount` opens.
+    try:
+        inner, _ = asyncio.run(
+            prerender_cli.render_mount(lambda: call(function, params, site), debug, None, timeout, "#app", static=True)
+        )
+    except SiteError:
+        raise
+    except Exception as exc:
+        raise SiteError(f"{url} ({route.relative}): {type(exc).__name__}: {exc}") from exc
+    islands = list(prerender.islands)
+    drawn = asyncio.run(prerender_cli.render_islands(islands, timeout)) if islands else []
+    return inner, islands, drawn, prerender_cli._merge(prerender_cli.heads)
+
+
+def write_page(out, template, url, inner, islands, drawn, head):
+    """Assemble one page and write it at `<url>index.html`."""
+    from . import prerender as prerender_cli
+
+    html = prerender_cli.inject(template, "#app", inner, [], hydrate=False)
+    if drawn:
+        html = prerender_cli.splice_islands(html, drawn)
+    html = prerender_cli.apply_head(html, head)
+    # Zero by default: the loader only where an island is, and nothing at all where none is.
+    html = prerender_cli.island_script(html) if islands else prerender_cli.strip_boot(html)
+    if islands:
+        html = prerender_cli.add_replay(html)
+    parts = [p for p in url.strip("/").split("/") if p]
+    target = out.joinpath(*parts) / "index.html" if parts else out / "index.html"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(prerender_cli.relocate(html, len(parts)))
+    return html
+
+
+def write_endpoint(out, route, site):
+    """Run an endpoint and write what it returned at its own name."""
+    function = getattr(route.module, "get", None)
+    if function is None:
+        raise SiteError(f"{route.relative}: an endpoint module defines `get()` returning its body")
+    try:
+        answer = call(function, {}, site)
+    except Exception as exc:
+        raise SiteError(f"{route.relative}: {type(exc).__name__}: {exc}") from exc
+    body = answer[0] if isinstance(answer, tuple) else answer
+    if isinstance(body, str):
+        body = body.encode("utf-8")
+    if not isinstance(body, (bytes, bytearray)):
+        raise SiteError(f"{route.relative}: get() returns a string or bytes, not {type(body).__name__}")
+    target = out.joinpath(*route.parts, route.stem)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(bytes(body))
+    return target
+
+
+# --- the assets a site's islands need -----------------------------------------------------------
+
+
+def write_runtime(out, root, specs, quiet=True):
+    """The runtime, the modules the islands need, and the manifest — written once, or not at all.
+
+    The entry here is `frontage.island` itself: a site has no single module that mounts, and on
+    a page of islands that is what the boot runs anyway. Each island's module is a chunk, so a
+    page pays for the islands it has and a reader for the ones they reach.
+    """
+    if not specs:
+        return []
+    runtime = out / "_frontage"
+    runtime.mkdir(parents=True, exist_ok=True)
+    if not frontage_rt.available():
+        raise SiteError("the runtime is missing from frontage/_runtime: run `mk runtime.build`")
+    for name in ("glue.js", "boot.js", "island.js"):
+        shutil.copy2(frontage_rt.RUNTIME_DIR / name, runtime / name)
+    wasm_bytes = (frontage_rt.RUNTIME_DIR / "frontage.wasm").read_bytes()
+    wasm_file = frontage_rt.hashed("frontage", wasm_bytes, "wasm")
+    (runtime / wasm_file).write_bytes(wasm_bytes)
+
+    found = list(build_cli.discover())
+    installed = build_cli.required(root, found, sources=build_cli._browser_sources(root, found, specs))
+    declarations, styles = [], []
+    for component in installed:
+        assets = runtime / "components" / component.name
+        shutil.copytree(component.browser, assets, dirs_exist_ok=True)
+        declarations.append(f"{component.name}=./_frontage/components/{component.name}/{build_cli.COMPONENT_ENTRY}")
+        if (assets / build_cli.COMPONENT_STYLE).is_file():
+            styles.append(f"./_frontage/components/{component.name}/{build_cli.COMPONENT_STYLE}")
+
+    entry = frontage_rt.ISLAND_MODULE
+    members, chunks, _ = frontage_rt.analyse(root, entry, installed, specs)
+    files = {}
+    for name, path in members:
+        data = frontage_rt.compile_module(path)
+        files[name] = frontage_rt.hashed(name, data, "fbc")
+        (runtime / files[name]).write_bytes(data)
+    (runtime / frontage_rt.MANIFEST).write_bytes(
+        frontage_rt.manifest([n for n, _ in members], entry, files, wasm_file, chunks, islands=True)
+    )
+    if not (out / "_headers").exists():
+        (out / "_headers").write_text(frontage_rt.HEADERS)
+    if not quiet:
+        print(f"{len(members)} modules for {len(specs)} island(s), {len(chunks)} chunk(s)")
+    return declarations, styles
+
+
+# --- the build ------------------------------------------------------------------------------------
+
+
+def build(root, out=None, quiet=False, timeout=30.0, tailwind=False):
+    """Build the site at `root` into `out`; returns the URLs it wrote."""
+    root = Path(root).resolve()
+    out = Path(out).resolve() if out else Path.cwd() / "dist" / root.name
+    found = routes(root)
+    config = _config(root)
+    template = _template(root)
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir(parents=True)
+
+    # Before anything is imported: a module-level `collection("posts", Post)` in a page or in
+    # a module it imports asks where `content/` is the moment it is read.
+    from ..runtime import prerender
+
+    prerender.app = str(root)
+    sys.path.insert(0, str(root))
+    try:
+        for route in found:
+            load(route, root)
+        pages = [
+            (route, params, route.url(params)) for route in found if not route.is_endpoint for params in targets(route)
+        ]
+        site = Site(getattr(config, "BASE", ""), [url for _, _, url in pages])
+        rendered = [(url, *render(route, params, url, root, site, timeout)) for route, params, url in pages]
+        endpoints = [write_endpoint(out, route, site) for route in found if route.is_endpoint]
+    finally:
+        sys.path.remove(str(root))
+        for route in found:
+            sys.modules.pop(route.name, None)
+        _forget(root)
+
+    specs = sorted({island.spec for _, _, islands, _, _ in rendered for island in islands})
+    declarations, styles = write_runtime(out, root, specs, quiet=quiet) or ([], [])
+    template = _declare(template, declarations, styles)
+    for url, inner, islands, drawn, head in rendered:
+        write_page(out, template, url, inner, islands, drawn, head)
+
+    if (root / PUBLIC).is_dir():
+        shutil.copytree(root / PUBLIC, out, dirs_exist_ok=True, ignore=IGNORE)
+    _redirects(out, config)
+    if tailwind:
+        link = build_cli.build_tailwind(root, out, quiet=quiet)
+        for url, *_ in rendered:
+            _link(out, url, link)
+    if not quiet:
+        total = sum(p.stat().st_size for p in out.rglob("*") if p.is_file())
+        extra = f", {len(endpoints)} endpoint(s)" if endpoints else ""
+        extra += f", {len(specs)} island(s)" if specs else ", no runtime"
+        print(f"{out}: {len(rendered)} page(s){extra}, {total:,} bytes")
+    return [url for url, *_ in rendered]
+
+
+def _forget(root):
+    """Drop every module that came from under the site, so the next build re-reads them.
+
+    A page's `from posts import posts` is an ordinary import and lands in `sys.modules`, and
+    its module-level `collection("posts", Post)` reads the directory once. Left there, a dev
+    rebuild renders the site the way it was when the server started — the pages come out
+    fresh and their content does not, which looks like the watcher is broken.
+    """
+    root = str(Path(root).resolve())
+    for name, module in list(sys.modules.items()):
+        origin = getattr(module, "__file__", None)
+        if origin and str(Path(origin).resolve()).startswith(root + "/"):
+            sys.modules.pop(name, None)
+
+
+def _config(root):
+    """`site.py` at the root, if there is one: `BASE`, `redirects()`."""
+    path = Path(root) / CONFIG
+    if not path.is_file():
+        return None
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_frontage_site_config", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        raise SiteError(f"{CONFIG}: {type(exc).__name__}: {exc}") from exc
+    return module
+
+
+def _template(root):
+    """The document every page goes into: the site's `index.html`, or the default one."""
+    path = Path(root) / TEMPLATE
+    if path.is_file():
+        html = path.read_text()
+        if 'id="app"' not in html:
+            raise SiteError(f'{TEMPLATE}: a site\'s template needs an element with id="app" for the page to go in')
+        return html
+    return DEFAULT_TEMPLATE.format(title=Path(root).name)
+
+
+def _declare(template, declarations, styles):
+    """The components an island uses, on the template every page is made from."""
+    for href in styles:
+        link = f'<link rel="stylesheet" href="{href}">'
+        if link not in template:
+            template = template.replace("</head>", f"  {link}\n</head>", 1)
+    if not declarations:
+        return template
+    # There is no boot tag on a site's template, so the declarations ride on a tag of their own
+    # that `island_script` will find and move onto the loader.
+    tag = build_cli.boot_tag("app", declarations=declarations)
+    return template.replace("</body>", f"{tag}\n</body>", 1)
+
+
+def _redirects(out, config):
+    """`_redirects`, from a `redirects()` in `site.py`. Every static host reads this shape."""
+    function = getattr(config, "redirects", None) if config else None
+    if function is None:
+        return
+    lines = []
+    for rule in function():
+        if isinstance(rule, (list, tuple)):
+            source, target = rule[0], rule[1]
+            status = rule[2] if len(rule) > 2 else 301
+        else:
+            raise SiteError("redirects() returns (from, to) or (from, to, status) pairs")
+        lines.append(f"{source}  {target}  {status}")
+    if lines:
+        (out / "_redirects").write_text("\n".join(lines) + "\n")
+
+
+def _link(out, url, link):
+    """Put a stylesheet link into a page that is already written, at its own depth."""
+    from . import prerender as prerender_cli
+
+    parts = [p for p in url.strip("/").split("/") if p]
+    target = out.joinpath(*parts) / "index.html" if parts else out / "index.html"
+    html = target.read_text()
+    if link in html:
+        return
+    depth = prerender_cli.relocate(link, len(parts))
+    target.write_text(html.replace("</head>", f"  {depth}\n</head>", 1))
+
+
+def main(argv=None):
+
+    parser = argparse.ArgumentParser(prog=f"{PROG} site", description=__doc__)
+    parser.add_argument("dir", nargs="?", default=".", help="the site directory (the one with pages/)")
+    parser.add_argument("--out", default="", help="where to write (default: dist/<name>)")
+    parser.add_argument("--timeout", type=float, default=30.0, help="seconds to wait for a page's resources")
+    parser.add_argument("--tailwind", action="store_true", help="generate the Tailwind stylesheet and link it")
+    parser.add_argument("--quiet", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        build(args.dir, args.out or None, quiet=args.quiet, timeout=args.timeout, tailwind=args.tailwind)
+    except SiteError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
