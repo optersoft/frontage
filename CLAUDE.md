@@ -261,10 +261,12 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
   **Each chapter's app is a repository** at `gitlab.com/optersoft/python/frontage-<chapter>`
   (checkout `~/xtec/python-frontage-<chapter>`), exported to GitLab Pages by its pipeline with
   the `frontage` on PyPI; the page's code blocks must match its `app/app.py`, and a wheel bump
-  is a commit in **eleven** repos too (the two pipeline files pin `pip install
+  is a commit in **twelve** repos too (the two pipeline files pin `pip install
   frontage==X.Y.Z`; Ship's copies of them say the same). ✅ **The chapters are current as of
-  0.11.2** (2026-09-09): seventeen pages, `islands.md` added, every pipeline on 0.11.2, and
-  every chapter app rebuilt and `frontage check`ed against the published wheel. The claim that
+  0.12.0** (2026-09-09): eighteen pages, `islands.md` and `content.md` added, every pipeline
+  on 0.12.0 — `frontage-content`'s is the first to install an **extra**,
+  `"frontage[content]==0.12.0"` — and every chapter app rebuilt and `frontage check`ed
+  against the published wheel. The claim that
   they "still describe MicroPython" was itself stale — only `prerender.md` still had
   PyScript-era wording (`core.js`, "exactly as `export` does"), and it is gone.
   ⚠ **A live-code block (`::: frontage`) is an iframe onto `frontage.optersoft.com/runner.html`,

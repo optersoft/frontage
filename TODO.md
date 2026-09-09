@@ -603,6 +603,11 @@ decides, all in 0.10.0:
       content data is normalised to JSON on the way in.
       Also `frontage serve --prerender`: a content page cannot run in the browser at all, so
       its dev loop is the build, re-run when a file changes.
+- [x] **The academy covers content too (2026-09-09).** An eighteenth chapter,
+      `python/frontage/content.md`, with `gitlab.com/optersoft/python/frontage-content` — the
+      twelfth chapter repository, and the first whose pipeline installs an extra
+      (`"frontage[content]==0.12.0"`). All twelve pipelines on 0.12.0, all twelve apps
+      rebuilt and `frontage check`ed against the published wheel, all twelve pages live.
 - [ ] **0.12 next: `ISLAND.md` steps E–G, each a release.** `frontage site` with file
       routing, `static_paths`, layouts and endpoints (E); locales (F); the Optersoft chrome as
       a component package (G). Acceptance: `web/` and then `site/` rebuilt from it and
