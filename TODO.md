@@ -586,10 +586,31 @@ decides, all in 0.10.0:
       chapters rebuilt and `frontage check`ed against the published wheel, all eleven
       pipelines green, all eleven pages live. The claim in `CLAUDE.md` that the chapters
       "still describe MicroPython (0.9.x)" was itself two releases stale.
-- [ ] **0.11 next: `ISLAND.md` steps D–G, each a release.** Content collections over
-      `frontage.schema` with Markdown (D); `frontage site` with file routing, `static_paths`,
-      layouts and endpoints (E); locales (F); the Optersoft chrome as a component package
-      (G). Acceptance: `web/` and then `site/` rebuilt from it and `astro/` retired for them.
+- [x] **0.12.0: content collections — `ISLAND.md` step D (2026-09-09).** `frontage.content`:
+      `collection(name, schema)` over `content/<name>/`, front matter through
+      `frontage.schema`, Markdown by markdown-it-py, and `::: island posts:comments
+      when="visible"` in prose as a real island. A bad front matter fails the build naming the
+      file and every field, which was the gate. `Entry.view()` is the prose as *elements*, not
+      a blob of HTML, so the prerenderer fences it and an island in it is a node in the tree.
+      `examples/blog`, `tests/test_content.py`, `tests/browser/test_content.py`, `SPEC.md`
+      §11. The `content` extra (markdown-it-py, mdit-py-plugins, PyYAML) — build-time only,
+      and no page ever downloads a Markdown renderer.
+      Three things the plan did not know: the render must run **before** the build finishes,
+      because an island named in prose is invisible to the import walk (the page 404'd on
+      `frontage.island.fbc`); on a static page only the *islands* may decide which components
+      ship, or a page that uses `frontage.schema` at build time links the schema component's
+      stylesheet; and YAML hands back a `datetime.date` where `iso_date()` wants a string, so
+      content data is normalised to JSON on the way in.
+      Also `frontage serve --prerender`: a content page cannot run in the browser at all, so
+      its dev loop is the build, re-run when a file changes.
+- [ ] **0.12 next: `ISLAND.md` steps E–G, each a release.** `frontage site` with file
+      routing, `static_paths`, layouts and endpoints (E); locales (F); the Optersoft chrome as
+      a component package (G). Acceptance: `web/` and then `site/` rebuilt from it and
+      `astro/` retired for them.
+- [ ] A content build ships the Markdown it rendered. `build` copies the app directory, and
+      `content/` goes with it like the `.py` sources do — harmless for a public blog, wrong
+      for a site with drafts in the tree. The fix is not to special-case the name: it is for
+      the build to copy what the page *references*, which is step E's question anyway.
 - [x] **0.11.1: the islands feature finished (2026-09-09).** Four things, and the third is the
       one that mattered:
       - **The gallery shows the release's own number.** `tools/gallery.py` grew `PRERENDERED`:

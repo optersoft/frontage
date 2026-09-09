@@ -46,6 +46,12 @@ APPS = [
     ),
     ("tracker", "Tracker", "The whole framework in one app: routes, store, optimistic writes, a portal.", "#app"),
     ("islands", "Islands", "A static page and two islands: the runtime is not on the critical path.", "#theme"),
+    (
+        "blog",
+        "Blog",
+        "Markdown, front matter and a schema — rendered at build time, with an island in the prose.",
+        "article",
+    ),
 ]
 
 #: Apps built with `frontage prerender` rather than `frontage build`, and measured with
@@ -57,7 +63,7 @@ APPS = [
 #: are the page, its stylesheet and the 1.3 KB loader — nothing else — and its `ready`
 #: selector is what proves the claim. An app that cannot render without the runtime fails
 #: here rather than quietly publishing a number that includes 660 KB of it.
-PRERENDERED = {"islands"}
+PRERENDERED = {"islands", "blog"}
 
 #: Where the site's gallery page reads the result from (web/src/data/, gitignored). The page
 #: itself is web/src/pages/gallery/index.astro; this script only produces the facts.
@@ -94,17 +100,19 @@ def build_all(out):
     return built
 
 
-def _critical(path, root):
-    """Is this file on the critical path of a static page — the page, its stylesheets and the
-    island loader — or is it something a browser never asks for?
+#: What a browser can actually fetch from a static page: the document, what it links, and the
+#: island loader. Everything else in a build travels with it to be *read* — the app's `.py`
+#: sources, the Markdown a collection rendered, the host's `_headers` — and counting it would
+#: publish a number no reader ever pays.
+FETCHABLE = {".html", ".htm", ".css", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".ico", ".woff2"}
 
-    The runtime is deferred by design. The app's `.py` sources travel with a build so they can
-    be read, and `_headers` is the host's; neither is ever fetched.
-    """
+
+def _critical(path, root):
+    """Is this file on the critical path of a static page, or is it just travelling with it?"""
     relative = path.relative_to(root)
     if relative.parts[0] == "_frontage":
-        return relative.name == "island.js"
-    return relative.suffix != ".py" and relative.name != "_headers"
+        return relative.name == "island.js"  # the runtime is deferred by design
+    return relative.suffix.lower() in FETCHABLE
 
 
 def measure(built, out):

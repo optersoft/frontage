@@ -3,8 +3,8 @@
 Frontage: a fine-grained reactive UI framework for Python in the browser, on its own Python
 runtime compiled to WebAssembly (`rust/`), published to PyPI as `frontage`, Apache 2.0,
 copyright Optersoft. Rewritten clean-room from `SPEC.md` per `DESIGN.md`; `main` is at
-**0.11.0** — islands and static pages, `ISLAND.md` steps A–C — and past
-milestone **M11** (0.9.0: the WebAssembly boot, the framework as precompiled bytecode, a dev
+**0.12.0** — islands and static pages (`ISLAND.md` steps A–C) and content collections
+(step D) — and past milestone **M11** (0.9.0: the WebAssembly boot, the framework as precompiled bytecode, a dev
 server that swaps modules into the running page, C/Rust libraries as plain imports — after
 M9's prerendering with hydration, transitions and async memos) and, unreleased, **M12/0.10**:
 the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript are gone**
@@ -20,7 +20,7 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
 | `TODO.md` | what is next and what is blocked |
 | `FASTER.md` | M12's plan, one release: our own build of the interpreter, the framework core in C, one distribution, the closure and route chunks, state-preserving swap — with the measurements it rests on |
 | `RUST.md` | where Rust goes (2026-09-08): the core inside the interpreter as a `no_std` staticlib behind a C shim — Rust, not C, on measurements that overturned `FASTER.md` §3/§10 — and bulk data in modules of their own, cut per app to the exports the Python interface calls; MicroPython's quadratic, unstable `sorted` is in there too |
-| `ISLAND.md` | the 0.11 plan (2026-09-09), **steps A–C shipped in 0.11.0**: what Astro does for a content site and how frontage does it — a page with nothing interactive ships no runtime, an island is a `mount` with a trigger (`when="visible"`), content is a collection checked by `frontage.schema`, pages are files. Measured on the two company Astro sites it has to replace; the prerendered counter is 455 bytes waiting for 265 KB, which is the whole case |
+| `ISLAND.md` | the 0.11 plan (2026-09-09), **steps A–C shipped in 0.11 and D in 0.12.0**: what Astro does for a content site and how frontage does it — a page with nothing interactive ships no runtime, an island is a `mount` with a trigger (`when="visible"`), content is a collection checked by `frontage.schema`, pages are files. Measured on the two company Astro sites it has to replace; the prerendered counter is 455 bytes waiting for 265 KB, which is the whole case |
 | `RUNTIME.md` | the case for a Python runtime of our own in Rust instead of MicroPython (2026-09-08): values in a word, a precise collector, errors as `Result`, no parser in the page, the browser as the standard library, the reactive core as native VM types — and **§9, the spike run the same day**: `rust/` (see `rust/README.md`) passes 157 of the framework's tests on the wasm and boots the examples, at **parity** with MicroPython on `profile_rows` (not the 2× gate) and **179 KB brotli** (not the 120 KB gate). The decision it leaves is where the native core goes; `TODO.md` |
 
 ## Layout
@@ -38,6 +38,7 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
 | `frontage/flow.py` | `Show`, `For`, `Switch`/`Match`, `Loading`, `Errored`, `Dynamic`, `Portal` |
 | `frontage/devtools.py` | the panel `frontage serve` runs in the page (Ctrl+Shift+D): every mount and the ownership tree under it. Compiled by the dev server, run with `rt.runDetached`, never in a build; absolute imports, because it runs as a script |
 | `frontage/dsp/` | signal processing as a component: an FFT, Welch's PSD, a spectrogram (`draw` rasterises it onto a canvas without the values reaching Python), a brick-wall bandpass, an RMS. 12 KB of `no_std` Rust from `rust/components/dsp/`, vendored by `mk components.wasm` |
+| `frontage/content/` | content as data (0.12), CPython and build time only: `collection(name, schema)` over `content/<name>/`, front matter (YAML, JSON) through `frontage.schema`, Markdown by markdown-it-py, and a `::: island posts:comments when="visible"` container that becomes a real `island` in the prose. `Entry.view()` is the body as *elements*, so the prerenderer fences it like any view. A **package**, not a top-level module, which is what keeps it out of `browser_modules()` and so out of every page. Needs the `content` extra |
 | `frontage/island.py` | islands (0.11): `island(view, when=…, **props)` renders a component at build time inside an `<fr-island>` wrapper and hydrates it in the browser when its trigger fires — `load`, `idle`, `visible`, `media:<query>`, `only`, `never`. With `mount(view, "#app", when="never")` above it the page is **static**: no boot tag, no runtime, 142 bytes over the wire. On such a page this module is what the boot runs as `__main__`, which is why every import in it is absolute |
 | `frontage/a11y.py` | what a screen reader cannot see happen: `announce` (one polite live region at the end of the body) and `focus` (a selector, made focusable, no scroll). The router calls both |
 | `frontage/head.py` | what the page says about itself: `Title`, `Meta`, and what `Route(title=)` writes. A stack per slot, so the innermost wins and leaving it puts the outer one back; off the browser it records instead and `prerender` writes it into `<head>` |
@@ -147,6 +148,25 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
   even its own-origin fetches leave as `Origin: null`: that is why `/_frontage/*` answers CORS,
   and why `frontage serve` sends the same headers — otherwise a frame works on Pages and not
   locally, which is the worst way round.
+- **The render runs before the build finishes, and that is not an optimisation.** An
+  `::: island` container names its module *in prose*, so `cli/graph.py` has nothing to walk
+  and the first build cannot know the module exists — the page 404s on `frontage.island.fbc`.
+  `cli/prerender.py` renders every route into memory (`_render_routes`), hands the specs it
+  found to `build(..., islands=specs)`, and writes the pages after (`_write`). Two
+  consequences: an island named in Markdown is a **chunk**, like one named by a string in
+  code; and on a **static** page `build(..., static=True)` asks only the *islands'* closure
+  which components to ship, because nothing else runs in the browser — without that, a page
+  whose only use of `frontage.schema` is checking front matter links the schema component's
+  stylesheet.
+- **Content data is JSON on the way in.** YAML reads `date: 2026-09-02` as a `datetime.date`,
+  and a schema says `iso_date()` because the browser has no date type — so the field that
+  looks most obviously right is the one that fails, with "expected a string". `content.jsonable`
+  converts dates and times to ISO strings and raises on anything else JSON does not take,
+  naming the field it sits in.
+- **A content page cannot run in the browser at all** — `frontage.content` reads the disk,
+  renders Markdown and imports PyYAML — so its dev loop is the build: `frontage serve
+  --prerender` renders each page on the host and re-renders when a file changes. The reload
+  script and the watcher are unchanged.
 - **A dev page needs `frontage.dev`, and the manifest is the only way it can get one.** The
   page is *handed* its modules; it cannot fetch one it turns out to need, and no app imports
   the module that performs a swap. `cli/serve.py` appends it to the manifest it synthesises.

@@ -273,6 +273,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     app_root = None  # where the app's .py files live; set by `make_server`
     entry = None  # the module that mounts, so a swap knows what to re-run
     proxies = ()  # (prefix, upstream) pairs: `--proxy /api=http://127.0.0.1:8000`
+    prerender = False  # `--prerender`: build the page on the host, the way the pipeline does
 
     def _upstream(self):
         route = self.path.split("?", 1)[0]
@@ -388,6 +389,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         http.server.SimpleHTTPRequestHandler.do_GET(self)
 
     def _send_html(self, path):
+        if self.prerender:
+            rendered = self._prerendered(path)
+            if rendered is not None:
+                path = rendered
         try:
             with open(path, encoding="utf-8") as f:
                 body = inject(with_components(f.read(), Path(path).parent)).encode("utf-8")
@@ -399,6 +404,38 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _prerendered(self, path):
+        """`--prerender`: the page as `frontage prerender` writes it, rebuilt when a file changes.
+
+        A **content** page cannot run in the browser at all — `frontage.content` reads the
+        disk, renders Markdown and imports PyYAML, none of which exists there — so the dev
+        loop for one has to be the build. It is the same command the pipeline runs, into a
+        directory of its own, and it is re-run only when something under the app has changed;
+        the reload script and the file watcher are unchanged, so a save still shows up.
+        """
+        from . import prerender as prerender_cli
+
+        stamp = self.watcher.snapshot() if self.watcher else None
+        with _PRERENDER_LOCK:
+            if stamp != _PRERENDER["stamp"]:
+                try:
+                    prerender_cli.prerender(self.app_root, _PRERENDER["out"], quiet=True)
+                    _PRERENDER["error"] = None
+                except Exception as exc:  # a half-typed page keeps the last one on screen
+                    _PRERENDER["error"] = f"{type(exc).__name__}: {exc}"
+                    if not self.quiet:
+                        print(f"prerender failed: {_PRERENDER['error']}", file=sys.stderr)
+                _PRERENDER["stamp"] = stamp
+        out, root = _PRERENDER["out"], self.app_root
+        if out is None or root is None:
+            return None
+        try:
+            relative = Path(path).resolve().relative_to(Path(root).resolve())
+        except ValueError:  # a page outside the app: served as it is on disk
+            return None
+        candidate = Path(out) / relative
+        return str(candidate) if candidate.is_file() else None
 
     def _send_bytes(self, body, content_type):
         self.send_response(200)
@@ -602,8 +639,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 Handler.extensions_map.update({".wasm": "application/wasm", ".mjs": "text/javascript", ".js": "text/javascript"})
 
 
+#: `--prerender`'s output and the file stamp it was made from, shared by every request
+#: thread: one build at a time, and only when something changed.
+_PRERENDER = {"out": None, "stamp": None, "error": None}
+_PRERENDER_LOCK = threading.Lock()
+
+
 def make_server(
-    directory, host="127.0.0.1", port=8000, watch=(), handler=Handler, quiet=False, app_root=None, entry=None, proxy=()
+    directory,
+    host="127.0.0.1",
+    port=8000,
+    watch=(),
+    handler=Handler,
+    quiet=False,
+    app_root=None,
+    entry=None,
+    proxy=(),
+    prerender=False,
 ):
     """A `ThreadingHTTPServer` serving `directory` with live reload; its watcher is started.
     `watch` names the directories to poll; the served one when it is empty. `proxy` is a list
@@ -623,6 +675,11 @@ def make_server(
     Bound.quiet = quiet
     Bound.app_root = str(Path(app_root).resolve()) if app_root else str(directory)
     Bound.entry = entry
+    Bound.prerender = prerender
+    if prerender and _PRERENDER["out"] is None:
+        import tempfile
+
+        _PRERENDER["out"] = tempfile.mkdtemp(prefix="frontage-prerender-")
     Bound.proxies = tuple(proxy)
     # The plain handler serves `directory`; a subclass with its own `translate_path` needs none.
     factory = functools.partial(Bound, directory=str(directory)) if handler is Handler else Bound
@@ -646,6 +703,12 @@ def main(argv=None):
         default=[],
         metavar="PREFIX=URL",
         help="forward requests under PREFIX to URL, e.g. /api=http://127.0.0.1:8000 (repeatable)",
+    )
+    parser.add_argument(
+        "--prerender",
+        action="store_true",
+        help="render each page on this machine, as `frontage prerender` does: what a static "
+        "page or a content page needs, since neither can run in the browser",
     )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
@@ -677,14 +740,21 @@ def main(argv=None):
             entry = ""
     try:
         server = make_server(
-            directory, args.host, args.port, watch=args.watch, quiet=args.quiet, entry=entry or None, proxy=proxies
+            directory,
+            args.host,
+            args.port,
+            watch=args.watch,
+            quiet=args.quiet,
+            entry=entry or None,
+            proxy=proxies,
+            prerender=args.prerender,
         )
     except OSError as exc:
         print(f"error: cannot listen on {args.host}:{args.port} ({exc})", file=sys.stderr)
         return 2
     url = f"http://{args.host}:{args.port}/"
     if not args.quiet:
-        how = f"swaps {entry}.py in place" if entry else "reloads the page"
+        how = "rebuilds the page" if args.prerender else (f"swaps {entry}.py in place" if entry else "reloads the page")
         print(f"serving {directory.resolve()} on {url}  ({how} when a file changes)")
         for prefix, upstream in proxies:
             print(f"  {prefix} -> {upstream}")

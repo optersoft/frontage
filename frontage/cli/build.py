@@ -181,7 +181,7 @@ def imports(text, package):
     return re.search(_FROM_LIST.format(re.escape(parent), re.escape(leaf)), text) is not None
 
 
-def required(app, installed):
+def required(app, installed, sources=None):
     """The installed components an app actually imports, and whatever those import in turn.
 
     `discover()` answers "what is in this environment", which is not the question a build asks.
@@ -194,9 +194,15 @@ def required(app, installed):
     Matching is textual on purpose. A component's Python is written for the browser's runtime,
     so asking the import system here would run it on the wrong interpreter, which is why
     `discover()` refuses to import one either. `--component` bypasses discovery and this too.
+
+    `sources` replaces "every module in the app" with a narrower reading of what actually
+    runs in the browser. On a **static page** that is the islands and nothing else — the
+    entry is never run there — so a page whose only use of `frontage.schema` is checking a
+    post's front matter at build time no longer links the schema component's stylesheet.
     """
     by_import = {c.import_name: c for c in installed}
-    sources = "\n".join(path.read_text() for path in sorted(app.glob("*.py")))
+    if sources is None:
+        sources = "\n".join(path.read_text() for path in sorted(app.glob("*.py")))
     wanted, frontier = set(), [name for name in by_import if imports(sources, name)]
     while frontier:
         name = frontier.pop()
@@ -257,7 +263,7 @@ def declare(html, declarations):
     return html[: match.start()] + f'{merged} data-fr-js="{", ".join(names)}">' + html[match.end() :]
 
 
-def build(app, out="", entry="", quiet=False, components=None, tailwind=False):
+def build(app, out="", entry="", quiet=False, components=None, tailwind=False, islands=(), static=False):
     from . import frontage_rt
 
     app = Path(app).resolve()
@@ -287,7 +293,7 @@ def build(app, out="", entry="", quiet=False, components=None, tailwind=False):
     # Components: assets beside the runtime, Python in the archive, a line in the boot tag.
     if components is None:
         found = list(discover())
-        installed = required(app, found)
+        installed = required(app, found, sources=_browser_sources(app, found, islands) if static and islands else None)
         # Only a component someone installed: frontage's own subpackages are always there,
         # and naming seven of them on every build would be noise rather than a warning.
         skipped = [c.name for c in found if c not in installed and not c.builtin]
@@ -302,14 +308,14 @@ def build(app, out="", entry="", quiet=False, components=None, tailwind=False):
             styles.append(f'<link rel="stylesheet" href="./_frontage/components/{component.name}/{COMPONENT_STYLE}">')
     # The entry's import closure, each module as bytecode, and a manifest naming them;
     # nothing the page does not reach is shipped.
-    members, chunks, islands = frontage_rt.analyse(app, entry, installed)
+    members, chunks, has_islands = frontage_rt.analyse(app, entry, installed, islands)
     files = {}
     for name, path in members:
         data = frontage_rt.compile_module(path)
         files[name] = frontage_rt.hashed(name, data, "fbc")
         (runtime / files[name]).write_bytes(data)
     (runtime / frontage_rt.MANIFEST).write_bytes(
-        frontage_rt.manifest([n for n, _ in members], entry, files, wasm_file, chunks, islands=islands)
+        frontage_rt.manifest([n for n, _ in members], entry, files, wasm_file, chunks, islands=has_islands)
     )
     if not (out / "_headers").exists():
         (out / "_headers").write_text(frontage_rt.HEADERS)
@@ -347,6 +353,22 @@ def build(app, out="", entry="", quiet=False, components=None, tailwind=False):
         extra += f" (installed but not imported, so not shipped: {', '.join(skipped)})" if skipped else ""
         print(f"{out}: entry {entry}, {len(members)} modules{extra}, {total:,} bytes")
     return out
+
+
+def _browser_sources(app, components, islands):
+    """The Python that actually runs in the browser on a static page: the islands' closure.
+
+    Everything else on such a page is build-time code — the entry, the page's layout, the
+    collection that read the Markdown — and asking *it* which components to ship is how a
+    page that never mounts anything ends up linking a component's stylesheet.
+    """
+    from . import frontage_rt
+    from .graph import Graph
+
+    graph = Graph(app, components=components)
+    roots = [spec.partition(":")[0] for spec in islands] + [frontage_rt.ISLAND_MODULE]
+    names = graph.closure([r for r in roots if graph._known(r)])
+    return "\n".join(graph.modules[name].read_text() for name in sorted(names) if name in graph.modules)
 
 
 TAILWIND_INPUT = "tailwind.css"

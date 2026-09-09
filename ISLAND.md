@@ -1,8 +1,8 @@
 # Frontage for sites: static generation and islands — the 0.11 plan
 
-**Status: steps A, B and C shipped in 0.11.0, finished in 0.11.1 (2026-09-09) — `frontage/island.py`,
+**Status: steps A, B and C shipped in 0.11 and **D in 0.12.0** (2026-09-09) — `frontage/island.py`,
 `_runtime/island.js`, `examples/islands`, `tests/test_island.py` and
-`tests/browser/test_island.py`. D through G are unbuilt.** The question this answers is "can
+`tests/browser/test_island.py`; then `frontage/content/`, `examples/blog`, `tests/test_content.py` and `tests/browser/test_content.py`. E through G are unbuilt.** The question this answers is "can
 frontage do what Astro does for a content site", and the answer is *most of it, better in
 one respect, and three things deliberately not* — with the site you are reading this from
 (`web/`, an Astro site) and optersoft.com (`site/`, Astro, three locales, 27 pages) as the
@@ -292,7 +292,7 @@ Markdown shows on reload with nothing to build.
 | ✅ **A. islands in the loader** (0.11.0) | `island(when=)`, the `<fr-island>` wrapper, the loader (1,341 bytes brotli), deferred boot, one runtime per page | a `visible` island fetches nothing until seen; two islands, one wasm fetch |
 | ✅ **B. islands as chunks** (0.11.0) | `island("mod:name")` is a chunk root, props as JSON on the wrapper | a page with a toggle and a chart fetches the chart's modules only when the chart is seen |
 | ✅ **C. zero-runtime pages** (0.11.0) | `mount(…, when="never")`; the boot tag and its preload hints written only where an island is | a built content page makes no `_frontage/` request |
-| **D. content** | `frontage.content`: collections, front matter through `frontage.schema`, Markdown with `:::` | a collection with a bad front matter fails the build naming the file and the field |
+| ✅ **D. content** (0.12.0) | `frontage.content`: collections, front matter through `frontage.schema`, Markdown with `:::`, an `::: island` container in prose | a collection with a bad front matter fails the build naming the file and the field |
 | **E. pages** | `frontage site`, file routing, `static_paths`, layouts, endpoints, `_redirects` | `web/` rebuilt from frontage, byte-comparable HTML, the gallery cards as `never` islands |
 | **F. locales** | the `[lang]` convention, `hreflang()` | `site/` rebuilt: 27 pages, three locales, the theme toggle and language switcher as `idle` islands, sitemap from an endpoint |
 | **G. the chrome** | `@optersoft/astro` → a frontage component package the two sites share | both sites on it, `astro/` retired for them |
@@ -336,6 +336,26 @@ third site, and the one with the most islands per page, once D lands.
   the point: it is for a component with no server-side meaning — one that reads the document,
   a canvas, a clock — where prerendering it puts something on screen the first frame throws
   away. (0.11.1)
+- **The render has to run before the build finishes.** An `::: island` container names a
+  module *in prose*, and the import walk has nothing to walk — so the first build could not
+  know the island's module existed, and the page 404'd on `frontage.island.fbc`.
+  `frontage prerender` now renders every route first, hands the specs it found back to
+  `build`, and writes the pages after. That is also what makes the modules chunks rather than
+  payload. (0.12.0)
+- **Only the islands decide a static page's components.** `build.required` reads the app's
+  sources to know which component packages to ship; on a static page the entry never runs in
+  the browser, so a page whose only use of `frontage.schema` is checking a post's front
+  matter was linking the schema component's stylesheet. It now reads the *islands'* closure
+  instead, and the blog is three requests rather than four. (0.12.0)
+- **YAML hands back a `date`, and a schema asks for a string.** `date: 2026-09-02` in front
+  matter is a `datetime.date`, and `iso_date()` is a string check because the browser has no
+  date type — so the field that looks most obviously right was the one that failed. Content
+  data is normalised to JSON on the way in, dates and times as ISO strings, and anything else
+  that is not JSON is an error naming the field. (0.12.0)
+- **A content page cannot run in the browser at all**, so its dev loop is the build:
+  `frontage serve --prerender` renders each page on the host, the way the pipeline does, and
+  re-renders when a file changes. That is a step toward §3.6's dev server, not a substitute
+  for it. (0.12.0)
 - **The naming question answered itself.** `island(view, when=)` and `mount(view, target,
   when=)` are two names because they take different second arguments; `when=` is the same
   word in both, and `"never"` on a mount is what makes the page static.

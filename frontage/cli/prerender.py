@@ -79,6 +79,7 @@ def import_app(entry, path="/"):
     prerender.islands = []
     prerender.static = False
     prerender.entry = entry.stem
+    prerender.app = str(entry.parent)  # where `frontage.content` looks for `content/`
     view._ids[0] = 0  # `unique_id` counts from the same point the browser will
     aio._begin_prerender()
     sys.path.insert(0, str(entry.parent))
@@ -458,7 +459,8 @@ def prerender(
     Prerendering runs on this CPython and writes HTML; the page then boots the runtime and
     hydrates."""
     out = Path(out).resolve() if out else Path.cwd() / "build" / Path(app).resolve().name
-    out = build_cli.build(app, out, entry=(entry or "").removesuffix(".py"), quiet=quiet)
+    name = (entry or "").removesuffix(".py")
+    out = build_cli.build(app, out, entry=name, quiet=quiet)
     page = (out / "index.html").read_text()
     entry = entry or find_entry(page)
     if entry is None:
@@ -473,16 +475,46 @@ def prerender(
     # after `import_app` has put the path back the way it found it.
     sys.path.insert(0, str(entry_path.parent))
     try:
-        return _routes(out, page, entry, entry_path, queue, seen, timeout, crawl, limit)
+        pages = _render_routes(entry, entry_path, queue, seen, timeout, crawl, limit)
     finally:
         sys.path.remove(str(entry_path.parent))
+    # What the render found that the import walk could not: an island named in Markdown. The
+    # build is run again with those specs, so their modules are chunks and `frontage.island`
+    # — which the boot runs on a page of islands — is in the payload. `compile_module` is
+    # cached by mtime, so the second pass compiles only what is new.
+    specs = sorted({island.spec for rendered in pages for island in rendered.islands})
+    if specs and _unbuilt(out, specs):
+        static = all(rendered.static for rendered in pages)
+        out = build_cli.build(app, out, entry=entry.removesuffix(".py"), quiet=True, islands=specs, static=static)
+        page = (out / "index.html").read_text()
+    return [_write(out, page, rendered) for rendered in pages]
 
 
-def _routes(out, page, entry, entry_path, queue, seen, timeout, crawl, limit):
-    """Render each queued route, and whatever `--crawl` finds while doing it."""
+def _unbuilt(out, specs):
+    """Is any island's module missing from the manifest the build just wrote?"""
+    from . import frontage_rt
+
+    try:
+        manifest = json.loads((out / "_frontage" / frontage_rt.MANIFEST).read_text())
+    except (OSError, ValueError):
+        return True
+    known = set(manifest.get("modules") or [])
+    known.update(name for names in (manifest.get("chunks") or {}).values() for name in names)
+    if frontage_rt.ISLAND_MODULE not in known:
+        return True
+    return any(spec.partition(":")[0] not in known for spec in specs)
+
+
+def _render_routes(entry, entry_path, queue, seen, timeout, crawl, limit):
+    """Render every queued route, and whatever `--crawl` finds; nothing is written yet.
+
+    Writing waits because rendering is what discovers the islands: an `::: island` container
+    in a Markdown file names a module in prose, and no amount of reading the app's imports
+    finds it. The build has to be told, and it can only be told afterwards.
+    """
     from frontage.runtime import prerender as prerender_state
 
-    results = []
+    pages = []
     while queue:
         route = queue.pop(0)
         head.forget()  # each route says what it says; nothing carries over from the last
@@ -490,36 +522,61 @@ def _routes(out, page, entry, entry_path, queue, seen, timeout, crawl, limit):
         mounts = import_app(entry_path, route)
         if not mounts:
             raise RuntimeError(f"{entry} never called mount(view, '#id') while importing for {route}")
-        html = page
         rendered = []
         prerender_state.islands = []
         static = bool(mounts) and all(when == "never" for *_, when in mounts)
         for selector, view, debug, fallback, when in mounts:
             live = when != "never"
             inner, values = asyncio.run(render_mount(view, debug, fallback, timeout, selector, static=not live))
-            html = inject(html, selector, inner, values, hydrate=live)
-            rendered.append((selector, inner, values))
+            rendered.append((selector, inner, values, live))
             if crawl:
                 for path in links_in(inner, view):
                     if path not in seen and len(seen) < limit:
                         seen.add(path)
                         queue.append(path)
         islands = list(prerender_state.islands)
-        if islands:
-            html = splice_islands(html, asyncio.run(render_islands(islands, timeout)))
-        html = apply_head(html, _merge(heads))
-        if static:
-            # Zero by default: a page whose every mount is `when="never"` gets the island
-            # loader if anything on it is an island, and otherwise not one byte of script.
-            html = island_script(html) if islands else strip_boot(html)
-        if not static or islands:
-            html = add_replay(html)
-        parts = [p for p in route.strip("/").split("/") if p]
-        target = out.joinpath(*parts) / "index.html" if parts else out / "index.html"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(relocate(html, len(parts)))
-        results.append(Prerendered(route, html, rendered, [(i.spec, i.when) for i in islands], static))
-    return results
+        drawn = asyncio.run(render_islands(islands, timeout)) if islands else []
+        pages.append(_Page(route, rendered, islands, drawn, _merge(heads), static))
+    return pages
+
+
+class _Page:
+    """One route, rendered and not yet written."""
+
+    def __init__(self, route, mounts, islands, drawn, head, static):
+        self.route = route
+        self.mounts = mounts  # [(selector, inner html, values, live)]
+        self.islands = islands
+        self.drawn = drawn  # [(island, html, values)]
+        self.head = head
+        self.static = static
+
+
+def _write(out, page_html, rendered):
+    """Assemble one rendered route into the page and write it where its path says."""
+    html = page_html
+    for selector, inner, values, live in rendered.mounts:
+        html = inject(html, selector, inner, values, hydrate=live)
+    if rendered.drawn:
+        html = splice_islands(html, rendered.drawn)
+    html = apply_head(html, rendered.head)
+    if rendered.static:
+        # Zero by default: a page whose every mount is `when="never"` gets the island
+        # loader if anything on it is an island, and otherwise not one byte of script.
+        html = island_script(html) if rendered.islands else strip_boot(html)
+    if not rendered.static or rendered.islands:
+        html = add_replay(html)
+    parts = [p for p in rendered.route.strip("/").split("/") if p]
+    target = out.joinpath(*parts) / "index.html" if parts else out / "index.html"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(relocate(html, len(parts)))
+    return Prerendered(
+        rendered.route,
+        html,
+        [(s, i, v) for s, i, v, _ in rendered.mounts],
+        [(i.spec, i.when) for i in rendered.islands],
+        rendered.static,
+    )
 
 
 def _count(values):

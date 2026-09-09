@@ -164,13 +164,16 @@ def closure(app, entry, components=()):
     return modules
 
 
+ISLAND_MODULE = "frontage.island"
+
+
 def split(app, entry, components=()):
     """`(modules, chunks)` — see `analyse`, which also says whether the app has islands."""
     modules, chunks, _ = analyse(app, entry, components)
     return modules, chunks
 
 
-def analyse(app, entry, components=()):
+def analyse(app, entry, components=(), islands=()):
     """`(modules, chunks, islands)`: what the page loads at once, what it fetches when asked,
     and whether any of it is an island.
 
@@ -178,13 +181,22 @@ def analyse(app, entry, components=()):
     somewhere in the first closure. It carries whatever only it reaches; a module the entry
     already loads stays in the first payload, and two chunks that share one both carry it — a
     copy of a few kilobytes is cheaper than a third request, until it is not (`TODO.md`).
+
+    `islands` are specs the *render* found that no amount of reading the code could: a
+    `::: island` container in a Markdown file names a module in prose, and the import walk
+    has nothing to walk. `frontage prerender` renders first and calls this again with what it
+    saw, so those modules are chunks like any other and `frontage.island` — which the boot
+    runs on such a page — is in the payload.
     """
     from .graph import Graph
 
     graph = Graph(app, components=components)
-    main = graph.closure([entry])
+    found = [spec.partition(":")[0] for spec in islands]
+    roots = [entry] + ([ISLAND_MODULE] if islands else [])
+    main = graph.closure(roots, stop=[m for m in found if m != entry])
+    has_islands = bool(islands) or graph.uses_islands(main)
     chunks = {}
-    for root in sorted(graph.lazy_roots(main)):
+    for root in sorted(set(graph.lazy_roots(main)) | {m for m in found if graph._known(m)}):
         extra = graph.closure([root], stop=main)
         if extra:
             chunks[root] = sorted(extra)
@@ -194,7 +206,7 @@ def analyse(app, entry, components=()):
     seen = {}
     for name, path in modules:
         seen[name] = path
-    return [(name, seen[name]) for name in sorted(seen)], chunks, graph.uses_islands(main)
+    return [(name, seen[name]) for name in sorted(seen)], chunks, has_islands
 
 
 def framework_names():

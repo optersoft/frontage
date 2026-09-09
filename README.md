@@ -8,7 +8,7 @@ router; running on its own Python runtime compiled to WebAssembly, with the fram
 precompiled bytecode. No JavaScript, no Node, no bundler: you write Python and the browser
 runs it.
 
-> **Status: 0.11.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete
+> **Status: 0.12.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete
 > through M12. Reactive core, store, templates (`h` and `html(t"…")`), control flow and
 > boundaries, `Resource`/`Action`, a nested router, widgets, `State`, timers, the playground
 > (0.2–0.3); **prerendering with hydration** (0.4), pages that show before Python loads;
@@ -21,7 +21,10 @@ runs it.
 > content-hashed. **0.11 makes the runtime optional**: `mount(view, "#app", when="never")` is
 > a static page — prerendered, no boot tag, 142 bytes over the wire and not one request for
 > the runtime — and `island(view, when="visible")` is the exception it makes, a component
-> hydrated when its trigger fires ([ISLAND.md](ISLAND.md)). The API is young and will move;
+> hydrated when its trigger fires ([ISLAND.md](ISLAND.md)). **0.12 gives such a page
+> something to say**: `frontage.content` reads a directory of Markdown whose front matter a
+> `frontage.schema` record checks, renders it on CPython at build time, and turns a
+> `::: island` container in the prose into one. The API is young and will move;
 > the [browser suite](tests/browser/) runs every example on Chromium each push and on Firefox
 > and WebKit nightly.
 
@@ -118,6 +121,25 @@ mount(page, "#app", when="never")
 
 — and the first trigger to fire boots the runtime once, shared by every island on the page.
 `examples/islands` is the whole of it in forty lines.
+
+What such a page says comes from a **collection**: a directory of Markdown whose front matter
+is checked by the same `frontage.schema` record that checks a form, rendered once, on your
+machine, and shipped as HTML.
+
+```python
+from frontage.content import collection
+from frontage.schema import iso_date, record, text
+
+Post = record(("title", text(min=1)), ("date", iso_date()), ("summary", text(), None))
+posts = collection("posts", Post)  # content/posts/*.md, newest first
+
+for post in posts.entries():
+    post.slug, post.data["title"], post.view()
+```
+
+A file whose front matter does not match fails the build, naming the file and the field, and
+a `::: island widgets:reactions when="visible"` container in a post is an island where it
+stands. `pip install "frontage[content]"`; `examples/blog` is a blog in one page.
 
 Tailwind with no build at all: the playground loads Tailwind's browser build, so utility
 classes work as you type. The [Style](https://academy.optersoft.com/python/frontage/style),

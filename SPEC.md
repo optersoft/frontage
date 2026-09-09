@@ -137,7 +137,18 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - I7 The clicks and input a reader makes before an island is interactive are replayed into it when it hydrates, and only into it: the page keeps capturing until no `<fr-island>` is left waiting, so an island whose trigger fires late still gets what was aimed at it. Every island on a page shares one renderer, because delegated events go through one dispatcher. [0.11.1]
 - I6 Outside a static build — `frontage serve`, a test, an app that mounts the whole page — an `island` is simply the component, rendered where it stands; a string spec there waits the way a lazy route does (a hole, the nearest `Loading`). [0.11]
 
-## 11. The layer above (M5)
+## 11. Content (0.12)
+
+- N1 `collection(name, schema)` is a directory of files — `content/<name>/` beside the app being rendered — read on CPython at build time and never shipped. A `.md` file is YAML front matter between `---` fences and a Markdown body; a `.json`, `.yaml` or `.yml` file is data with no body. The slug is the file name. [0.12]
+- N2 Front matter is checked by a `frontage.schema` record and a file that does not match **fails the build**, naming the file and every field: `content/posts/draft.md: title: too short; date: not an ISO date`. YAML's dates and times come back as ISO strings, because content data is JSON everywhere it goes and a schema says `iso_date()`. [0.12]
+- N3 `entries()` is newest first when every entry has a `date` and in slug order otherwise; `order=` takes a field name or a callable and `reverse=` overrides the direction. `get(slug)` names the alternatives when it misses. [0.12]
+- N4 `Entry.html()` is the body as HTML — CommonMark with tables, and a `:::` container as a `<div class="name">`; `Entry.view()` is the same thing as a **view**, so the prose is elements the prerenderer fences and `frontage check`'s rules apply to it. [0.12]
+- N5 A `::: island posts:comments when="visible" post="hello"` container in Markdown is an `island` (§10) placed where it stands; its body is not rendered, its keywords are JSON props, and the container with no component named is an error saying so. [0.12]
+- N6 `frontage prerender` renders **before** it finishes building, because an island named in prose is invisible to the import walk: the specs the render found are handed back to the build, so their modules are chunks and `frontage.island` is in the payload. On a static page only the islands decide which components ship, since nothing else runs in the browser. [0.12]
+- N7 `frontage serve --prerender` renders each page on the host the way the pipeline does, rebuilding when a file changes: the dev loop for a page that cannot run in the browser at all. [0.12]
+- N8 `frontage.content` needs `markdown-it-py`, `mdit-py-plugins` and `PyYAML` — the `content` extra — and says so in a sentence naming it. A page never downloads a Markdown renderer. [0.12]
+
+## 12. The layer above (M5)
 
 - L1 `State` subclasses declare fields with `field(default)`; each instance gets a signal per field; reading the attribute tracks, assigning writes; `@computed` is a memo per instance; methods are handlers; `signal(name)` returns the Signal. Works on MicroPython (no `__getattribute__`, no `__mro__`). [M5]
 - L2 `frontage.widgets`: `text_input`, `textarea`, `number_input`, `slider`, `checkbox`, `select`, `radio_group`, `button`, each bound to a Signal, with an optional label and a class hook. [M5]

@@ -25,6 +25,7 @@ files the browser suite tests.</p>
   <li><a href="chart/index.html">Chart</a>: uPlot wrapped as a component — a dashboard with a live 20,000-point chart</li>
   <li><a href="weather/index.html">Weather</a>: Streamlit's Seattle Weather demo, ported — metrics, five charts and a table over 1,461 rows the page ships with it</li>
   <li><a href="uber/index.html">Uber NYC</a>: Streamlit's flagship demo, rebuilt — a million real pickups, an hour slider, and a map whose viewport is an input the histogram reads</li>
+  <li><a href="blog/index.html">Blog</a>: three posts read from disk, front matter checked by <code>frontage.schema</code>, Markdown rendered at build time — and one <code>::: island</code> container in a post's prose. Needs <code>pip install "frontage[content]"</code>; build it with <code>frontage prerender</code>, or serve it with <code>frontage serve --prerender</code></li>
   <li><a href="islands/index.html">Islands</a>: a page that ships no runtime, and two islands that ask for one — <code>mount(page, "#app", when="never")</code> and <code>island(view, when="idle"|"visible")</code>. Under this dev server everything is live at once; the deferral only exists in a <code>frontage prerender</code> build</li>
   <li><a href="tracker/index.html">Tracker</a>: the whole framework in one app — routes, a store, <code>Optimistic</code>, a Portal modal, an <code>ActionForm</code></li>
 </ul>

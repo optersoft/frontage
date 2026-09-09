@@ -52,7 +52,9 @@ class _Prerender:
     `static` is up only while a `when="never"` mount is being rendered, which is the one
     place an `island` defers instead of rendering itself; `islands` is where it registers.
     `entry`/`entry_module` are the app's entry module by its real name and by the private
-    one the prerenderer imported it under — an island's spec has to name the first.
+    one the prerenderer imported it under — an island's spec has to name the first. `app` is
+    the directory being rendered, so `frontage.content` can find `content/` beside the app
+    rather than beside whatever directory the command was run from.
     """
 
     def __init__(self):
@@ -63,6 +65,7 @@ class _Prerender:
         self.islands = []
         self.entry = None
         self.entry_module = None
+        self.app = None
 
 
 prerender = _Prerender()

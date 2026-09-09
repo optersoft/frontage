@@ -35,6 +35,11 @@ polars = ["polars>=1.0", "fastapi>=0.110", "uvicorn>=0.29"]
 # The server half of `frontage.chat`: the process that holds the API key and streams the
 # answer. The page never imports it. `pip install "frontage[chat]"`.
 chat = ["fastapi>=0.110", "uvicorn>=0.29"]
+# `frontage.content`: Markdown, front matter and collections, all of it read on CPython at
+# build time and none of it shipped to the page. `pip install "frontage[content]"`, or
+# `uvx --from "frontage[content]" frontage …`. A Markdown renderer is not something to
+# vendor, and a page never pays for one, so it is an extra rather than a dependency.
+content = ["markdown-it-py>=3", "mdit-py-plugins>=0.4", "PyYAML>=6"]
 
 [project.scripts]
 frontage = "frontage.cli:script"
@@ -72,6 +77,10 @@ dev = [
     "uvicorn>=0.29",
     "httpx>=0.27",
     "pydantic>=2",
+    # `frontage.content`'s tests (the `content` extra).
+    "markdown-it-py>=3",
+    "mdit-py-plugins>=0.4",
+    "PyYAML>=6",
 ]
 
 [tool.ruff]
@@ -85,6 +94,7 @@ extend-exclude = ["www", "typings", "rust"]
 [tool.ruff.per-file-target-version]
 "tests/test_m2.py" = "py314"
 "examples/template/template.py" = "py314"
+"examples/blog/*.py" = "py314"
 
 [tool.ruff.lint]
 # No "UP": the package runs under MicroPython too, and pyupgrade rewrites are
