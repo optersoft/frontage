@@ -695,7 +695,22 @@ decides, all in 0.10.0:
       ⚠ The chrome ships **no island**, which G's gate expected: the theme has to be applied
       before first paint, so twelve lines are inline in the head, and the toggle's clicks
       belong with them. Three islands the plan named, three better without one.
-- [ ] **G's other half: `site/` (optersoft.com) rebuilt from frontage.** 27 pages, three
+- [x] **0.13.5 + the corpus: `site/`'s copy is content collections (2026-09-09).** The first
+      half of G's other half. `src/content/` was three 490-line `Content` objects and a
+      373-line `types.ts`, a shape Astro needed because TypeScript was the only thing that
+      could say "a field added to one locale must be added to the other two". A
+      `frontage.schema` record says it on the data and names the file and the field. The
+      three legal documents were 954 lines of typed blocks — `p`, `ul`, `table`, `note` —
+      which is a hand-rolled Markdown AST; they are Markdown now, and `note` is the `:::`
+      container. A case study is a document, an app is a thing, a person is a person: 66
+      files where there were six, in `~/optersoft/site/content/`, with `corpus.py` over them.
+      **Converted, not retyped** (`site/tools/convert_*.py` read the real TS through Node):
+      all 1,518 strings present verbatim, every legal block accounted for. The framework
+      needed `PATH` as a *function* of the params, because the paths are translated slugs.
+      ⚠ The port surfaced **stale marketing copy**: the frontage case study still says
+      "PyScript", "MicroPython · Pyodide" and "a nine-chapter course". It is live on
+      optersoft.com today and has been wrong since 0.10.
+- [ ] **G's other half, the rest: `site/`'s pages and components on frontage.** 27 pages, three
       locales, the theme toggle and the language switcher — both of which are now plain HTML
       rather than islands. It is a separate repository (`~/optersoft/site`), it is live, and
       its content is 27 pages of TypeScript modules that become YAML collections. When it

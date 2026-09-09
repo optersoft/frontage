@@ -190,12 +190,15 @@ class Route:
         A `[lang]` segment whose value is the default locale contributes nothing, so the main
         language is at `/` and the others under `/es/`, `/ca/`.
 
-        A page module may set `PATH` to say where it goes instead. A URL that does not end in
-        `/` is written as **that file** rather than as `<url>/index.html`, which is how a site
-        gets a `404.html` — the file a static host serves, with a 404 status, for a path that
-        matches nothing.
+        A page module may set `PATH` to say where it goes instead — a string, or a function of
+        the same params `page()` takes. A URL that does not end in `/` is written as **that
+        file** rather than as `<url>/index.html`: it is how a site gets a `404.html`, and how
+        a site whose canonical URLs have no trailing slash keeps them (`/technology`,
+        `/es/tecnologia` — translated slugs are a table, not a rule, and only the site has it).
         """
         fixed = getattr(self.module, "PATH", None) if self.module is not None else None
+        if callable(fixed):
+            fixed = fixed(**(params or {}))
         if fixed:
             return fixed if fixed.startswith("/") else "/" + fixed
         params = params or {}
@@ -281,23 +284,27 @@ def targets(route, site):
     locale" without importing the site's own config: `return site.paths()`.
     """
     names = route.parameters
-    if not names:
+    # A module whose `PATH` is a function decides its own URLs, so the brackets in its file
+    # name — if it has any — say nothing about what `static_paths()` must return.
+    routed = callable(getattr(route.module, "PATH", None))
+    if not names and not routed:
         return [{}]
     paths = getattr(route.module, "static_paths", None)
     if paths is None:
-        bracketed = ", ".join(f"[{name}]" for name in names)
+        what = "a `PATH()` that computes its URL" if routed else ", ".join(f"[{name}]" for name in names)
         raise SiteError(
-            f"{route.relative}: a page with {bracketed} in its path is built once per value, "
+            f"{route.relative}: a page with {what} is built once per value, "
             "so it needs a `static_paths()` returning the params — like Astro's getStaticPaths"
         )
     found = call(paths, {}, site)
     if not isinstance(found, (list, tuple)):
         raise SiteError(f"{route.relative}: static_paths() returns a list of dicts, not {type(found).__name__}")
-    out = [dict(item) if isinstance(item, dict) else {names[-1]: item} for item in found]
-    for params in out:
-        missing = [name for name in names if name not in params]
-        if missing:
-            raise SiteError(f"{route.relative}: static_paths() left out {', '.join(missing)} for one of its pages")
+    out = [dict(item) if isinstance(item, dict) else {(names or ["value"])[-1]: item} for item in found]
+    if not routed:
+        for params in out:
+            missing = [name for name in names if name not in params]
+            if missing:
+                raise SiteError(f"{route.relative}: static_paths() left out {', '.join(missing)} for one of its pages")
     return out
 
 
@@ -400,12 +407,18 @@ def set_lang(template, lang):
 
 
 def written_at(out, url):
-    """`(file, depth)` for a URL: `<url>/index.html` for a directory, the file itself for a
-    `PATH` that names one — and how many directories deep it sits, which is what `relocate`
-    and a stylesheet link need."""
+    """The file a URL is written to, and how many directories deep it sits.
+
+    `/blog/` is `blog/index.html`. A URL with no trailing slash is a **file**: `/404.html` is
+    `404.html`, and `/es` is `es.html` — not `es`, which cannot coexist with the `es/`
+    directory that `/es/tecnologia` needs, and which no static host would serve for `/es`
+    anyway. `.html` is added unless the URL already names an extension.
+    """
     parts = [p for p in url.strip("/").split("/") if p]
     if url.endswith("/") or not parts:
         return (out.joinpath(*parts) / "index.html" if parts else out / "index.html"), len(parts)
+    if not Path(parts[-1]).suffix:
+        parts[-1] += ".html"
     return out.joinpath(*parts), len(parts) - 1
 
 

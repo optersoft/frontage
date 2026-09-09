@@ -171,7 +171,7 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 
 - L8 `STATIC` in `site.py` is a list of directories copied into the output, a bare path at the root and a `(path, where)` pair under `where`: what lets a site take a stylesheet, four fonts and a favicon from a **package** without any of them living in the site's repository. A directory that is not there is an error naming it. [0.13.2]
 - S10 A site's references are **root-absolute**, not relocated by depth: a site is served at a root, its links are `/blog/`, and `translate` answers in the same shape. The template's own `./` is made absolute (it sits one file behind pages at every depth); a *page's* `./` is the author's and is left alone. [0.13.3]
-- S9 A page module may set `PATH` to say where it goes. A URL that does not end in `/` is written as **that file** rather than as `<url>/index.html`, which is how a site gets the `404.html` a static host serves for a path that matches nothing. [0.13.3]
+- S9 A page module may set `PATH` to say where it goes — a string, or a **function of the same params `page()` takes**, for a site whose paths are translated slugs (`/es/tecnologia`) and so come from a table the site has and the framework does not. A URL that does not end in `/` is written as a file: `/404.html` is `404.html` and `/es` is `es.html`, since `es` could not coexist with the `es/` directory `/es/tecnologia` needs. `static_paths()` is required when a page has parameters **or** a computed `PATH`. [0.13.3, `PATH()` in 0.13.5]
 - V1 `<script>` and `<style>` hold **raw text**: their content is neither escaped when written nor turned into hydration markers when a template is compiled. Anything but text in one is an error saying so. [0.13.2]
 
 ## 14. The layer above (M5)

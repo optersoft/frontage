@@ -222,3 +222,43 @@ def test_a_static_directory_that_is_not_there_says_so(tmp_path):
     (site / "site.py").write_text("STATIC = ['nowhere']\n")
     with pytest.raises(SiteError, match="is not a directory"):
         build(site, tmp_path / "out", quiet=True)
+
+
+# --- a site whose URLs have no trailing slash --------------------------------------------------
+
+
+def test_a_page_may_compute_its_own_url(tmp_path):
+    """optersoft.com's paths are translated slugs — `/es/tecnologia` — so they come from a
+    table the site has and the framework does not. `PATH` may be a function of the params."""
+    _site(
+        tmp_path,
+        **{
+            "pages__all.py": (
+                'ROUTES = {"home": {"en": "/", "es": "/es"}, "tech": {"en": "/technology", "es": "/es/tecnologia"}}\n\n'
+                "from frontage import h  # noqa: E402\n\n\n"
+                "def static_paths():\n    return [{'name': n, 'lang': l} for n in ROUTES for l in ROUTES[n]]\n\n\n"
+                "def PATH(name, lang):\n    return ROUTES[name][lang]\n\n\n"
+                "def page(name, lang):\n    return h.p(f'{name}/{lang}')\n"
+            )
+        },
+    )
+    out = tmp_path / "out"
+    build(tmp_path, out, quiet=True)
+    made = sorted(str(p.relative_to(out)) for p in out.rglob("*.html"))
+    # `/es` is `es.html`, not `es` — which could not coexist with the `es/` directory that
+    # `/es/tecnologia` needs, and which no static host would serve for `/es` anyway.
+    assert made == ["es.html", "es/tecnologia.html", "index.html", "technology.html"]
+
+
+def test_a_computed_path_still_needs_static_paths(tmp_path):
+    _site(
+        tmp_path,
+        **{
+            "pages__all.py": (
+                "from frontage import h\n\n\ndef PATH(name):\n    return '/' + name\n\n\n"
+                "def page(name):\n    return h.p(name)\n"
+            )
+        },
+    )
+    with pytest.raises(SiteError, match="a `PATH\\(\\)` that computes its URL"):
+        build(tmp_path, tmp_path / "out", quiet=True)
