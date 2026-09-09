@@ -3,9 +3,9 @@
 Frontage: a fine-grained reactive UI framework for Python in the browser, on its own Python
 runtime compiled to WebAssembly (`rust/`), published to PyPI as `frontage`, Apache 2.0,
 copyright Optersoft. Rewritten clean-room from `SPEC.md` per `DESIGN.md`; `main` is at
-**0.13.3** — islands and static pages (`ISLAND.md` steps A–C), content collections (D),
-`frontage site` (E), locales (F) and the chrome (G: `optersoft/brand`, and `web/` rebuilt on
-it) — and past milestone **M11** (0.9.0: the WebAssembly boot, the framework as precompiled bytecode, a dev
+**0.13.6** — islands and static pages (`ISLAND.md` steps A–C), content collections (D),
+`frontage site` (E), locales (F) and the chrome (G: `optersoft/brand`, with `web/` and
+**optersoft.com itself** rebuilt on it) — and past milestone **M11** (0.9.0: the WebAssembly boot, the framework as precompiled bytecode, a dev
 server that swaps modules into the running page, C/Rust libraries as plain imports — after
 M9's prerendering with hydration, transitions and async memos) and, unreleased, **M12/0.10**:
 the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript are gone**
@@ -42,7 +42,7 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
 | `frontage/content/` | content as data (0.12), CPython and build time only: `collection(name, schema)` over `content/<name>/`, front matter (YAML, JSON) through `frontage.schema`, Markdown by markdown-it-py, and a `::: island posts:comments when="visible"` container that becomes a real `island` in the prose. `Entry.view()` is the body as *elements*, so the prerenderer fences it like any view. A **package**, not a top-level module, which is what keeps it out of `browser_modules()` and so out of every page. Needs the `content` extra |
 | `frontage/island.py` | islands (0.11): `island(view, when=…, **props)` renders a component at build time inside an `<fr-island>` wrapper and hydrates it in the browser when its trigger fires — `load`, `idle`, `visible`, `media:<query>`, `only`, `never`. With `mount(view, "#app", when="never")` above it the page is **static**: no boot tag, no runtime, 142 bytes over the wire. On such a page this module is what the boot runs as `__main__`, which is why every import in it is absolute |
 | `frontage/a11y.py` | what a screen reader cannot see happen: `announce` (one polite live region at the end of the body) and `focus` (a selector, made focusable, no scroll). The router calls both |
-| `frontage/head.py` | what the page says about itself: `Title`, `Meta`, and what `Route(title=)` writes. A stack per slot, so the innermost wins and leaving it puts the outer one back; off the browser it records instead and `prerender` writes it into `<head>` |
+| `frontage/head.py` | what the page says about itself: `Title`, `Meta`, and what `Route(title=)` writes. A stack per slot, so the innermost wins and leaving it puts the outer one back; off the browser it records instead and `prerender` writes it into `<head>`. `Tag(element)` is the third one — a whole element for the head (canonical, hreflang, a favicon, a JSON-LD graph, a pre-paint script), recorded as HTML off the browser and mounted into `document.head` in it |
 | `frontage/chunks.py` | code splitting: `load`/`prefetch`/`loaded` and the `component` behind `Route(lazy=…)`. A chunk is a module `frontage build` left out of the first payload; the page fetches it and its own imports through `window.frontage.loadChunk`, named by the manifest |
 | `frontage/aio.py` | `Resource`, `Action`, `interval`, `poll` |
 | `frontage/router.py` | routes, matching, three modes, `A`, `Navigate`, `Redirect`, `query`, `ActionForm` |
@@ -156,6 +156,20 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
   even its own-origin fetches leave as `Origin: null`: that is why `/_frontage/*` answers CORS,
   and why `frontage serve` sends the same headers — otherwise a frame works on Pages and not
   locally, which is the worst way round.
+- **A layout's head is `Title`, `Meta` and `Tag` — never a bare element.** A `<link>` or a
+  `<script>` returned from a component renders *where it stands*, which on a page is the
+  body: the canonical URL, the hreflang set, the favicons and the JSON-LD graph of
+  optersoft.com were all in the body until 0.13.6, and a browser leaves them there without
+  complaining. `head.Tag(element)` records the element's HTML off the browser (built with
+  `_build_nodes`, not mounted — a mount inside the page's own render pass defers its work to
+  the scheduler and answers nothing) and the prerenderer splices it into `<head>`, deduped by
+  markup. ⚠ `Meta` is a **stack per slot**, so two `og:locale:alternate` Metas are one tag,
+  the last; a *set* of identical-name tags is `Tag`.
+- **A static page carries no hydration markers.** `render_mount(static=True)` renders without
+  them — no `data-fr-h`, no `<!--h-->` — because a `when="never"` page never hydrates and the
+  markers are the cursor a browser would walk. Islands render in passes of their own, with
+  them on. What is left in the HTML is what an author wrote, `comment(text)` included.
+
 - **A site's references are root-absolute; an app's prerendered routes are relocated.** The
   two are different on purpose. `prerender` rewrites `./` by depth because an app's `#app`
   page is one file copied to every route; `site` does not, because a site is served at a root

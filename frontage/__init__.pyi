@@ -71,6 +71,7 @@ from .view import Mounted as Mounted
 from .view import NodeRef as NodeRef
 from .view import Text as Text
 from .view import build as build
+from .view import comment as comment
 from .view import component as component
 from .view import emit as emit
 from .view import h as h

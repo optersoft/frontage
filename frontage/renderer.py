@@ -7,6 +7,10 @@ that serialise to HTML. `RecordingRenderer` wraps another renderer and keeps a l
 operation, which is how a test asserts *how little* a change touched.
 """
 
+#: The hydration fences: `<!--[-->` opens a hole's content and `<!--h-->` closes it. They are
+#: the framework's own and are written only when a page is being prerendered for hydration.
+_MARKERS = ("h", "[")
+
 #: Elements whose content is raw text: the parser does not read markup in them, and neither
 #: does a serialiser write escapes into them.
 _RAW_TEXT = {"script", "style"}
@@ -171,7 +175,11 @@ class HtmlNode:
     def to_html(self, comments=False, raw=False):
         if self.tag is None:
             if self.comment:
-                return f"<!--{self.text}-->" if comments else ""
+                # `comments=False` drops the framework's *markers* — the hydration fences —
+                # not an author's comment. One a page wrote is content: Cloudflare's
+                # `<!--email_off-->` opts a region out of its email obfuscation, and dropping
+                # it silently would rewrite every address on the page it protects.
+                return f"<!--{self.text}-->" if comments or self.text not in _MARKERS else ""
             # `<script>` and `<style>` are *raw text* elements: their content is not parsed as
             # markup and escaping it is wrong, not merely unnecessary. An inline theme script
             # with `&&` in it came out as `&amp;&amp;` and stopped being JavaScript.

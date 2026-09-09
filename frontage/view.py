@@ -81,6 +81,29 @@ class Text:
         return f"Text({self.value!r})"
 
 
+class Comment:
+    """An HTML comment, for the rare one that is not decoration.
+
+    A comment can be functional: Cloudflare's `<!--email_off-->` opts a region out of its
+    email obfuscation, and a host or a crawler may read one. There is no other way to write
+    one — a string is escaped, and a template's `<!-- -->` is a hydration marker.
+    """
+
+    def __init__(self, text):
+        self.text = text
+
+    def __repr__(self):
+        return f"Comment({self.text!r})"
+
+
+def comment(text):
+    """An HTML comment as a view node: `h.div(comment("email_off"), …)`."""
+    node = Comment(text)
+    if _stack:
+        _stack[-1].children.append(node)
+    return node
+
+
 class Element:
     def __init__(self, tag, attrs, children):
         self.tag = tag
@@ -141,7 +164,7 @@ def _children(items):
         t = type(item)
         if t is list or t is tuple:
             out.extend(_children(item))
-        elif t is Element or t is Text or t is Mounted or callable(item):
+        elif t is Element or t is Text or t is Mounted or t is Comment or callable(item):
             out.append(item)
         else:
             out.append(Text(item))
@@ -256,6 +279,8 @@ def _build_nodes(view, renderer, cache=None):
     """The list of live nodes for a view. A hole contributes its marker node. `cache` lets a
     caller that builds many like-shaped views (a `For`) reuse one compiled Template."""
     t = type(view)
+    if t is Comment:
+        return [renderer.create_marker(str(view.text))]
     if t is Element:
         if TEMPLATES and getattr(renderer, "supports_templates", True):
             if _view is not None:
@@ -301,7 +326,7 @@ def _normalize(value, renderer):
     t = type(value)  # see `_children` for why not isinstance with a tuple
     if t is Mounted:
         return list(value.nodes)
-    if t is Element or t is Text:
+    if t is Element or t is Text or t is Comment:
         return _build_nodes(value, renderer)
     if t is list or t is tuple:
         out = []
@@ -411,7 +436,7 @@ def _compile(element):
         parts.append(">")
         if el.tag in _VOID:
             return
-        if el.tag in _RAW_TEXT:
+        if el.tag in _RAW_TEXT:  # noqa: SIM102 — the raw-text branch reads better on its own
             # `<script>` and `<style>` hold raw text: a `<!--h-->` in one is not a marker, it
             # is a line of JavaScript, and the template it belongs to then finds one marker
             # fewer than it wrote. Their text goes into the HTML as it stands.
@@ -482,6 +507,11 @@ def _build_template(element, renderer, cache=None):
             elif kind is Mounted:
                 for n in child.nodes:
                     _insert(renderer, parent, n, marker)
+            elif kind is Comment:
+                # Static, like text: it is written once and never changes. Replacing the
+                # marker rather than mounting a hole also keeps it out of the hydration
+                # cursor's way, which counts `<!--h-->` and would find one too many.
+                renderer.replace_node(parent, renderer.create_marker(str(child.text)), marker)
             else:
                 _mount_hole(parent, child, renderer, marker)
     return root

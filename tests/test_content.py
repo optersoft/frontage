@@ -235,3 +235,14 @@ def test_the_blog_example_prerenders_to_a_page_with_no_boot_tag(tmp_path):
     assert manifest["islands"] is True and manifest["chunks"] == {"widgets": ["widgets"]}
     # Only the islands decide a static page's components, and this one's island uses none.
     assert "components/schema" not in page
+
+
+def test_an_html_comment_in_a_body_reaches_the_page():
+    """The legal pages wrap their article in Cloudflare's email-obfuscation opt-out, which is
+    a comment; `view_of` has to carry it through like any other node."""
+    from frontage.content import markdown, view_of
+
+    html = "<!--email_off-->" + markdown("Write to <a href='mailto:x@y'>x@y</a>.") + "<!--/email_off-->"
+    out = render_to_string(lambda: view_of(html))
+    assert out.startswith("<!--email_off-->") and out.rstrip().endswith("<!--/email_off-->")
+    assert 'href="mailto:x@y"' in out

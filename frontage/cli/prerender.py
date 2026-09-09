@@ -103,7 +103,14 @@ def import_app(entry, path="/"):
 
 async def render_mount(view, debug, fallback, timeout, selector="#app", static=False, scope=None):
     """Render one registered mount to `(html, values)`, resources and async memos settled.
-    The values are the resources' as a list, or a dict with the memos' too (see `Prerendered`)."""
+    The values are the resources' as a list, or a dict with the memos' too (see `Prerendered`).
+
+    A `static` mount is a page that will never hydrate — a page of a site — so it is rendered
+    **without the hydration markers**: no `data-fr-h`, no `<!--h-->`, no fences. They are the
+    cursor a browser walks, and there is no browser here; left in, they are the one thing in
+    the HTML that a person reading the source cannot account for. An island *does* hydrate,
+    and gets its own pass with them on.
+    """
     from frontage import aio, reactive
     from frontage.aio import ERRORED, PENDING, REFRESHING
     from frontage.renderer import HtmlRenderer
@@ -112,7 +119,8 @@ async def render_mount(view, debug, fallback, timeout, selector="#app", static=F
 
     registry = aio._begin_prerender()
     memos = reactive._begin_prerender()
-    renderer = HtmlRenderer(hydration_markers=True)
+    markers = not static
+    renderer = HtmlRenderer(hydration_markers=markers)
     root = renderer.create_element("div")
     # `static`: an `island` inside a `when="never"` page registers itself instead of
     # rendering, so the prerenderer can give it a pass — and a data block — of its own.
@@ -136,7 +144,7 @@ async def render_mount(view, debug, fallback, timeout, selector="#app", static=F
         for ordinal, memo in enumerate(memos):
             if memo.is_async() and memo.error() is not None:
                 raise RuntimeError(f"async memo #{ordinal} failed: {memo.error()!r}")
-        html = "".join(child.to_html(comments=True) for child in root.children)
+        html = "".join(child.to_html(comments=markers) for child in root.children)
         if 'class="frontage-error"' in html:
             raise RuntimeError("the view raised while rendering:\n" + _error_text(html))
         values = [r.peek() for r in registry]
@@ -351,17 +359,23 @@ heads = []
 
 def _merge(snapshots):
     """Several mounts on one page: the last one to say something has the last word."""
-    title, meta = None, []
+    title, meta, tags = None, [], []
     for snapshot in snapshots:
         if snapshot.get("title") is not None:
             title = snapshot["title"]
         for item in snapshot.get("meta") or []:
             meta = [kept for kept in meta if kept[:2] != item[:2]] + [item]
-    return {"title": title, "meta": meta}
+        for markup in snapshot.get("tags") or []:
+            # By its markup: two mounts that both ask for the same favicon mean one favicon,
+            # and a page with an island in it renders its layout once per pass.
+            if markup not in tags:
+                tags.append(markup)
+    return {"title": title, "meta": meta, "tags": tags}
 
 
 def apply_head(page_html, head):
-    """`page_html` with the title and meta tags the page set through `frontage.head`.
+    """`page_html` with the title, the meta tags and the head elements the page declared
+    through `frontage.head`.
 
     A crawler, a link preview and a search result read this HTML and never run the page, so a
     per-route title has to be *in* it. An existing `<title>` is replaced and an existing meta
@@ -384,6 +398,9 @@ def apply_head(page_html, head):
             page_html = re.sub(pattern, tag, page_html, count=1, flags=re.I)
         else:
             page_html = _into_head(page_html, tag)
+    for markup in head.get("tags") or []:
+        if markup not in page_html:
+            page_html = _into_head(page_html, markup)
     return page_html
 
 

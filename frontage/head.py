@@ -19,12 +19,23 @@ search result read the HTML and never run the page.
         )
 
 `Route(path, component, title=…)` is the same thing said once, for a whole route.
+
+`Tag` is the third one, for everything a page's head carries that is not words: the canonical
+URL, the hreflang set, the favicons, a licence link, a JSON-LD graph, an inline script that
+has to run before first paint. A layout that returns one of those as a plain element puts a
+`<link>` in the *body*, which is where this was found — so a layout writes
+
+    from frontage.head import Tag
+
+    Tag(h.link(rel="canonical", href=url))
+
+and it renders nothing where it stands.
 """
 
 from .reactive import RenderEffect, on_cleanup
 from .runtime import document, in_browser
 
-__all__ = ["Meta", "Title", "current_title", "snapshot"]
+__all__ = ["Meta", "Tag", "Title", "current_title", "snapshot"]
 
 # Every live entry, innermost last, by slot: `None` is the title, a `(attribute, name)` pair is
 # one meta tag. The last entry of a slot is what the page shows.
@@ -32,6 +43,10 @@ _stack = {}
 #: What the prerenderer takes: the same thing, off the browser, where there is no document.
 _title = [None]
 _meta = []
+#: Whole elements a page put in its head — a `<link>`, a `<script>`, a JSON-LD graph. Kept as
+#: HTML rather than as views, because that is what the prerenderer has to write and the
+#: element is built where the layout stands, with a renderer of its own.
+_tags = []
 
 
 def _value(value):
@@ -113,6 +128,50 @@ def Meta(content, name=None, property=None):  # noqa: A002 - `property` is the a
     return None
 
 
+def _html_of(element):
+    """One head element as HTML, rendered here and now with a renderer of its own.
+
+    Off the browser a head tag has nowhere to go — the page's own renderer is drawing the
+    body — so it is serialised at the point it is declared and the prerenderer splices the
+    string into `<head>`. Static by nature: nothing in a head tag is reactive.
+    """
+    from .renderer import HtmlRenderer
+    from .view import _build_nodes
+
+    # Built, not mounted: a mount inside the page's own render pass defers its DOM work to
+    # the scheduler, and this has to answer with the markup now. Nothing in a head tag is
+    # reactive, so there is nothing for an owner to hold.
+    return "".join(node.to_html() for node in _build_nodes(element, HtmlRenderer()))
+
+
+def Tag(element):
+    """One whole element in the page's `<head>` — a `<link>`, a `<script>`, a JSON-LD graph.
+
+    `Title` and `Meta` cover what a page says about itself in words; this is for everything
+    else a crawler reads and only the layout knows: the canonical URL, the hreflang set, the
+    favicons, the licence link, an inline script that has to run before first paint.
+
+    Renders nothing where it stands, like the other two, and goes away with its owner.
+    """
+    if element is None:
+        return None
+    if not in_browser:
+        markup = _html_of(element)
+        _tags.append(markup)
+
+        def forget_tag():
+            if markup in _tags:
+                _tags.remove(markup)
+
+        on_cleanup(forget_tag)
+        return None
+    from .view import mount
+
+    handle = mount(lambda: element, document.head, clear=False)
+    on_cleanup(handle.dispose)
+    return None
+
+
 def current_title():
     """What the page calls itself right now, from the innermost `Title` — or None."""
     entries = _stack.get(None)
@@ -121,7 +180,7 @@ def current_title():
 
 def snapshot():
     """What the page said about itself, for the prerenderer. Off the browser only."""
-    return {"title": _title[0], "meta": list(_meta)}
+    return {"title": _title[0], "meta": list(_meta), "tags": list(_tags)}
 
 
 def forget():
@@ -129,3 +188,4 @@ def forget():
     _stack.clear()
     _title[0] = None
     del _meta[:]
+    del _tags[:]

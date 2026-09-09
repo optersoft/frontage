@@ -74,6 +74,7 @@ EXPORTS = {
     "NodeRef": "view",
     "Text": "view",
     "build": "view",
+    "comment": "view",
     "component": "view",
     "emit": "view",
     "h": "view",

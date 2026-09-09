@@ -108,3 +108,33 @@ def test_a_route_without_a_title_does_not_keep_the_last_one():
     assert head.snapshot()["title"] == "Home"
     router.navigate("/plain")
     assert head.snapshot()["title"] is None
+
+
+# `Tag` -------------------------------------------------------------------------------------
+def test_a_tag_is_recorded_as_html_and_renders_nothing():
+    _, root = render(lambda: h.div(head.Tag(h.link(rel="canonical", href="https://x.test/a")), h.p("only me")))
+    assert head.snapshot()["tags"] == ['<link rel="canonical" href="https://x.test/a">']
+    assert "".join(child.to_html() for child in root.children) == "<div><p>only me</p></div>"
+
+
+def test_a_script_tag_keeps_its_javascript_unescaped():
+    render(lambda: h.div(head.Tag(h.script("if (a && b) go();", type="application/ld+json"))))
+    assert head.snapshot()["tags"] == ['<script type="application/ld+json">if (a && b) go();</script>']
+
+
+def test_a_tag_that_goes_away_is_forgotten():
+    show = Signal(True)
+    render(lambda: h.div(Show(show, lambda: h.div(head.Tag(h.link(rel="me", href="/gone"))))))
+    assert head.snapshot()["tags"] != []
+    show.set(False)
+    assert head.snapshot()["tags"] == []
+
+
+def test_the_prerenderer_writes_tags_into_the_head():
+    from frontage.cli.prerender import apply_head
+
+    page = "<html><head><title>x</title></head><body></body></html>"
+    written = apply_head(page, {"tags": ['<link rel="canonical" href="/a">']})
+    assert '<link rel="canonical" href="/a"></head>' in written
+    # A tag the template already carries is not written twice.
+    assert apply_head(written, {"tags": ['<link rel="canonical" href="/a">']}) == written

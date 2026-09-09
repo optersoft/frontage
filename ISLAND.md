@@ -411,6 +411,25 @@ third site, and the one with the most islands per page, once D lands.
   page of frontage.optersoft.com now makes **four requests and carries no `<script src>`**,
   which is the claim the site is there to make. Half of the gate met; `site/` (27 pages,
   three locales) is the other half. (0.13.3)
+- **optersoft.com is a frontage site, and step G is finished.** Thirty pages in three
+  locales with translated slugs, a schema.org graph on every one, hreflang, a sitemap
+  endpoint and three legal documents — **31 pages in 0.8 seconds**, no `node_modules`, and
+  every page ships no runtime. The Astro build was kept alongside long enough to diff it word
+  for word: identical visible text on all 31 pages, identical head tags and identical JSON-LD
+  once two bugs were fixed (below), then deleted. `content/` is 66 Markdown files rather than
+  six TypeScript modules of string literals; the copy is prose again. (0.13.6)
+- **A layout that returns a bare `<link>` puts it in the body, and nothing complains.** The
+  canonical URL, the hreflang set, the favicons, the licence link and the whole JSON-LD graph
+  of both sites were rendering *below* `<body>` — valid enough for a browser, invisible to a
+  crawler looking in the head. `frontage.head` had `Title` and `Meta` and no way to say
+  anything else, so `Tag(element)` is the third one: recorded as HTML off the browser,
+  spliced into `<head>` by the prerenderer, mounted into `document.head` in it. ⚠ And `Meta`
+  is a **stack per slot**, which is right for a description and wrong for a *set* — two
+  `og:locale:alternate` tags collapsed into one until they became `Tag`s. (0.13.6)
+- **A static page was still carrying the cursor for a hydration that never comes.** Every
+  `<!--h-->` and `data-fr-h` in 31 pages of HTML, for a page with no runtime to walk them —
+  1.7% of the bytes and, worse, the one thing in a view-source that a reader cannot account
+  for. `render_mount(static=True)` renders without them; islands keep their own pass. (0.13.6)
 - **A `404.html` is a page that names its own path.** `frontage site` writes `<url>/index.html`,
   and a host looking for `404.html` would never find `/404/`. A page module may set `PATH`,
   and a URL that does not end in `/` is written as that file. (0.13.3)

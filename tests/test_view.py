@@ -82,3 +82,17 @@ def test_script_and_style_hold_raw_text_not_markup():
     assert render_to_string(lambda: h.p("a && b")) == "<p>a &amp;&amp; b</p>"
     # And a script is text, not a place to put a view: the boundary shows the sentence.
     assert "&lt;script&gt; holds text" in render_to_string(lambda: h.script(h.b("no")))
+
+
+def test_a_comment_is_a_view_node_and_survives_serialisation():
+    """A comment can be functional: Cloudflare's `<!--email_off-->` opts a region out of its
+    email obfuscation, and dropping it rewrites every address on the page it protects.
+
+    `comments=False` drops the framework's hydration *markers*, not an author's comment.
+    """
+    from frontage.view import comment, h, render_to_string
+
+    out = render_to_string(lambda: h.div(comment("email_off"), h.p("x"), comment("/email_off")))
+    assert out == "<div><!--email_off--><p>x</p><!--/email_off--></div>"
+    # A hole's own markers are still the framework's and still go.
+    assert render_to_string(lambda: h.p("a", lambda: "b")) == "<p>ab</p>"

@@ -65,7 +65,11 @@ DEFAULT_TEMPLATE = """<!DOCTYPE html>
 </html>
 """
 
-IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".*")
+#: What `public/` and `STATIC` do not carry across. ⚠ Not `.*`: **`.well-known/` is a dot
+#: directory** and a site puts real things in it — `tdmrep.json`, `security.txt`, an app
+#: association file — so a blanket rule silently drops the one dot directory the web
+#: standardised. The noise is named instead.
+IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store", ".git", ".gitignore")
 
 
 class SiteError(Exception):

@@ -395,7 +395,7 @@ def view_of(html, islands=()):
 
     from ..island import island as make_island
     from ..renderer import _VOID
-    from ..view import Element, Text
+    from ..view import Comment, Element, Text
 
     out = []
     stack = []
@@ -431,6 +431,10 @@ def view_of(html, islands=()):
             if text.startswith(_PLACEHOLDER):
                 spec, when, props = islands[int(text[len(_PLACEHOLDER) :])]
                 add(make_island(spec, when=when, **props))
+            else:
+                # An author's comment is content: `<!--email_off-->` opts a region out of
+                # Cloudflare's email obfuscation, and the legal pages depend on it.
+                add(Comment(data))
 
     builder = Builder()
     builder.feed(html)
