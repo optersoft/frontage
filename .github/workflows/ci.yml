@@ -76,9 +76,17 @@ jobs:
       # `--with-deps` runs `apt-get update`, which fails if *any* configured repository has a
       # bad index — and the runner image ships Google's Chrome repository, which served a
       # "Hash Sum mismatch" for hours on 2026-09-09 and took the browser job down with it.
-      # We install Playwright's own Chromium; we have never needed that repository.
-      - run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list
-      - run: uv run --frozen playwright install --with-deps chromium
+      # We install Playwright's own Chromium and have never needed that repository, so it
+      # goes: by content, not by file name, because the image writes it as `.list` or as
+      # deb822 `.sources` depending on its age.
+      - name: Drop apt sources we do not use (Google Chrome)
+        run: |
+          sudo grep -rl 'dl\.google\.com' /etc/apt/sources.list.d/ 2>/dev/null | xargs -r sudo rm -f
+          sudo sed -i '/dl\.google\.com/d' /etc/apt/sources.list 2>/dev/null || true
+      # And if apt is broken anyway, install the browser without the system libraries rather
+      # than fail here: the runner image already carries most of them, and a Chromium that
+      # cannot start fails the tests below, which is the honest place to find out.
+      - run: uv run --frozen playwright install --with-deps chromium || uv run --frozen playwright install chromium
       - run: uv run --frozen pytest -q tests/browser --browser chromium
       - uses: actions/upload-artifact@v4
         if: ${{ failure() }}
@@ -103,8 +111,11 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - run: uv sync --all-groups --frozen
-      - run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list  # see the browser job
-      - run: uv run --frozen playwright install --with-deps ${{ matrix.browser }}
+      - name: Drop apt sources we do not use (see the browser job)
+        run: sudo grep -rl 'dl\.google\.com' /etc/apt/sources.list.d/ 2>/dev/null | xargs -r sudo rm -f
+      - run: >
+          uv run --frozen playwright install --with-deps ${{ matrix.browser }}
+          || uv run --frozen playwright install ${{ matrix.browser }}
       - run: uv run --frozen pytest -q tests/browser --browser ${{ matrix.browser }}
 
   # The compiler, one binary per platform, attached to the release: `frontage build` fetches
