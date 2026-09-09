@@ -687,6 +687,11 @@ decides, all in 0.10.0:
       --prerender`. **Astro, `@optersoft/astro`, `node_modules`, `package.json` and
       `web/src/` are deleted**, and every page of the site makes four requests and carries no
       `<script src>`.
+      Two sharp edges found by deploying it and looking: `relocate` rewrote the gallery's own
+      `./counter/` links to `../counter/`, so every card pointed one directory too high and
+      the page looked fine — a site is served at a root and is not relocated at all now; and
+      the island loader's `./_frontage/island.js` asked two directories too deep from a post.
+      The template *is* normalised, because it sits one file behind pages at every depth.
       ⚠ The chrome ships **no island**, which G's gate expected: the theme has to be applied
       before first paint, so twelve lines are inline in the head, and the toggle's clicks
       belong with them. Three islands the plan named, three better without one.

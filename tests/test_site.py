@@ -95,8 +95,9 @@ def test_only_the_page_with_an_island_carries_the_loader(built):
     page = (built / "blog" / "one-island-per-site" / "index.html").read_text()
     assert "data-fr-islands" in page and "data-fr-boot" not in page
     assert 'data-fr-island="widgets:reactions"' in page
-    # Written two levels down, so its references are relative to where it is.
-    assert '"../../_frontage/island.js"' in page
+    # Root-absolute: a site is served at a root, and `./_frontage/` two directories down
+    # would ask for a loader that is not there.
+    assert '"/_frontage/island.js"' in page
 
 
 def test_the_runtime_is_written_once_and_the_island_is_a_chunk(built):

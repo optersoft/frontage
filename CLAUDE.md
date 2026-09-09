@@ -156,6 +156,14 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
   even its own-origin fetches leave as `Origin: null`: that is why `/_frontage/*` answers CORS,
   and why `frontage serve` sends the same headers — otherwise a frame works on Pages and not
   locally, which is the worst way round.
+- **A site's references are root-absolute; an app's prerendered routes are relocated.** The
+  two are different on purpose. `prerender` rewrites `./` by depth because an app's `#app`
+  page is one file copied to every route; `site` does not, because a site is served at a root
+  and `./counter/` on the gallery index is a link the *author* wrote — relocating it made
+  every card point one directory too high, and the page looked perfectly well. What the site
+  build does normalise is the **template**, which sits one file behind pages at every depth:
+  `./site.css` there is right for `/` and a silent 404 for `/blog/a-post/`. The island
+  loader's tag takes a prefix for the same reason (`island_script(html, "/")`).
 - **A page is called inside its mount, never before it.** `cli/site.py` passes
   `lambda: call(page, params, site)` to `render_mount`, not the view it already built: an
   `island` — in the page's code or in a `::: island` container in the Markdown it renders —

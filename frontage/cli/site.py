@@ -361,12 +361,19 @@ def write_page(out, template, url, inner, islands, drawn, head, lang=None):
         html = prerender_cli.splice_islands(html, drawn)
     html = prerender_cli.apply_head(html, head)
     # Zero by default: the loader only where an island is, and nothing at all where none is.
-    html = prerender_cli.island_script(html) if islands else prerender_cli.strip_boot(html)
+    # `/`, not `./`: a site's references are root-absolute, and a page at `/blog/a-post/`
+    # asking for `./_frontage/island.js` asks two directories too deep.
+    html = prerender_cli.island_script(html, "/") if islands else prerender_cli.strip_boot(html)
     if islands:
         html = prerender_cli.add_replay(html)
-    target, depth = written_at(out, url)
+    target, _ = written_at(out, url)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(prerender_cli.relocate(html, depth))
+    # Not `relocate`d, unlike an app's prerendered routes. A site's references are
+    # root-absolute — it is served at a root, its links are `/blog/`, and `translate` answers
+    # in the same shape — so rewriting `./` by depth would only reach what a *page* wrote:
+    # `./counter/` on the gallery index at `/gallery/` became `../counter/`, and every card
+    # on the page pointed one directory too high.
+    target.write_text(html)
     return html
 
 
@@ -571,14 +578,27 @@ def _config(root):
 
 
 def _template(root):
-    """The document every page goes into: the site's `index.html`, or the default one."""
+    """The document every page goes into: the site's `index.html`, or the default one.
+
+    Its own `./` references are made root-absolute. The template is one file behind pages at
+    every depth, so `./site.css` is right for `/` and a 404 for `/blog/a-post/` — and a
+    missing stylesheet does not raise, it just renders the site unstyled. A *page's* `./` is
+    the author's and is left alone.
+    """
     path = Path(root) / TEMPLATE
     if path.is_file():
         html = path.read_text()
         if 'id="app"' not in html:
             raise SiteError(f'{TEMPLATE}: a site\'s template needs an element with id="app" for the page to go in')
-        return html
+        return _absolute(html)
     return DEFAULT_TEMPLATE.format(title=Path(root).name)
+
+
+_RELATIVE = re.compile(r"""\b(href|src)\s*=\s*(["'])\./""")
+
+
+def _absolute(html):
+    return _RELATIVE.sub(lambda m: f"{m.group(1)}={m.group(2)}/", html)
 
 
 def _declare(template, declarations, styles):
@@ -639,15 +659,14 @@ def _redirects(out, config):
 
 
 def _link(out, url, link):
-    """Put a stylesheet link into a page that is already written, at its own depth."""
-    from . import prerender as prerender_cli
-
-    target, depth = written_at(out, url)
+    """Put a stylesheet link into a page that is already written. Root-absolute, like
+    everything else a site writes: one stylesheet, one URL, whatever depth the page is at."""
+    target, _ = written_at(out, url)
     html = target.read_text()
+    link = link.replace('href="./', 'href="/')
     if link in html:
         return
-    relative = prerender_cli.relocate(link, depth)
-    target.write_text(html.replace("</head>", f"  {relative}\n</head>", 1))
+    target.write_text(html.replace("</head>", f"  {link}\n</head>", 1))
 
 
 def main(argv=None):

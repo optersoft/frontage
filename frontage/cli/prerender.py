@@ -214,12 +214,16 @@ _HINT = re.compile(
 _FR_JS = re.compile(r"""\bdata-fr-js\s*=\s*["\']([^"\']*)["\']""", re.I)
 
 
-def island_script(page_html):
+def island_script(page_html, prefix="./"):
     """`page_html` with the boot tag and its hints gone, and the island loader in their place.
 
     The loader is the only script such a page carries: about a kilobyte, no imports of its
     own, and nothing else fetched until a trigger fires. Whatever the boot tag declared with
     `data-fr-js` moves onto it, since a component's JavaScript is still the island's to use.
+
+    `prefix` is where `_frontage/` is from the page: `./` for an app, whose pages are
+    relocated by depth, and `/` for a site, whose references are root-absolute — a page at
+    `/blog/a-post/` asking for `./_frontage/island.js` asks two directories too deep.
     """
     tag = _BOOT_TAG.search(page_html)
     declarations = ""
@@ -229,7 +233,7 @@ def island_script(page_html):
             declarations = f' data-fr-js="{found.group(1)}"'
         page_html = page_html[: tag.start()] + page_html[tag.end() :]
     page_html = _HINT.sub("", page_html)
-    script = f'<script type="module" src="./_frontage/island.js" data-fr-islands{declarations}></script>'
+    script = f'<script type="module" src="{prefix}_frontage/island.js" data-fr-islands{declarations}></script>'
     if script in page_html:
         return page_html
     return page_html.replace("</body>", f"{script}\n</body>", 1) if "</body>" in page_html else page_html + script
