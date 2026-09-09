@@ -296,7 +296,7 @@ Markdown shows on reload with nothing to build.
 | ✅ **D. content** (0.12.0) | `frontage.content`: collections, front matter through `frontage.schema`, Markdown with `:::`, an `::: island` container in prose | a collection with a bad front matter fails the build naming the file and the field |
 | **E. pages** | `frontage site`, file routing, `static_paths`, layouts, endpoints, `_redirects` | `web/` rebuilt from frontage, byte-comparable HTML, the gallery cards as `never` islands |
 | **F. locales** | the `[lang]` convention, `hreflang()` | `site/` rebuilt: 27 pages, three locales, the theme toggle and language switcher as `idle` islands, sitemap from an endpoint |
-| **G. the chrome** | a **repository of its own** (`optersoft/chrome`), a frontage component the two sites import | both sites on it, `astro/` retired for them |
+| **G. the chrome** | a **repository of its own**, `optersoft/brand`: a frontage component the two sites import | both sites on it, `astro/` retired for them |
 
 A is the whole idea and stands alone; C is a one-line consequence of A; B makes A honest for
 a page with more than one island; D and E are the content site; F and G are the acceptance
@@ -384,8 +384,9 @@ third site, and the one with the most islands per page, once D lands.
   trigger, and one name for both is tempting; the proposal keeps two, because "mount" is
   what an app does once and "island" is what a page does many times, and a reader of either
   should not have to know the other.
-- **Where the chrome lives. Decided 2026-09-09: a project of its own.** Not a subpackage of
-  `frontage`, and not `astro/` renamed. Three reasons, and the third is the interesting one:
+- **Where the chrome lives. Decided 2026-09-09: `optersoft/brand`, a project of its own.**
+  Not a subpackage of `frontage`, and not `astro/` renamed. Three reasons, and the third is
+  the interesting one:
 
   - **It is not the framework's.** `frontage` is Apache-2.0 and shipped to strangers; the
     chrome is one company's logo, fonts, palette and footer. The rule that says frontage's
@@ -399,11 +400,19 @@ third site, and the one with the most islands per page, once D lands.
     is 3,834 bytes and `dioxus-chrome/assets/brand.css` is 4,429 — the parent `CLAUDE.md`
     says "keep both equal", which is a rule that has already been broken, and `theme.css`
     exists in only one of them. Adding a *third* copy for frontage would make it worse. So
-    the recommendation is stronger than the decision: `optersoft/chrome` should be the
+    the recommendation is stronger than the decision: `optersoft/brand` should be the
     **source of truth for the brand** — the fonts, the palette, `brand.css`, `theme.css`,
     the logo — and ship it in the forms the fleet consumes (a frontage component now, the
     Dioxus crate and the npm package folded in after), which deletes the "keep both equal"
     rule instead of restating it.
+
+  And **`brand`, not `chrome`**, though "chrome" is the word `astro/` and `dioxus-chrome`
+  use today. Two reasons. This fleet is full of browser automation — Playwright, Chromium,
+  the browser suite — so "the chrome broke" is ambiguous in the one place it would be said,
+  and `import chrome` is a bad global name to claim. And once the repository is the source of
+  truth it *owns* `brand.css` and `theme.css`, the fonts and the logo; the header and the
+  footer are there to express those, not the other way round. `~/optersoft/brand`,
+  `github.com/optersoft/brand`, `optersoft-brand` on PyPI, `@optersoft/brand` on npm.
 
   One constraint on the transport: `web/`'s CI builds off this laptop, so whatever the chrome
   is, that build has to be able to fetch it — which is exactly why `astro/` is public on
