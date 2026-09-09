@@ -184,6 +184,21 @@ def _bridge():
 #: island *is* alive — it is what a test, and a person reading the DOM, will take it for.
 _taken = set()
 
+#: One renderer for every island on the page, and it has to be one: delegated events go
+#: through a *single* dispatcher registered with the runtime (`_dom.set_dispatcher`, one
+#: listener per event type on `document`), so a second renderer replaces the first and the
+#: islands that mounted before it stop hearing their own clicks. Two islands that hydrate in
+#: the same frame is the ordinary case, not a corner.
+_renderer = []
+
+
+def _shared_renderer():
+    if not _renderer:
+        from frontage.dom import DomRenderer
+
+        _renderer.append(DomRenderer())
+    return _renderer[0]
+
 
 def hydrate(element):
     """Bring one wrapper to life: fetch its chunk if it has one, then mount into it."""
@@ -213,8 +228,23 @@ async def _hydrate(element):
         return
     props = json.loads(raw) if raw else {}
     only = str(element.getAttribute("data-fr-when") or "") == "only"
-    mount(lambda: target(**props), element, hydrate=not only, clear=only, scope=str(element.id))
+    mount(
+        lambda: target(**props),
+        element,
+        _shared_renderer(),
+        hydrate=not only,
+        clear=only,
+        scope=str(element.id),
+    )
+    # Marked first: the replay stops capturing once no island is left waiting, and this one
+    # has to be off that list before it asks.
     element.setAttribute("data-fr-mounted", "")
+    replay = getattr(window, "__frontage_replay", None)
+    if replay is not None:
+        try:  # the clicks a reader made on *this* island before its chunk arrived
+            replay(element)
+        except Exception as exc:
+            warn(f"island {spec}: replaying early events failed: {exc}")
 
 
 def hydrate_pending():

@@ -5,6 +5,7 @@ The browser half — a trigger that fires, a runtime booted once, a chunk fetche
 is `tests/browser/test_island.py`; nothing here needs a browser.
 """
 
+import asyncio
 import json
 import subprocess
 import sys
@@ -76,6 +77,21 @@ def test_a_registered_island_leaves_a_wrapper_the_prerenderer_can_find():
     assert "<b>" not in html, "the island rendered inline instead of registering"
     assert len(prerender_state.islands) == 1
     assert prerender_state.islands[0].props == {"label": "there"}
+
+
+def test_an_only_island_leaves_an_empty_wrapper_for_the_browser_to_fill():
+    prerender_state.static = True
+    prerender_state.islands = []
+    try:
+        html = render_to_string(lambda: island(widget, when="only", label="there"))
+    finally:
+        prerender_state.static = False
+    assert f'data-fr-index="0"></{TAG}>' in html
+    assert prerender_state.islands[0].when == "only"
+    # `render_islands` is what leaves it empty; the wrapper itself is written the same way.
+    from frontage.cli.prerender import render_islands
+
+    assert asyncio.run(render_islands(prerender_state.islands, 1.0)) == [(prerender_state.islands[0], "", None)]
 
 
 def test_a_never_island_is_plain_html_even_on_a_static_page():

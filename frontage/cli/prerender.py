@@ -25,11 +25,23 @@ from . import PROG
 from . import build as build_cli
 
 # Queued until `mount` hydrates, then replayed on the same targets (see DomRenderer.end_hydration).
+#
+# `__frontage_replay(root)` replays only what happened inside `root` and keeps listening; that
+# is what an island page needs, because its islands hydrate one at a time and the queue must
+# survive the first of them. Without an argument — an app's whole-page mount — it replays
+# everything and stops, which is the original behaviour. It also stops on its own once no
+# `<fr-island>` on the page is still waiting, so a page of islands does not capture for ever;
+# a trigger that never fires (an unmatched `media:`) is why the queue is capped as well.
 REPLAY = """<script>
-(function(){var q=[],t=["click","input","change"],on=function(e){q.push([e.type,e.target])};
+(function(){var q=[],c=100,t=["click","input","change"],on=function(e){if(q.length<c)q.push([e.type,e.target])};
 t.forEach(function(n){document.addEventListener(n,on,true)});
-window.__frontage_replay=function(){t.forEach(function(n){document.removeEventListener(n,on,true)});
-q.forEach(function(p){var n=p[1];if(n&&n.isConnected){n.dispatchEvent(p[0]==="click"?new MouseEvent("click",{bubbles:true,cancelable:true}):new Event(p[0],{bubbles:true}))}});q=[]};
+var stop=function(){t.forEach(function(n){document.removeEventListener(n,on,true)});q=[]};
+window.__frontage_replay=function(root){var keep=[];
+q.forEach(function(p){var n=p[1];
+if(root&&!(n&&root.contains&&root.contains(n))){keep.push(p);return}
+if(n&&n.isConnected){n.dispatchEvent(p[0]==="click"?new MouseEvent("click",{bubbles:true,cancelable:true}):new Event(p[0],{bubbles:true}))}});
+q=keep;
+if(!root||!document.querySelector("fr-island[data-fr-island]:not([data-fr-mounted])"))stop()};
 })();
 </script>
 """
@@ -157,9 +169,19 @@ async def render_mount(view, debug, fallback, timeout, selector="#app", static=F
 
 
 async def render_islands(registrations, timeout, debug=True):
-    """Render each registered island; returns `[(island, html, values)]`."""
+    """Render each registered island; returns `[(island, html, values)]`.
+
+    An `only` island is the exception, and the exception is its whole point: it is not
+    rendered here at all, so its wrapper goes into the page empty and the browser builds it
+    from nothing. That is for a component with no server-side meaning — one that reads the
+    document, a canvas, a clock — where prerendering it would put something on screen that
+    the first frame then has to throw away.
+    """
     out = []
     for entry in registrations:
+        if entry.when == "only":
+            out.append((entry, "", None))
+            continue
         html, values = await render_mount(entry.view(), debug, None, timeout, selector=f"#{entry.id}", scope=entry.id)
         out.append((entry, html, values))
     return out
@@ -516,6 +538,7 @@ def main(argv=None):
         "--crawl", action="store_true", help="also render every route a rendered page links to (A, <a href>)"
     )
     parser.add_argument("--timeout", type=float, default=30.0, help="seconds to wait for resources per route")
+    parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
     try:
         results = prerender(
@@ -524,16 +547,20 @@ def main(argv=None):
             routes=tuple(args.route or ["/"]),
             entry=args.entry,
             timeout=args.timeout,
-            quiet=False,
+            quiet=args.quiet,
             crawl=args.crawl,
         )
     except (FileNotFoundError, ValueError, RuntimeError, TimeoutError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    if args.quiet:
+        return 0
     out = Path(args.out).resolve() if args.out else Path.cwd() / "build" / Path(args.app).resolve().name
     for result in results:
         settled = sum(_count(values) for _, _, values in result.mounts)
-        print(f"prerendered {result.path}: {len(result.mounts)} mount(s), {settled} settled value(s)")
+        islands = f", {len(result.islands)} island(s)" if result.islands else ""
+        static = " (static: no boot tag)" if result.static else ""
+        print(f"prerendered {result.path}: {len(result.mounts)} mount(s), {settled} settled value(s){islands}{static}")
     print(f"written to {out}; serve it with any static file server")
     return 0
 

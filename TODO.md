@@ -578,16 +578,30 @@ decides, all in 0.10.0:
       `frontage.schema` with Markdown (D); `frontage site` with file routing, `static_paths`,
       layouts and endpoints (E); locales (F); the Optersoft chrome as a component package
       (G). Acceptance: `web/` and then `site/` rebuilt from it and `astro/` retired for them.
-- [ ] The gallery does not show the release's own number. `tools/gallery.py` builds every app
-      with `frontage build`, so it cannot show a *prerendered* static page — and "142 bytes,
-      no runtime" is the whole of 0.11. It wants a `prerender=True` card for
-      `examples/islands`, measured with the island below the fold so the transfer column is
-      honest about what a reader who does not scroll pays.
-- [ ] An island page's early-click replay is the page's, not the island's. `add_replay` is
-      written once and `window.__frontage_replay` runs on the *first* island to hydrate,
-      taking its listeners away with it — so a click on a second island made before that one
-      hydrates is lost. Either replay per island (filter the queue by `closest("fr-island")`)
-      or make the replay idempotent and leave the listeners until the last island is up.
+- [x] **0.11.1: the islands feature finished (2026-09-09).** Four things, and the third is the
+      one that mattered:
+      - **The gallery shows the release's own number.** `tools/gallery.py` grew `PRERENDERED`:
+        such a card is built with `frontage prerender` and measured with everything under
+        `_frontage/` **denied** but the loader, so its `ready` selector is proof the page needs
+        none of it and the figure cannot quietly include 660 KB of runtime. **Islands: 10 KB,
+        65 ms, "no runtime"**, beside 771–1,199 KB for the fourteen app cards.
+      - **The early-click replay is per island.** `__frontage_replay(root)` dispatches only
+        what happened inside `root` and keeps capturing until no `<fr-island>` is left
+        waiting; without an argument it is the old whole-page behaviour. `end_hydration`
+        leaves an island's replay to `frontage.island`, which fires it after marking the
+        wrapper mounted.
+      - ⚠ **Two islands hydrating in the same frame broke the first one.** Delegated events
+        reach Python through *one* dispatcher registered with the runtime
+        (`_dom.set_dispatcher`), so each island's own `DomRenderer` replaced the last and
+        every island that mounted before it stopped hearing its clicks — silently, with the
+        DOM looking perfectly hydrated. `island._shared_renderer` is one renderer for the
+        page. The 0.11.0 tests never caught it because no page in them had two islands
+        hydrate at once.
+      - **`only` is no longer rendered at build**, which is what it says: an empty wrapper the
+        browser fills, for a component with no server-side meaning.
+      Also `frontage prerender --quiet`, which the gallery needed, and which `build` and
+      `serve` already had; the command's summary line now names the islands and says when a
+      page is static.
 - [ ] **`frontage.frame`: a columnar engine as a Rust module of its own** (`data-fr-js`,
       `wasm32-unknown-unknown`, `no_std`): filter, sort, group/aggregate, rolling, resample,
       CSV and Arrow in; handles in Python, `Float64Array`s to the chart, a windowed `table`

@@ -52,6 +52,34 @@ mount(page, "#app", when="never")
 """
 
 
+# `load`, `only` and a `media:` query that does not match at 1000px: the three triggers the
+# example does not use, and the page the replay test needs — one island alive from the first
+# frame, one that stays HTML until the viewport says otherwise.
+TRIGGERS_APP = """from frontage import Signal, h, island, mount
+
+
+def counter(name="a"):
+    n = Signal(0)
+    return h.div(
+        h.button("+", on_click=lambda ev: n.update(lambda v: v + 1), id="inc-" + name),
+        h.span(n, id="v-" + name),
+        id="c-" + name,
+    )
+
+
+def page():
+    return h.main(
+        h.h1("Triggers", id="title"),
+        island(counter, when="load", name="a"),
+        island(counter, when="media:(max-width: 600px)", name="b"),
+        island(counter, when="only", name="c"),
+    )
+
+
+mount(page, "#app", when="never")
+"""
+
+
 def _prerender(name, source="", example=ROOT):
     src = BUILD / f"src-{name}"
     out = BUILD / f"island-{name}"
@@ -75,6 +103,7 @@ def pages():
         "static": _prerender("static", STATIC_APP),
         "deferred": _prerender("deferred", DEFERRED_APP),
         "example": _prerender("example", example=ROOT / "examples" / "islands"),
+        "triggers": _prerender("triggers", TRIGGERS_APP),
     }
 
 
@@ -144,3 +173,46 @@ def test_two_islands_share_one_runtime_and_the_chart_is_a_chunk(server, page: Pa
     assert {"charts", "samples"} <= chunk, f"the chunk did not arrive: {chunk}"
     assert [u for u in asked if u.endswith(".wasm")] == [], "the second island booted a second runtime"
     assert errors == []
+
+
+def test_only_is_not_in_the_page_and_media_waits_for_its_query(server, page: Page, pages):
+    html = (pages["triggers"] / "index.html").read_text()
+    # `only` says "do not render this at build", and the page has to be honest about it.
+    assert 'data-fr-when="only"' in html and 'id="v-c"' not in html
+    # The other two are rendered, whether or not they will ever be hydrated.
+    assert 'id="v-a"' in html and 'id="v-b"' in html
+    assert 'data-fr-when="media:(max-width: 600px)"' in html
+
+    page.set_viewport_size({"width": 1000, "height": 700})
+    page.goto(f"{server}/build/island-triggers/index.html")
+    # `load` and `only` boot at once; `only` had nothing on the page until it did.
+    expect(page.locator("#v-c")).to_have_text("0", timeout=30_000)
+    page.click("#inc-a")
+    expect(page.locator("#v-a")).to_have_text("1")
+    assert not page.locator('fr-island[data-fr-when^="media"]').get_attribute("data-fr-mounted")
+
+    page.set_viewport_size({"width": 500, "height": 700})
+    page.click("#inc-b")
+    expect(page.locator("#v-b")).to_have_text("1", timeout=30_000)
+
+
+def test_a_click_on_an_island_that_has_not_hydrated_yet_is_replayed(server, page: Page, pages):
+    """The bug this fixes: the replay used to be the page's, so the first island to hydrate
+    dispatched the whole queue and took the listeners with it — and a click on a second
+    island, made while its trigger had not fired, was lost with no trace."""
+    page.set_viewport_size({"width": 1000, "height": 700})
+    page.goto(f"{server}/build/island-triggers/index.html")
+    # Island `a` is up: under the old replay this is the moment the queue was emptied.
+    expect(page.locator("#v-c")).to_have_text("0", timeout=30_000)
+    page.click("#inc-a")
+    expect(page.locator("#v-a")).to_have_text("1")
+
+    # Island `b` is still HTML. The click goes nowhere now and must arrive when it hydrates.
+    page.click("#inc-b")
+    expect(page.locator("#v-b")).to_have_text("0")
+    page.set_viewport_size({"width": 500, "height": 700})
+    expect(page.locator("#v-b")).to_have_text("1", timeout=30_000)
+    # And it arrives once: the queue keeps only what it did not dispatch.
+    page.click("#inc-b")
+    expect(page.locator("#v-b")).to_have_text("2")
+    assert page.locator("#v-a").text_content() == "1", "the replay reached the wrong island"

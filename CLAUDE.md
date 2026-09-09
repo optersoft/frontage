@@ -204,6 +204,14 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
   `unique_id` scope) and gets its own `data-fr-data` block, because in the browser each is
   its own `mount`; and `island("mod:name")` is a chunk root exactly as `Route(lazy=…)` is,
   while `island(fn)` is not, because the page imported `fn`.
+  ⚠ **Every island on a page shares one `DomRenderer`** (`island._shared_renderer`). Delegated
+  events reach Python through a *single* dispatcher registered with the runtime
+  (`_dom.set_dispatcher`, one `document` listener per event type), so a second renderer
+  replaces the first and every island that mounted before it stops hearing its own clicks —
+  silently, with the DOM looking perfectly hydrated. Two islands in the same frame is the
+  ordinary case, not a corner. The early-click replay is per island for the same reason:
+  `__frontage_replay(root)` dispatches only what happened inside `root` and keeps capturing
+  until no `<fr-island>` is still waiting.
 - **`frontage serve` swaps modules, it does not reload the page.** The server compiles the
   changed app modules (`/__frontage/module/<name>.fbc`), the page's script hands them to the
   runtime (`rt.addModule`) and calls `rt.swap`, and `frontage/dev.py` disposes every mount in

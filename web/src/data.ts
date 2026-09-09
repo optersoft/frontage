@@ -11,6 +11,12 @@ export interface App {
   blurb: string;
   bytes: number;
   ms?: number;
+  /**
+   * A static page: prerendered, with no boot tag. `bytes` and `ms` are what a reader pays to
+   * see it — the runtime is fetched later, when an island's trigger fires, and gallery.py
+   * measures the card with it denied so the figure cannot quietly include it.
+   */
+  deferred?: boolean;
 }
 
 export interface Gallery {

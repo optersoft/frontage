@@ -118,6 +118,10 @@ class Hydration:
             self.memos = None
         self.cursor = None
         self.active = False
+        # The element being hydrated. `end_hydration` reads it to tell an island's mount from
+        # an app's: an island replays only the early events made inside itself, and does it
+        # after it is marked mounted (`frontage.island`), not from here.
+        self.root = None
         self.claimed = []
         self.stack = []
         self.mismatches = 0
@@ -275,6 +279,11 @@ class Hydration:
         return None
 
 
+def _is_island(node):
+    """Is this hydration target an island's wrapper rather than an app's mount point?"""
+    return is_node(node) and str(getattr(node, "tagName", "") or "").lower() == "fr-island"
+
+
 class _ProxyRenderer(Renderer):
     """The DOM through JavaScript proxies, one crossing per operation: what hydration walks
     (its cursor moves over real nodes), and the base the streaming renderer falls back to for
@@ -306,6 +315,7 @@ class _ProxyRenderer(Renderer):
                 data = json.loads(str(script.textContent))
                 script.remove()
         self.hydration = Hydration(data)
+        self.hydration.root = node
         return self.hydration
 
     def end_hydration(self):
@@ -322,6 +332,8 @@ class _ProxyRenderer(Renderer):
                     warn(f"hydration: {line}")
             else:
                 warn("hydration: `import frontage.debug` in the app to see each mismatch")
+        if hyd is not None and _is_island(hyd.root):
+            return  # `frontage.island` replays this one, once the wrapper is marked mounted
         try:  # the prerendered page queues early clicks and input for the app to replay
             replay = getattr(window, "__frontage_replay", None)
             if replay is not None:

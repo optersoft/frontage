@@ -45,7 +45,19 @@ APPS = [
         "#histogram .bar",
     ),
     ("tracker", "Tracker", "The whole framework in one app: routes, store, optimistic writes, a portal.", "#app"),
+    ("islands", "Islands", "A static page and two islands: the runtime is not on the critical path.", "#theme"),
 ]
+
+#: Apps built with `frontage prerender` rather than `frontage build`, and measured with
+#: everything under `_frontage/` blocked but the island loader.
+#:
+#: The point of a static page is that its content is finished before the runtime is asked
+#: for, and the only honest way to publish that as a number is to deny the page the runtime
+#: and see whether it still shows what it promised. So the card's `bytes` and `transferred`
+#: are the page, its stylesheet and the 1.3 KB loader — nothing else — and its `ready`
+#: selector is what proves the claim. An app that cannot render without the runtime fails
+#: here rather than quietly publishing a number that includes 660 KB of it.
+PRERENDERED = {"islands"}
 
 #: Where the site's gallery page reads the result from (web/src/data/, gitignored). The page
 #: itself is web/src/pages/gallery/index.astro; this script only produces the facts.
@@ -64,14 +76,35 @@ def build_all(out):
     for name, title, blurb, ready in APPS:
         source = ROOT / "examples" / name
         target = out / name
+        static = name in PRERENDERED
+        command = "prerender" if static else "build"
         subprocess.run(
-            [sys.executable, "-m", "frontage", "build", str(source), "--out", str(target), "--quiet"],
+            [sys.executable, "-m", "frontage", command, str(source), "--out", str(target), "--quiet"],
             check=True,
             cwd=ROOT,
         )
-        size = sum(p.stat().st_size for p in target.rglob("*") if p.is_file())
-        built.append({"name": name, "title": title, "blurb": blurb, "ready": ready, "bytes": size})
+        if static:
+            # What a reader downloads to see the page: it, its stylesheets, the loader. The
+            # rest of `_frontage/` is what the page is *not* waiting for, and counting it
+            # would publish the opposite of what the card says.
+            size = sum(p.stat().st_size for p in target.rglob("*") if p.is_file() and _critical(p, target))
+        else:
+            size = sum(p.stat().st_size for p in target.rglob("*") if p.is_file())
+        built.append({"name": name, "title": title, "blurb": blurb, "ready": ready, "bytes": size, "deferred": static})
     return built
+
+
+def _critical(path, root):
+    """Is this file on the critical path of a static page — the page, its stylesheets and the
+    island loader — or is it something a browser never asks for?
+
+    The runtime is deferred by design. The app's `.py` sources travel with a build so they can
+    be read, and `_headers` is the host's; neither is ever fetched.
+    """
+    relative = path.relative_to(root)
+    if relative.parts[0] == "_frontage":
+        return relative.name == "island.js"
+    return relative.suffix != ".py" and relative.name != "_headers"
 
 
 def measure(built, out):
@@ -110,12 +143,22 @@ def measure(built, out):
             for app in built:
                 context = browser.new_context()  # cold cache per app
                 page = context.new_page()
-                # Nothing off this machine counts, and nothing off this machine is needed: the
-                # map app fetches OpenStreetMap tiles, which are neither ours to measure nor
-                # something a gallery build should depend on being reachable.
+                # A static page is measured with the runtime denied: everything under
+                # `_frontage/` is aborted but the loader, so the `ready` selector below is
+                # proof the page needs none of it, and the byte count is what a reader pays.
+                deferred = app.get("deferred", False)
+
+                def allowed(url, deferred=deferred):
+                    if "127.0.0.1" not in url:
+                        # Nothing off this machine counts, and nothing off this machine is
+                        # needed: the map app fetches OpenStreetMap tiles, which are neither
+                        # ours to measure nor something a gallery build should depend on.
+                        return False
+                    return not deferred or "/_frontage/" not in url or url.endswith("island.js")
+
                 context.route(
                     "**/*",
-                    lambda route: route.continue_() if "127.0.0.1" in route.request.url else route.abort(),
+                    lambda route: route.continue_() if allowed(route.request.url) else route.abort(),
                 )
                 sent = [0]
 

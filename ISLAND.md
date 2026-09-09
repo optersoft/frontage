@@ -1,6 +1,6 @@
 # Frontage for sites: static generation and islands — the 0.11 plan
 
-**Status: steps A, B and C shipped in 0.11.0 (2026-09-09) — `frontage/island.py`,
+**Status: steps A, B and C shipped in 0.11.0, finished in 0.11.1 (2026-09-09) — `frontage/island.py`,
 `_runtime/island.js`, `examples/islands`, `tests/test_island.py` and
 `tests/browser/test_island.py`. D through G are unbuilt.** The question this answers is "can
 frontage do what Astro does for a content site", and the answer is *most of it, better in
@@ -12,7 +12,10 @@ two acceptance tests.
 with nothing interactive is **142 bytes** over the wire and asks for nothing under
 `_frontage/`; the islands example is **833 bytes** and carries a **1,341-byte** loader that
 fetches nothing until a trigger fires. The prerendered counter's 264,658 bytes of runtime is
-still what an *app* costs, and is still the right trade for an app.
+still what an *app* costs, and is still the right trade for an app. The gallery publishes
+both, measured side by side: **islands, 10 KB, 65 ms, no runtime** against 771–1,199 KB for
+the fourteen app cards — and the islands card is measured with everything under `_frontage/`
+denied but the loader, so the figure cannot quietly include the runtime.
 
 ## 0. The decision, in five sentences
 
@@ -317,6 +320,19 @@ third site, and the one with the most islands per page, once D lands.
   `unique_id` scope, and its settled values are written beside its wrapper — because in the
   browser each is its own `mount`, and a shared data block would be read by whichever island
   hydrated first.
+- **Every island on a page must share one renderer.** Delegated events go through a single
+  dispatcher registered with the runtime, so a second `DomRenderer` replaces the first and
+  every island that mounted before it stops hearing its own clicks — with nothing on the
+  console and a DOM that looks correctly hydrated. Two islands hydrating in the same frame is
+  the ordinary case; the bug only surfaced when a test used three. (0.11.1)
+- **The early-click replay is per island, not per page.** `__frontage_replay(root)` dispatches
+  only what happened inside `root` and keeps capturing until no wrapper is left waiting, so a
+  click on an island whose trigger fires a minute later still arrives. The first version was
+  the page's, and the first island to hydrate ate the queue. (0.11.1)
+- **`only` really means "not rendered at build".** It leaves an empty wrapper, and that is
+  the point: it is for a component with no server-side meaning — one that reads the document,
+  a canvas, a clock — where prerendering it puts something on screen the first frame throws
+  away. (0.11.1)
 - **The naming question answered itself.** `island(view, when=)` and `mount(view, target,
   when=)` are two names because they take different second arguments; `when=` is the same
   word in both, and `"never"` on a mount is what makes the page static.
