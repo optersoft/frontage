@@ -8,7 +8,7 @@ router; running on its own Python runtime compiled to WebAssembly, with the fram
 precompiled bytecode. No JavaScript, no Node, no bundler: you write Python and the browser
 runs it.
 
-> **Status: 0.10.2, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete
+> **Status: 0.11.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete
 > through M12. Reactive core, store, templates (`h` and `html(t"…")`), control flow and
 > boundaries, `Resource`/`Action`, a nested router, widgets, `State`, timers, the playground
 > (0.2–0.3); **prerendering with hydration** (0.4), pages that show before Python loads;
@@ -18,8 +18,12 @@ runs it.
 > the reactive graph, the DOM operations and the template path native inside it. A thousand
 > rows are built in 24.8 ms where MicroPython took 71.1, the counter paints in 23 ms, and
 > `frontage build` ships only the modules your entry imports, compiled to bytecode and
-> content-hashed. The API is young and will move; the [browser suite](tests/browser/) runs
-> every example on Chromium each push and on Firefox and WebKit nightly.
+> content-hashed. **0.11 makes the runtime optional**: `mount(view, "#app", when="never")` is
+> a static page — prerendered, no boot tag, 142 bytes over the wire and not one request for
+> the runtime — and `island(view, when="visible")` is the exception it makes, a component
+> hydrated when its trigger fires ([ISLAND.md](ISLAND.md)). The API is young and will move;
+> the [browser suite](tests/browser/) runs every example on Chromium each push and on Firefox
+> and WebKit nightly.
 
 ```python
 from frontage import Signal, component, html, mount
@@ -92,6 +96,28 @@ finished HTML with the values embedded. In the browser `mount` hydrates: it adop
 already on screen instead of building it, skips the fetches the page already holds, and
 replays the clicks made before Python was ready. Static hosting only, no server: Leptos's
 async rendering mode as a build step.
+
+A page with nothing to run should download nothing to run it. `mount(view, "#app",
+when="never")` says so: `prerender` writes the HTML and no boot tag, so a content page is its
+own bytes and stops there. What is interactive on it is an **island** —
+
+```python
+from frontage import h, island, mount
+
+
+def page():
+    return h.main(
+        h.article(...),  # static: rendered once, at build
+        island(theme_toggle, when="idle"),  # alive when the browser is free
+        island("charts:sparkline", when="visible"),  # its own chunk, fetched when seen
+    )
+
+
+mount(page, "#app", when="never")
+```
+
+— and the first trigger to fire boots the runtime once, shared by every island on the page.
+`examples/islands` is the whole of it in forty lines.
 
 Tailwind with no build at all: the playground loads Tailwind's browser build, so utility
 classes work as you type. The [Style](https://academy.optersoft.com/python/frontage/style),

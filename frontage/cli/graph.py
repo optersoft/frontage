@@ -243,8 +243,14 @@ class Graph:
         return [p for i in range(1, len(parts) + 1) if self._known(p := ".".join(parts[:i]))]
 
     def lazy_roots(self, within):
-        """The modules named by `Route(…, lazy="pages.map")` or `chunks.load("pages.map")`
-        in `within`, as `(module, [modules that name it])` — the chunk roots of the app."""
+        """The modules named by `Route(…, lazy="pages.map")`, `chunks.load("pages.map")` or
+        `island("comments:thread")` in `within`, as `(module, [modules that name it])` — the
+        chunk roots of the app.
+
+        An island named by a *function* is not one: the module that places it imports it, so
+        it is in the first payload already. Naming it by a string is how a page says the
+        island is worth its own request — the chart nobody scrolls to.
+        """
         roots = {}
         for name in within:
             tree, _ = self._tree(name)
@@ -258,7 +264,7 @@ class Graph:
                     for kw in node.keywords:
                         if kw.arg == "lazy" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
                             spec = kw.value.value
-                elif callee in ("load", "prefetch") and node.args and isinstance(node.args[0], ast.Constant):
+                elif callee in ("load", "prefetch", "island") and node.args and isinstance(node.args[0], ast.Constant):
                     if isinstance(node.args[0].value, str) and self._known(node.args[0].value.partition(":")[0]):
                         spec = node.args[0].value
                 if spec:
@@ -266,6 +272,21 @@ class Graph:
                     if self._known(module):
                         roots.setdefault(module, []).append(name)
         return roots
+
+    def uses_islands(self, within):
+        """Does any module here place an `island`? What decides whether a prerendered page
+        gets a boot tag and an entry to run, or the island loader and nothing else."""
+        for name in within:
+            tree, _ = self._tree(name)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call):
+                    func = node.func
+                    callee = (
+                        func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else ""
+                    )
+                    if callee == "island":
+                        return True
+        return False
 
     def size(self, names):
         return sum(self.modules[n].stat().st_size for n in names if n in self.modules)

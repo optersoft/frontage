@@ -278,7 +278,7 @@ def build(app, out="", entry="", quiet=False, components=None, tailwind=False):
         raise SystemExit("error: the runtime is missing from frontage/_runtime: run `mk runtime.build`")
     # The two scripts by name (the page names boot.js); the wasm by content hash, so it can be
     # cached forever and a runtime bump changes its URL.
-    for name in ("glue.js", "boot.js"):
+    for name in ("glue.js", "boot.js", "island.js"):
         shutil.copy2(frontage_rt.RUNTIME_DIR / name, runtime / name)
     wasm_bytes = (frontage_rt.RUNTIME_DIR / "frontage.wasm").read_bytes()
     wasm_file = frontage_rt.hashed("frontage", wasm_bytes, "wasm")
@@ -302,14 +302,14 @@ def build(app, out="", entry="", quiet=False, components=None, tailwind=False):
             styles.append(f'<link rel="stylesheet" href="./_frontage/components/{component.name}/{COMPONENT_STYLE}">')
     # The entry's import closure, each module as bytecode, and a manifest naming them;
     # nothing the page does not reach is shipped.
-    members, chunks = frontage_rt.split(app, entry, installed)
+    members, chunks, islands = frontage_rt.analyse(app, entry, installed)
     files = {}
     for name, path in members:
         data = frontage_rt.compile_module(path)
         files[name] = frontage_rt.hashed(name, data, "fbc")
         (runtime / files[name]).write_bytes(data)
     (runtime / frontage_rt.MANIFEST).write_bytes(
-        frontage_rt.manifest([n for n, _ in members], entry, files, wasm_file, chunks)
+        frontage_rt.manifest([n for n, _ in members], entry, files, wasm_file, chunks, islands=islands)
     )
     if not (out / "_headers").exists():
         (out / "_headers").write_text(frontage_rt.HEADERS)

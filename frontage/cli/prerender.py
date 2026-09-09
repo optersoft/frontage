@@ -43,12 +43,16 @@ _ENTRY = re.compile(r"""src\s*=\s*["']\./([\w./-]+\.py)["']""")
 class Prerendered:
     """One route's output: the page HTML and, per mount, what went into it."""
 
-    def __init__(self, path, html, mounts):
+    def __init__(self, path, html, mounts, islands=(), static=False):
         self.path = path
         self.html = html
         # [(selector, inner html, values)]: the values are the resources' as a list, or a
         # dict {"resources": […], "memos": [[ordinal, value], …]} when async memos settled too.
         self.mounts = mounts
+        # [(spec, when)] for the islands on this page, and whether the page itself is static:
+        # rendered once, no boot tag, no runtime unless an island's trigger asks for one.
+        self.islands = list(islands)
+        self.static = static
 
 
 def import_app(entry, path="/"):
@@ -60,10 +64,17 @@ def import_app(entry, path="/"):
     prerender.active = True
     prerender.path = path
     prerender.mounts = []
+    prerender.islands = []
+    prerender.static = False
+    prerender.entry = entry.stem
     view._ids[0] = 0  # `unique_id` counts from the same point the browser will
     aio._begin_prerender()
     sys.path.insert(0, str(entry.parent))
+    # A private name, so each route re-runs the entry rather than reusing the last one's
+    # module — and recorded, because an island's spec must name the module the *page* knows
+    # (`app`), not this one.
     name = f"_frontage_app_{abs(hash((str(entry), path)))}"
+    prerender.entry_module = name
     try:
         spec = importlib.util.spec_from_file_location(name, entry)
         assert spec is not None and spec.loader is not None, entry
@@ -77,20 +88,24 @@ def import_app(entry, path="/"):
     return list(prerender.mounts)
 
 
-async def render_mount(view, debug, fallback, timeout, selector="#app"):
+async def render_mount(view, debug, fallback, timeout, selector="#app", static=False, scope=None):
     """Render one registered mount to `(html, values)`, resources and async memos settled.
     The values are the resources' as a list, or a dict with the memos' too (see `Prerendered`)."""
     from frontage import aio, reactive
     from frontage.aio import ERRORED, PENDING, REFRESHING
     from frontage.renderer import HtmlRenderer
+    from frontage.runtime import prerender as _prerender
     from frontage.view import mount
 
     registry = aio._begin_prerender()
     memos = reactive._begin_prerender()
     renderer = HtmlRenderer(hydration_markers=True)
     root = renderer.create_element("div")
+    # `static`: an `island` inside a `when="never"` page registers itself instead of
+    # rendering, so the prerenderer can give it a pass — and a data block — of its own.
+    _prerender.static = static
     # `scope`: `unique_id` counts per mount, named after the target, exactly as the browser will.
-    handle = mount(view, root, renderer, debug=debug, fallback=fallback, scope=selector.lstrip("#"))
+    handle = mount(view, root, renderer, debug=debug, fallback=fallback, scope=scope or selector.lstrip("#"))
     try:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
@@ -126,9 +141,80 @@ async def render_mount(view, debug, fallback, timeout, selector="#app"):
         heads.append(head.snapshot())
         return html, values
     finally:
+        _prerender.static = False
         handle.dispose()
         aio._end_prerender()
         reactive._end_prerender()
+
+
+# --- islands ------------------------------------------------------------------------------
+#
+# A `when="never"` mount is a static page: rendered here, written as HTML, and never
+# hydrated. The islands inside it registered themselves instead of rendering (see
+# `frontage.island`), and each gets a pass of its own — its own resources, its own memos, its
+# own `unique_id` scope, its own data block — because in the browser each is its own `mount`.
+# The wrapper it left behind carries `data-fr-index`, and that is where its HTML goes back in.
+
+
+async def render_islands(registrations, timeout, debug=True):
+    """Render each registered island; returns `[(island, html, values)]`."""
+    out = []
+    for entry in registrations:
+        html, values = await render_mount(entry.view(), debug, None, timeout, selector=f"#{entry.id}", scope=entry.id)
+        out.append((entry, html, values))
+    return out
+
+
+def splice_islands(page_html, rendered):
+    """Put each island's HTML inside its wrapper, and its settled values beside it."""
+    from frontage.island import TAG
+
+    for entry, inner, values in rendered:
+        tail = f' data-fr-index="{entry.index}"></{TAG}>'
+        if tail not in page_html:
+            raise RuntimeError(f"island {entry.spec}: its wrapper is not in the rendered page")
+        data = ""
+        if values:
+            text = json.dumps(values, separators=(",", ":")).replace("</", "<\\/")
+            data = f'<script type="application/json" data-fr-data="{entry.id}">{text}</script>'
+        page_html = page_html.replace(tail, f' data-fr-index="{entry.index}">{inner}</{TAG}>{data}', 1)
+    return page_html
+
+
+# The tag `build` wrote, and the preload hints that go with it: a static page needs none of
+# them, and leaving them in is exactly the 265 KB this release exists to stop shipping.
+_BOOT_TAG = re.compile(r"""[ \t]*<script[^>]*\bdata-fr-boot\b[^>]*>\s*</script>[ \t]*\n?""", re.I)
+_HINT = re.compile(
+    r"""[ \t]*<link[^>]*href=["\']\.[^"\']*_frontage/(?:boot\.js|glue\.js|frontage[^"\']*\.wasm)["\'][^>]*>[ \t]*\n?""",
+    re.I,
+)
+_FR_JS = re.compile(r"""\bdata-fr-js\s*=\s*["\']([^"\']*)["\']""", re.I)
+
+
+def island_script(page_html):
+    """`page_html` with the boot tag and its hints gone, and the island loader in their place.
+
+    The loader is the only script such a page carries: about a kilobyte, no imports of its
+    own, and nothing else fetched until a trigger fires. Whatever the boot tag declared with
+    `data-fr-js` moves onto it, since a component's JavaScript is still the island's to use.
+    """
+    tag = _BOOT_TAG.search(page_html)
+    declarations = ""
+    if tag is not None:
+        found = _FR_JS.search(tag.group(0))
+        if found:
+            declarations = f' data-fr-js="{found.group(1)}"'
+        page_html = page_html[: tag.start()] + page_html[tag.end() :]
+    page_html = _HINT.sub("", page_html)
+    script = f'<script type="module" src="./_frontage/island.js" data-fr-islands{declarations}></script>'
+    if script in page_html:
+        return page_html
+    return page_html.replace("</body>", f"{script}\n</body>", 1) if "</body>" in page_html else page_html + script
+
+
+def strip_boot(page_html):
+    """`page_html` with the boot tag and its preload hints gone: a page with nothing to boot."""
+    return _HINT.sub("", _BOOT_TAG.sub("", page_html))
 
 
 def _gone(resource):
@@ -160,9 +246,13 @@ def find_entry(page_html):
     return match.group(1) if match else None
 
 
-def inject(page_html, selector, inner, values):
+def inject(page_html, selector, inner, values, hydrate=True):
     """`page_html` with the element `selector` (an id) holding `inner`, marked for
-    hydration, followed by the settled values (resources, async memos) when there are any."""
+    hydration, followed by the settled values (resources, async memos) when there are any.
+
+    With `hydrate=False` — a `when="never"` page — the HTML goes in and nothing else does:
+    no marker, no data block, because nothing in the browser will ever come back for them.
+    """
     if not selector.startswith("#") or not re.fullmatch(r"#[\w-]+", selector):
         raise ValueError(f"prerender mounts into an element by id (`#app`), not {selector!r}")
     element_id = selector[1:]
@@ -171,10 +261,10 @@ def inject(page_html, selector, inner, values):
         raise ValueError(f"no element with id {element_id!r} in the page")
     open_start, open_end, close_start, close_end = span
     opening = page_html[open_start:open_end]
-    if "data-fr-hydrate" not in opening:
+    if hydrate and "data-fr-hydrate" not in opening:
         opening = opening[:-1] + " data-fr-hydrate>"
     data = ""
-    if values:
+    if values and hydrate:
         text = json.dumps(values, separators=(",", ":")).replace("</", "<\\/")
         data = f'<script type="application/json" data-fr-data="{element_id}">{text}</script>'
     return page_html[:open_start] + opening + inner + page_html[close_start:close_end] + data + page_html[close_end:]
@@ -354,9 +444,23 @@ def prerender(
     entry_path = Path(app).resolve() / entry
     if not entry_path.exists():
         raise FileNotFoundError(f"{entry_path} does not exist")
-    results = []
     queue = list(routes)
     seen = set(queue)
+    # The app's directory stays on the path for the whole run: an island named by a string
+    # (`island("charts:sparkline")`) is imported when its own pass renders it, which is long
+    # after `import_app` has put the path back the way it found it.
+    sys.path.insert(0, str(entry_path.parent))
+    try:
+        return _routes(out, page, entry, entry_path, queue, seen, timeout, crawl, limit)
+    finally:
+        sys.path.remove(str(entry_path.parent))
+
+
+def _routes(out, page, entry, entry_path, queue, seen, timeout, crawl, limit):
+    """Render each queued route, and whatever `--crawl` finds while doing it."""
+    from frontage.runtime import prerender as prerender_state
+
+    results = []
     while queue:
         route = queue.pop(0)
         head.forget()  # each route says what it says; nothing carries over from the last
@@ -366,22 +470,33 @@ def prerender(
             raise RuntimeError(f"{entry} never called mount(view, '#id') while importing for {route}")
         html = page
         rendered = []
-        for selector, view, debug, fallback in mounts:
-            inner, values = asyncio.run(render_mount(view, debug, fallback, timeout, selector))
-            html = inject(html, selector, inner, values)
+        prerender_state.islands = []
+        static = bool(mounts) and all(when == "never" for *_, when in mounts)
+        for selector, view, debug, fallback, when in mounts:
+            live = when != "never"
+            inner, values = asyncio.run(render_mount(view, debug, fallback, timeout, selector, static=not live))
+            html = inject(html, selector, inner, values, hydrate=live)
             rendered.append((selector, inner, values))
             if crawl:
                 for path in links_in(inner, view):
                     if path not in seen and len(seen) < limit:
                         seen.add(path)
                         queue.append(path)
+        islands = list(prerender_state.islands)
+        if islands:
+            html = splice_islands(html, asyncio.run(render_islands(islands, timeout)))
         html = apply_head(html, _merge(heads))
-        html = add_replay(html)
+        if static:
+            # Zero by default: a page whose every mount is `when="never"` gets the island
+            # loader if anything on it is an island, and otherwise not one byte of script.
+            html = island_script(html) if islands else strip_boot(html)
+        if not static or islands:
+            html = add_replay(html)
         parts = [p for p in route.strip("/").split("/") if p]
         target = out.joinpath(*parts) / "index.html" if parts else out / "index.html"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(relocate(html, len(parts)))
-        results.append(Prerendered(route, html, rendered))
+        results.append(Prerendered(route, html, rendered, [(i.spec, i.when) for i in islands], static))
     return results
 
 

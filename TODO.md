@@ -558,14 +558,36 @@ decides, all in 0.10.0:
       ordered floats sort in 2.0 ms on the wasm, 2.5 with a key** (MicroPython: 269 and
       1,440). The gate was under 5 ms. `frontage.table` sorts with `sorted` and needs nothing
       else.
-- [ ] **0.11: sites — static generation and islands (`ISLAND.md`, planned 2026-09-09).** The
-      steps, each a release: islands in the loader (`island(view, when=)`, one runtime per
-      page, booted on the first trigger); islands as chunks; zero-runtime pages; content
-      collections over `frontage.schema` with Markdown; `frontage site` with file routing,
-      `static_paths`, layouts, endpoints; locales; the Optersoft chrome as a component
-      package. Acceptance: `web/` and then `site/` rebuilt from it and `astro/` retired for
-      them. The number behind it: a prerendered page is 455 bytes over the wire and today
-      waits for 265 KB of runtime whether or not anything on it is interactive.
+- [x] **0.11.0: islands and static pages — `ISLAND.md` steps A, B and C (2026-09-09).**
+      `mount(view, "#app", when="never")` is a static page: `frontage prerender` writes the
+      HTML and no boot tag, and a built content page makes **no request under `_frontage/`**
+      — 142 bytes over the wire against the 264,658 a prerendered app still waits for.
+      `island(view, when="load"|"idle"|"visible"|"media:…"|"only"|"never", **props)` renders
+      at build time into an `<fr-island>` wrapper; `_runtime/island.js` (1,341 bytes brotli,
+      the only script such a page carries) watches the triggers, boots the runtime **once**
+      for every island on the page, and `frontage.island` — which the boot runs as
+      `__main__`, there being no app entry to run — mounts each wrapper over its own markup,
+      in its own `unique_id` scope, with its own settled values. `island("mod:name")` is a
+      chunk root like `Route(lazy=…)`. `examples/islands`, `tests/test_island.py`,
+      `tests/browser/test_island.py`, `SPEC.md` §10.
+      Three things the plan did not know: the wrapper is `display: contents` and generates no
+      box, so the observer has to watch the island's **children**; `frontage.island` needs
+      absolute imports because a relative one under `__main__` resolves against `__main__`;
+      and an island needs a hydration data block of its own rather than the page's.
+- [ ] **0.11 next: `ISLAND.md` steps D–G, each a release.** Content collections over
+      `frontage.schema` with Markdown (D); `frontage site` with file routing, `static_paths`,
+      layouts and endpoints (E); locales (F); the Optersoft chrome as a component package
+      (G). Acceptance: `web/` and then `site/` rebuilt from it and `astro/` retired for them.
+- [ ] The gallery does not show the release's own number. `tools/gallery.py` builds every app
+      with `frontage build`, so it cannot show a *prerendered* static page — and "142 bytes,
+      no runtime" is the whole of 0.11. It wants a `prerender=True` card for
+      `examples/islands`, measured with the island below the fold so the transfer column is
+      honest about what a reader who does not scroll pays.
+- [ ] An island page's early-click replay is the page's, not the island's. `add_replay` is
+      written once and `window.__frontage_replay` runs on the *first* island to hydrate,
+      taking its listeners away with it — so a click on a second island made before that one
+      hydrates is lost. Either replay per island (filter the queue by `closest("fr-island")`)
+      or make the replay idempotent and leave the listeners until the last island is up.
 - [ ] **`frontage.frame`: a columnar engine as a Rust module of its own** (`data-fr-js`,
       `wasm32-unknown-unknown`, `no_std`): filter, sort, group/aggregate, rolling, resample,
       CSV and Arrow in; handles in Python, `Float64Array`s to the chart, a windowed `table`

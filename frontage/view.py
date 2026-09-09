@@ -222,6 +222,9 @@ def component(fn):
 
     try:  # MicroPython functions have no writable __name__
         wrapper.__name__ = fn.__name__
+        # And where it came from: `island(view)` names a component by its module and its
+        # name, and without this every decorated component claimed to live in `frontage.view`.
+        wrapper.__module__ = fn.__module__
     except (AttributeError, TypeError):
         pass
     return wrapper
@@ -881,7 +884,7 @@ class _Root:
             _mounted.remove(self)
 
 
-def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hydrate=None, scope=None):
+def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hydrate=None, scope=None, when="load"):
     """Build `view` under `parent` with its own root `Owner`; returns a handle with `dispose()`.
 
     `parent` is emptied first — a "Loading…" placeholder in the HTML is the usual reason it
@@ -903,8 +906,24 @@ def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hy
     function of the error), or a one-line notice. `debug` also switches the development
     warnings (a read after an await, a write inside a tracked computation, a `For` that
     rebuilds every row). `scope` names the mount for `unique_id` (default: the target's id).
+
+    `when="never"` makes this a **static page**: `frontage prerender` renders it once and
+    writes no boot tag, so a visitor downloads HTML and stops — nothing hydrates and no
+    runtime is fetched. What comes alive on such a page is its `island`s, each on a trigger
+    of its own (`frontage.island`). An island's module is imported in the browser to hydrate
+    it, and importing the app's entry runs this line again; a page the island loader drives
+    carries no boot tag, and that is what tells this call there is nothing to do.
     """
     reactive.set_debug(debug)
+    if when == "never":
+        from .runtime import document, in_browser, prerender
+
+        if in_browser:
+            if document.querySelector("script[data-fr-boot]") is None:
+                return _Root(Owner(parent=None), [])
+        elif prerender.active and isinstance(parent, str):
+            prerender.mounts.append((parent, view, debug, fallback, when))
+            return _Root(Owner(parent=None), [])
     if scope is None and isinstance(parent, str) and parent.startswith("#"):
         scope = parent[1:]
     if renderer is None or isinstance(parent, str):
@@ -912,7 +931,7 @@ def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hy
 
         if not in_browser:
             if prerender.active and isinstance(parent, str):
-                prerender.mounts.append((parent, view, debug, fallback))
+                prerender.mounts.append((parent, view, debug, fallback, when))
                 return _Root(Owner(parent=None), [])
             raise RuntimeError(
                 "mount needs a browser: pass a renderer and a node (HtmlRenderer in tests), "

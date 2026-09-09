@@ -47,12 +47,22 @@ in_browser = platform == FRONTAGE
 class _Prerender:
     """What `python -m frontage prerender` tells the package while it imports an app on
     CPython: `active`, the `path` being rendered (the router starts there), and where
-    `mount` registers instead of drawing."""
+    `mount` registers instead of drawing.
+
+    `static` is up only while a `when="never"` mount is being rendered, which is the one
+    place an `island` defers instead of rendering itself; `islands` is where it registers.
+    `entry`/`entry_module` are the app's entry module by its real name and by the private
+    one the prerenderer imported it under — an island's spec has to name the first.
+    """
 
     def __init__(self):
         self.active = False
         self.path = "/"
         self.mounts = []
+        self.static = False
+        self.islands = []
+        self.entry = None
+        self.entry_module = None
 
 
 prerender = _Prerender()

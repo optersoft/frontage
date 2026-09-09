@@ -23,6 +23,7 @@ EXPORTS = {
     "Switch": "flow",
     "Meta": "head",
     "Title": "head",
+    "island": "island",
     "Context": "reactive",
     "Effect": "reactive",
     "Memo": "reactive",

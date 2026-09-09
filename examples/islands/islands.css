@@ -1,0 +1,10 @@
+body { font: 16px/1.6 system-ui, sans-serif; margin: 0 auto; max-width: 42rem; padding: 2rem 1rem; }
+h1 { font-size: 1.8rem; margin-bottom: 0; }
+.lede { color: #555; margin-top: .25rem; }
+.filler { color: #999; }
+.card { border: 1px solid #ddd; border-radius: .5rem; padding: 1rem; margin: 1.5rem 0; }
+button { font: inherit; padding: .3rem .8rem; }
+.spark { display: flex; align-items: flex-end; gap: 2px; height: 3rem; }
+.spark i { background: #36c; width: 6px; display: block; }
+body.dark { background: #111; color: #eee; }
+body.dark .card { border-color: #444; }

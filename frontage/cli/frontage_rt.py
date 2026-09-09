@@ -3,8 +3,9 @@ that turns a module into `.fbc`.
 
 The browser files ride in the wheel under `frontage/_runtime/`: `frontage.wasm` (no parser
 in the page), `frontage-compiler.wasm` (the same with the compiler, for the playground and
-the runner, which run a program someone types), `glue.js` and `boot.js`. The compiler on the
-host is the `fpy` binary — one on PATH, `FRONTAGE_FPY`, a checkout's `cargo build`, or the
+the runner, which run a program someone types), `glue.js`, `boot.js`, and `island.js` — the
+kilobyte a static page carries so that nothing else is fetched until an island asks. The
+compiler on the host is the `fpy` binary — one on PATH, `FRONTAGE_FPY`, a checkout's `cargo build`, or the
 release asset for this platform, fetched once into `~/.cache/frontage` the way the Tailwind
 CLI is.
 """
@@ -23,7 +24,7 @@ from .tailwind import cache_dir
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_DIR = Path(__file__).resolve().parent.parent / "_runtime"
-ASSETS = ("frontage.wasm", "frontage-compiler.wasm", "glue.js", "boot.js")
+ASSETS = ("frontage.wasm", "frontage-compiler.wasm", "glue.js", "boot.js", "island.js")
 MANIFEST = "manifest.json"
 FRAMEWORK = "framework.json"  # every framework module, for a page that runs a typed program
 RELEASES = "https://github.com/optersoft/frontage/releases/download"
@@ -164,12 +165,19 @@ def closure(app, entry, components=()):
 
 
 def split(app, entry, components=()):
-    """`(modules, chunks)`: what the page loads at once, and what it fetches when asked.
+    """`(modules, chunks)` — see `analyse`, which also says whether the app has islands."""
+    modules, chunks, _ = analyse(app, entry, components)
+    return modules, chunks
 
-    A chunk is a module named by `Route(lazy=…)` or `chunks.load(…)` somewhere in the first
-    closure. It carries whatever only it reaches; a module the entry already loads stays in
-    the first payload, and two chunks that share one both carry it — a copy of a few
-    kilobytes is cheaper than a third request, until it is not (`TODO.md`).
+
+def analyse(app, entry, components=()):
+    """`(modules, chunks, islands)`: what the page loads at once, what it fetches when asked,
+    and whether any of it is an island.
+
+    A chunk is a module named by `Route(lazy=…)`, `chunks.load(…)` or `island("mod:name")`
+    somewhere in the first closure. It carries whatever only it reaches; a module the entry
+    already loads stays in the first payload, and two chunks that share one both carry it — a
+    copy of a few kilobytes is cheaper than a third request, until it is not (`TODO.md`).
     """
     from .graph import Graph
 
@@ -186,7 +194,7 @@ def split(app, entry, components=()):
     seen = {}
     for name, path in modules:
         seen[name] = path
-    return [(name, seen[name]) for name in sorted(seen)], chunks
+    return [(name, seen[name]) for name in sorted(seen)], chunks, graph.uses_islands(main)
 
 
 def framework_names():
@@ -218,15 +226,22 @@ def site_files(dest, quiet=True):
     return framework_files(dest, quiet=quiet)
 
 
-def manifest(names, entry, files=None, wasm=None, chunks=None):
+def manifest(names, entry, files=None, wasm=None, chunks=None, islands=False):
     """`manifest.json`: every module the page loads at once but the entry (which the boot
     fetches by its own name), the modules of each chunk, and, for a built app, the
     content-hashed file of each module and of the wasm, so the files can be cached forever
-    and a rebuild changes only what changed."""
+    and a rebuild changes only what changed.
+
+    With `islands`, the entry stays in the list. Nothing runs it — a static page's HTML was
+    written at build time — but an island whose component is defined in the entry needs the
+    module *importable*, and the boot's own entry there is `frontage.island`.
+    """
     lazy = {name for names_ in (chunks or {}).values() for name in names_}
-    out = {"modules": [n for n in names if n != entry and n not in lazy]}
+    out = {"modules": [n for n in names if (islands or n != entry) and n not in lazy]}
     if chunks:
         out["chunks"] = chunks
+    if islands:
+        out["islands"] = True
     if files:
         out["files"] = files
         out["entry"] = files[entry]

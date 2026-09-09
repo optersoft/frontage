@@ -119,9 +119,10 @@ def runtime_build() -> None:
 
     Two wasms — `frontage.wasm` (no parser in the page) and `frontage-compiler.wasm` (with
     the compiler, for the playground and the runner) — through `cargo build -p frontage-web
-    --profile wasms` and `wasm-opt -Os`, the two scripts beside them, and the compiler `fpy`
-    for this machine (`--profile native`). Commit the four files: a wheel ships them,
-    `frontage build` copies them, `frontage serve` serves them."""
+    --profile wasms` and `wasm-opt -Os`, the three scripts beside them (`glue.js`, `boot.js`,
+    and `island.js`, the loader a static page carries), and the compiler `fpy` for this
+    machine (`--profile native`). Commit the five files: a wheel ships them, `frontage build`
+    copies them, `frontage serve` serves them."""
     rust = ROOT / "rust"
     dest = ROOT / "frontage" / "_runtime"
     dest.mkdir(parents=True, exist_ok=True)
@@ -141,7 +142,7 @@ def runtime_build() -> None:
         )
         sh("wasm-opt", "-Os", "--all-features", str(built), "-o", str(dest / name))
     sh("cargo", "build", "--profile", "native", "-p", "fpy", cwd=rust)
-    for name in ("glue.js", "boot.js"):
+    for name in ("glue.js", "boot.js", "island.js"):
         shutil.copy2(rust / "web" / name, dest / name)
     for name in ("frontage.wasm", "frontage-compiler.wasm"):
         print(f"{dest / name}: {(dest / name).stat().st_size:,} bytes")

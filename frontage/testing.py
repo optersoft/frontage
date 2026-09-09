@@ -113,7 +113,7 @@ class App:
         elif len(found) > 1:
             targets = ", ".join(repr(m[0]) for m in found)
             raise AssertionError(f"{name!r} has {len(found)} mounts ({targets}): name one with selector=")
-        target, view, debug, fallback = found[0]
+        target, view, debug, fallback, _when = found[0]
         options.setdefault("debug", debug)
         options.setdefault("fallback", fallback)
         return cls(view, **options)

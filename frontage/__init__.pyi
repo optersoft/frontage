@@ -19,6 +19,7 @@ from .flow import Show as Show
 from .flow import Switch as Switch
 from .head import Meta as Meta
 from .head import Title as Title
+from .island import island as island
 from .reactive import Context as Context
 from .reactive import Effect as Effect
 from .reactive import Memo as Memo

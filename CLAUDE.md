@@ -2,7 +2,8 @@
 
 Frontage: a fine-grained reactive UI framework for Python in the browser, on its own Python
 runtime compiled to WebAssembly (`rust/`), published to PyPI as `frontage`, Apache 2.0,
-copyright Optersoft. Rewritten clean-room from `SPEC.md` per `DESIGN.md`; `main` is past
+copyright Optersoft. Rewritten clean-room from `SPEC.md` per `DESIGN.md`; `main` is at
+**0.11.0** — islands and static pages, `ISLAND.md` steps A–C — and past
 milestone **M11** (0.9.0: the WebAssembly boot, the framework as precompiled bytecode, a dev
 server that swaps modules into the running page, C/Rust libraries as plain imports — after
 M9's prerendering with hydration, transitions and async memos) and, unreleased, **M12/0.10**:
@@ -19,7 +20,7 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
 | `TODO.md` | what is next and what is blocked |
 | `FASTER.md` | M12's plan, one release: our own build of the interpreter, the framework core in C, one distribution, the closure and route chunks, state-preserving swap — with the measurements it rests on |
 | `RUST.md` | where Rust goes (2026-09-08): the core inside the interpreter as a `no_std` staticlib behind a C shim — Rust, not C, on measurements that overturned `FASTER.md` §3/§10 — and bulk data in modules of their own, cut per app to the exports the Python interface calls; MicroPython's quadratic, unstable `sorted` is in there too |
-| `ISLAND.md` | the 0.11 plan (2026-09-09): what Astro does for a content site and how frontage does it — a page with nothing interactive ships no runtime, an island is a `mount` with a trigger (`when="visible"`), content is a collection checked by `frontage.schema`, pages are files. Measured on the two company Astro sites it has to replace; the prerendered counter is 455 bytes waiting for 265 KB, which is the whole case |
+| `ISLAND.md` | the 0.11 plan (2026-09-09), **steps A–C shipped in 0.11.0**: what Astro does for a content site and how frontage does it — a page with nothing interactive ships no runtime, an island is a `mount` with a trigger (`when="visible"`), content is a collection checked by `frontage.schema`, pages are files. Measured on the two company Astro sites it has to replace; the prerendered counter is 455 bytes waiting for 265 KB, which is the whole case |
 | `RUNTIME.md` | the case for a Python runtime of our own in Rust instead of MicroPython (2026-09-08): values in a word, a precise collector, errors as `Result`, no parser in the page, the browser as the standard library, the reactive core as native VM types — and **§9, the spike run the same day**: `rust/` (see `rust/README.md`) passes 157 of the framework's tests on the wasm and boots the examples, at **parity** with MicroPython on `profile_rows` (not the 2× gate) and **179 KB brotli** (not the 120 KB gate). The decision it leaves is where the native core goes; `TODO.md` |
 
 ## Layout
@@ -37,6 +38,7 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
 | `frontage/flow.py` | `Show`, `For`, `Switch`/`Match`, `Loading`, `Errored`, `Dynamic`, `Portal` |
 | `frontage/devtools.py` | the panel `frontage serve` runs in the page (Ctrl+Shift+D): every mount and the ownership tree under it. Compiled by the dev server, run with `rt.runDetached`, never in a build; absolute imports, because it runs as a script |
 | `frontage/dsp/` | signal processing as a component: an FFT, Welch's PSD, a spectrogram (`draw` rasterises it onto a canvas without the values reaching Python), a brick-wall bandpass, an RMS. 12 KB of `no_std` Rust from `rust/components/dsp/`, vendored by `mk components.wasm` |
+| `frontage/island.py` | islands (0.11): `island(view, when=…, **props)` renders a component at build time inside an `<fr-island>` wrapper and hydrates it in the browser when its trigger fires — `load`, `idle`, `visible`, `media:<query>`, `only`, `never`. With `mount(view, "#app", when="never")` above it the page is **static**: no boot tag, no runtime, 142 bytes over the wire. On such a page this module is what the boot runs as `__main__`, which is why every import in it is absolute |
 | `frontage/a11y.py` | what a screen reader cannot see happen: `announce` (one polite live region at the end of the body) and `focus` (a selector, made focusable, no scroll). The router calls both |
 | `frontage/head.py` | what the page says about itself: `Title`, `Meta`, and what `Route(title=)` writes. A stack per slot, so the innermost wins and leaving it puts the outer one back; off the browser it records instead and `prerender` writes it into `<head>` |
 | `frontage/chunks.py` | code splitting: `load`/`prefetch`/`loaded` and the `component` behind `Route(lazy=…)`. A chunk is a module `frontage build` left out of the first payload; the page fetches it and its own imports through `window.frontage.loadChunk`, named by the manifest |
@@ -46,7 +48,7 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
 | `frontage/widgets.py` | form controls bound to signals |
 | `frontage/testing.py` | the headless harness: `App` mounts a view on an `HtmlRenderer` inside a loop of its own, `find`/`get_by_label` over a small selector subset (a tag, `.class`, `#id`, `[attr=value]`, a descendant chain — anything else raises rather than quietly matching less), `click`/`type`/`check`/`submit` through `HtmlNode.fire`, and `settle()`, which polls the same two registries the prerenderer does. CPython only, and it is not the browser: no CSS, no focus, no component JavaScript — `tests/browser/` is that |
 | `frontage/dom.py` | the `Renderer` over the real DOM, delegated events, template cloning; `Hydration`, the cursor `mount(hydrate=True)` walks over prerendered HTML |
-| `frontage/_runtime/` | what the browser downloads, committed and shipped in the wheel, so `pip install frontage` is the whole install: `frontage.wasm` (the runtime), `frontage-compiler.wasm` (the same with the compiler, for the playground and the runner), `glue.js` (instantiates the wasm, holds the handle table, executes the DOM op stream, delegates events), `boot.js` (the loader). Built by `mk runtime.build` from `rust/` |
+| `frontage/_runtime/` | what the browser downloads, committed and shipped in the wheel, so `pip install frontage` is the whole install: `frontage.wasm` (the runtime), `frontage-compiler.wasm` (the same with the compiler, for the playground and the runner), `glue.js` (instantiates the wasm, holds the handle table, executes the DOM op stream, delegates events), `boot.js` (the loader), `island.js` (the kilobyte a static page carries: it watches the islands' triggers and dynamically imports `boot.js` on the first one). Built by `mk runtime.build` from `rust/` |
 | `frontage/cli/` + `__main__.py` | `python -m frontage`: `build` (the entry's import closure as `.fbc` + a manifest + the runtime into a static directory), `prerender` (imports the app with `runtime.prerender.active`, renders each route with `HtmlRenderer(hydration_markers=True)`, awaits resources, injects HTML + JSON + the replay script), `serve` (a static server with live reload: the swap script is injected into HTML, an SSE stream at `/__frontage/reload`, a polling `Watcher`, each module compiled on request; `tools/serve.py` subclasses its handler so `mk serve` and the browser tests reload too), `tailwind` (standalone CLI fetched into `~/.cache/frontage`), `check` (lambda in a t-string, `html(f"…")`, HTML the parser rewrites), `runtime` (where the runtime's files and its compiler are), `lsp`. `frontage_rt.py` is the host side of the runtime: the compiler `fpy` (PATH, `FRONTAGE_FPY`, a checkout's `rust/target/`, or the release asset fetched once), `.fbc` per module cached by mtime, the import closure through `graph.py`. CPython only |
 | `frontage/lsp/` | the language server behind `frontage lsp`: `protocol` (Content-Length framing over stdio, hand-written, no dependency), `documents` (open files, UTF-16 positions), `scanner` (the tolerant t-string lexer and the HTML state machine that answers *where is the cursor*), `rules` (the four static rules, with ranges — `cli/check.py` is the command line over these), `data` (elements, attributes, frontage's prefixes), `features` (completion, hover, definition, semantic tokens), `server`. CPython only, like `cli/`; never in a `pyscript.json` |
 | `frontage/errors.py` | `FrontageError`, `RenderError`, `NotReady`, `format_exception` |
@@ -190,6 +192,18 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
   without running it. ⚠ **In `serve`, a real file under `_frontage/` wins over the synthesised
   archive** — serving a built directory must serve what `build` produced, or a component's
   Python silently never reaches the page.
+- **An island is a `mount` with a trigger, and the page says which of the two it is.** A
+  built static page (`mount(…, when="never")`) carries no boot tag, so its entry is never run
+  in the browser: `frontage.island` is what the boot runs, and it mounts each `<fr-island>`
+  over the markup already there. The same `when="never"` line under `frontage serve` — where
+  there *is* a boot tag and the entry does run — mounts as usual and the islands render
+  live, which is what makes the dev loop unchanged. Three things are not obvious: the
+  wrapper is `display: contents` and so generates no box, so the loader's
+  `IntersectionObserver` watches the island's **children**, never the wrapper; each island is
+  prerendered in a pass of its own (its own resource registry, memo ordinals and
+  `unique_id` scope) and gets its own `data-fr-data` block, because in the browser each is
+  its own `mount`; and `island("mod:name")` is a chunk root exactly as `Route(lazy=…)` is,
+  while `island(fn)` is not, because the page imported `fn`.
 - **`frontage serve` swaps modules, it does not reload the page.** The server compiles the
   changed app modules (`/__frontage/module/<name>.fbc`), the page's script hands them to the
   runtime (`rt.addModule`) and calls `rt.swap`, and `frontage/dev.py` disposes every mount in

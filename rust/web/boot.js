@@ -46,17 +46,16 @@ async function addModules(rt, names) {
   for (const [name, fbc] of modules) rt.addModule(name, fbc);
 }
 
-async function boot() {
-  const tag = document.querySelector("script[data-fr-boot]");
-  if (!tag) {
-    // Not an error: a page may import this module for `startRuntime` alone.
-    console.warn("frontage: no <script data-fr-boot> on the page, so nothing was mounted");
-    return null;
-  }
-  const entry = tag.dataset.frEntry || "app";
+/**
+ * The runtime, this page's modules, and the JavaScript libraries the tag declares. `run`
+ * picks, from the manifest, the file whose bytecode becomes `__main__` once everything is
+ * in: an app's entry, or — for a page of islands, which has no entry to run —
+ * `frontage.island`.
+ */
+async function start(tag, run) {
   // A page that runs a typed program (`data-fr-compiler`) gets the whole framework, since
   // the program may import any of it; a built app gets its entry's import closure.
-  const compiler = tag.dataset.frCompiler !== undefined;
+  const compiler = tag !== null && tag.dataset.frCompiler !== undefined;
   const [manifest, framework] = await Promise.all([
     fetch(asset("manifest.json")).then((r) => r.json()),
     compiler ? fetch(asset("framework.json")).then((r) => r.json()) : { modules: [] },
@@ -71,7 +70,7 @@ async function boot() {
   // glue around a C or Rust library compiled to WebAssembly. Named ones become Python
   // modules. Resolved from `../` of this file, the app's own directory in every layout.
   const appRoot = new URL("../", import.meta.url);
-  for (const item of (tag.dataset.frJs || "").split(",")) {
+  for (const item of ((tag && tag.dataset.frJs) || "").split(",")) {
     const spec = item.trim();
     if (!spec) continue;
     const eq = spec.indexOf("=");
@@ -80,13 +79,39 @@ async function boot() {
     const namespace = await import(new URL(specifier, appRoot).href);
     if (name) rt.registerJsModule(name, namespace);
   }
-  const main = await bytes(asset(manifest.entry || `${entry}.fbc`));
+  const main = await bytes(asset(run(manifest)));
   rt.assetBase = rtAssets;
   rt.manifest = manifest;
   window.frontage = rt;
   const code = rt.run(main);
   if (code === 1) console.error("frontage: the entry raised; see above");
   return rt;
+}
+
+/**
+ * A static page whose islands have started asking for a runtime (`island.js`). There is no
+ * entry to run — the page's HTML was written at build time — so what runs is
+ * `frontage.island`, which mounts each queued wrapper over the markup already on screen.
+ * Called once per page, however many islands there are.
+ */
+export async function startIslands() {
+  const tag = document.querySelector("script[data-fr-islands]");
+  return start(tag, () => fileOf("frontage.island"));
+}
+
+async function boot() {
+  const tag = document.querySelector("script[data-fr-boot]");
+  if (!tag) {
+    // Not an error: a page may import this module for `startRuntime` or `startIslands` alone.
+    if (!document.querySelector("script[data-fr-islands]")) {
+      console.warn("frontage: no <script data-fr-boot> on the page, so nothing was mounted");
+    }
+    return null;
+  }
+  const entry = tag.dataset.frEntry || "app";
+  // `manifest.entry` is the built app's content-hashed entry file; the dev server's manifest
+  // has none, and the module is asked for by its plain name.
+  return start(tag, (manifest) => manifest.entry || `${entry}.fbc`);
 }
 
 const parsed =

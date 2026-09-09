@@ -1,11 +1,18 @@
 # Frontage for sites: static generation and islands — the 0.11 plan
 
-**Status: a plan, 2026-09-09. §1 and §2 are measured on the committed examples and on the
-company's own two Astro sites; §3 onward is unbuilt.** The question it answers is "can
+**Status: steps A, B and C shipped in 0.11.0 (2026-09-09) — `frontage/island.py`,
+`_runtime/island.js`, `examples/islands`, `tests/test_island.py` and
+`tests/browser/test_island.py`. D through G are unbuilt.** The question this answers is "can
 frontage do what Astro does for a content site", and the answer is *most of it, better in
 one respect, and three things deliberately not* — with the site you are reading this from
 (`web/`, an Astro site) and optersoft.com (`site/`, Astro, three locales, 27 pages) as the
 two acceptance tests.
+
+**The measurement that opens §2 now has its other half** (brotli, 2026-09-09): a static page
+with nothing interactive is **142 bytes** over the wire and asks for nothing under
+`_frontage/`; the islands example is **833 bytes** and carries a **1,341-byte** loader that
+fetches nothing until a trigger fires. The prerendered counter's 264,658 bytes of runtime is
+still what an *app* costs, and is still the right trade for an app.
 
 ## 0. The decision, in five sentences
 
@@ -71,16 +78,17 @@ browser suite covers the counter, a resource that must not refetch, and the trac
 
 A visitor to the prerendered counter sees the page at once and then downloads **580× the
 page** to make a button work. For an app that is the right trade — the runtime is the app.
-For a content page it is the wrong one, and it is the trade every page makes today, because:
+For a content page it is the wrong one, and it was the trade every page made before 0.11,
+because — the first three of these are what A, B and C fixed:
 
 - **One boot tag, one runtime, one boot.** `boot.js` finds `script[data-fr-boot]`, fetches
-  the wasm and every module in the manifest, and runs the entry. A page has no way to say
+  the wasm and every module in the manifest, and runs the entry. A page had no way to say
   "later", "when this is visible" or "never".
-- **Hydration is all-or-nothing per page.** Every `mount` hydrates when the entry runs; the
-  interactive parts and the static parts are one tree, one boot.
-- **The page's Python is one closure.** A route can be a chunk (0.10.3); an *island* cannot,
-  so a page with a theme toggle and a 40 KB chart module ships the chart module to hydrate
-  the toggle.
+- **Hydration is all-or-nothing per page.** Every `mount` hydrated when the entry ran; the
+  interactive parts and the static parts were one tree, one boot.
+- **The page's Python is one closure.** A route can be a chunk (0.10.3); an *island* could
+  not, so a page with a theme toggle and a 40 KB chart module shipped the chart module to
+  hydrate the toggle.
 - **There is no content pipeline.** No Markdown, no front matter, no collections, no
   `[slug]` pages generated from data. The academy's chapters are Markdown with embedded
   frontage apps — islands in everything but name — and they are rendered by the academy's
@@ -117,9 +125,10 @@ browser suite asserts the page makes no request under `_frontage/`.
 ```py
 from frontage import island
 
+
 def page(post):
     return layout(
-        article(post),                                   # static: rendered once, at build
+        article(post),  # static: rendered once, at build
         island(comments, when="visible", post=post.id),  # interactive: hydrated when seen
         island(theme_toggle, when="idle"),
     )
@@ -166,9 +175,9 @@ from frontage.content import collection
 from frontage.schema import iso_date, record, text
 
 Post = record(("title", text(min=1)), ("date", iso_date()), ("summary", text(), None))
-posts = collection("posts", Post)          # content/posts/*.md, front matter checked
+posts = collection("posts", Post)  # content/posts/*.md, front matter checked
 
-for post in posts.entries():               # sorted by date if the schema has one
+for post in posts.entries():  # sorted by date if the schema has one
     post.slug, post.data["title"], post.html()
 ```
 
@@ -212,10 +221,13 @@ A page module defines `page(**params)` returning a view, and a dynamic page defi
 
 ```py
 from frontage.content import collection
+
 posts = collection("posts", Post)
+
 
 def static_paths():
     return [{"slug": post.slug} for post in posts.entries()]
+
 
 def page(slug):
     post = posts.get(slug)
@@ -274,9 +286,9 @@ Markdown shows on reload with nothing to build.
 
 | step | ships | gate |
 |---|---|---|
-| **A. islands in the loader** | `island(when=)`, the wrapper, the ~1 KB loader, deferred boot, one runtime per page | a `visible` island fetches nothing until seen; two islands, one wasm fetch |
-| **B. islands as chunks** | per-island closures in the manifest, props as JSON | a page with a toggle and a chart fetches the chart's modules only when the chart is seen |
-| **C. zero-runtime pages** | the boot tag only where an island is | a built content page makes no `_frontage/` request |
+| ✅ **A. islands in the loader** (0.11.0) | `island(when=)`, the `<fr-island>` wrapper, the loader (1,341 bytes brotli), deferred boot, one runtime per page | a `visible` island fetches nothing until seen; two islands, one wasm fetch |
+| ✅ **B. islands as chunks** (0.11.0) | `island("mod:name")` is a chunk root, props as JSON on the wrapper | a page with a toggle and a chart fetches the chart's modules only when the chart is seen |
+| ✅ **C. zero-runtime pages** (0.11.0) | `mount(…, when="never")`; the boot tag and its preload hints written only where an island is | a built content page makes no `_frontage/` request |
 | **D. content** | `frontage.content`: collections, front matter through `frontage.schema`, Markdown with `:::` | a collection with a bad front matter fails the build naming the file and the field |
 | **E. pages** | `frontage site`, file routing, `static_paths`, layouts, endpoints, `_redirects` | `web/` rebuilt from frontage, byte-comparable HTML, the gallery cards as `never` islands |
 | **F. locales** | the `[lang]` convention, `hreflang()` | `site/` rebuilt: 27 pages, three locales, the theme toggle and language switcher as `idle` islands, sitemap from an endpoint |
@@ -286,6 +298,28 @@ A is the whole idea and stands alone; C is a one-line consequence of A; B makes 
 a page with more than one island; D and E are the content site; F and G are the acceptance
 test. Each step is a release. The academy's chapters — Markdown with embedded apps — are the
 third site, and the one with the most islands per page, once D lands.
+
+**What A–C settled that §6 had left open**, now that they are built:
+
+- **The wrapper cannot be what an `IntersectionObserver` watches.** `<fr-island>` is
+  `display: contents`, so it generates no box and an observer on it never fires — the
+  island's own elements are what is on screen, and the loader observes those. This cost an
+  afternoon and is the one thing about the design that is not obvious from the design.
+- **A static page's entry is never run in the browser**, so `frontage.island` is what the
+  boot runs as `__main__`. That is why every import in it is absolute: a relative import in a
+  module running as `__main__` resolves against `__main__` and fails.
+- **`when="never"` is one call with two readings**, and the page itself says which: a page
+  the loader drives has no boot tag, so `mount(…, when="never")` does nothing there, while
+  under `frontage serve` — where there is a boot tag and the entry does run — it mounts as
+  usual and the islands render live. Nothing had to be configured to get both.
+- **An island does not get the page's hydration data, it gets its own.** Each is rendered in
+  a pass of its own, with its own resource registry, its own memo ordinals and its own
+  `unique_id` scope, and its settled values are written beside its wrapper — because in the
+  browser each is its own `mount`, and a shared data block would be read by whichever island
+  hydrated first.
+- **The naming question answered itself.** `island(view, when=)` and `mount(view, target,
+  when=)` are two names because they take different second arguments; `when=` is the same
+  word in both, and `"never"` on a mount is what makes the page static.
 
 ## 6. Risks, and the decisions to take
 
