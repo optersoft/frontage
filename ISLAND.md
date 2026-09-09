@@ -296,7 +296,7 @@ Markdown shows on reload with nothing to build.
 | ✅ **D. content** (0.12.0) | `frontage.content`: collections, front matter through `frontage.schema`, Markdown with `:::`, an `::: island` container in prose | a collection with a bad front matter fails the build naming the file and the field |
 | ✅ **E. pages** (0.13.0) | `frontage site`, file routing, `static_paths`, layouts, endpoints, `_redirects`, `public/` | six pages of the example ship no runtime and the seventh boots it on scroll; `web/` rebuilt is F+G's gate, not this one |
 | ✅ **F. locales** (0.13.1) | parameters in directories, `LOCALES` in `site.py` with the default at `/`, `frontage.i18n`'s `hreflang()` and `switcher()`, `collection().locale()` | twelve pages in three languages, the switcher moving sideways on the page you are on, and **no runtime at all**; `site/` rebuilt is G's gate |
-| 🔨 **G. the chrome** (in progress) | `optersoft/brand`, the chrome as frontage components — shipped 0.1.0; `web/` and `site/` not yet on it | both sites on it, `astro/` retired for them |
+| 🔨 **G. the chrome** (0.13.3) | `optersoft/brand`, the chrome as frontage components, and **`web/` rebuilt on it**; `site/` is what is left | both sites on it, `astro/` retired for them |
 
 A is the whole idea and stands alone; C is a one-line consequence of A; B makes A honest for
 a page with more than one island; D and E are the content site; F and G are the acceptance
@@ -404,6 +404,16 @@ third site, and the one with the most islands per page, once D lands.
   Counting the language switcher (§F) and this, the plan named three islands for the two
   sites and all three turned out to be better without one. The pattern is worth stating:
   **an island is for state a reader creates, not for a fact the build already knew.**
+- **`web/` is a frontage site, and the Astro half of it is deleted.** The landing page, the
+  gallery index and the 404 are `pages/`; the chrome is `optersoft_brand`; `tailwind.css`
+  imports the chrome's stylesheet and `--tailwind` compiles one file. `mk site.build` writes
+  it straight into `www/` — no `astro build`, no `node_modules`, no `package.json`. Every
+  page of frontage.optersoft.com now makes **four requests and carries no `<script src>`**,
+  which is the claim the site is there to make. Half of the gate met; `site/` (27 pages,
+  three locales) is the other half. (0.13.3)
+- **A `404.html` is a page that names its own path.** `frontage site` writes `<url>/index.html`,
+  and a host looking for `404.html` would never find `/404/`. A page module may set `PATH`,
+  and a URL that does not end in `/` is written as that file. (0.13.3)
 - **The naming question answered itself.** `island(view, when=)` and `mount(view, target,
   when=)` are two names because they take different second arguments; `when=` is the same
   word in both, and `"never"` on a mount is what makes the page static.

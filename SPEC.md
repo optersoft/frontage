@@ -170,6 +170,7 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - L7 `collection(name).locale(lang)` is `content/<name>/<lang>/`: a directory per language, because two languages of one entry share a slug and a flat read would collide them. [0.13.1]
 
 - L8 `STATIC` in `site.py` is a list of directories copied into the output, a bare path at the root and a `(path, where)` pair under `where`: what lets a site take a stylesheet, four fonts and a favicon from a **package** without any of them living in the site's repository. A directory that is not there is an error naming it. [0.13.2]
+- S9 A page module may set `PATH` to say where it goes. A URL that does not end in `/` is written as **that file** rather than as `<url>/index.html`, which is how a site gets the `404.html` a static host serves for a path that matches nothing. [0.13.3]
 - V1 `<script>` and `<style>` hold **raw text**: their content is neither escaped when written nor turned into hydration markers when a template is compiled. Anything but text in one is an error saying so. [0.13.2]
 
 ## 14. The layer above (M5)

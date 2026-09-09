@@ -14,7 +14,7 @@
     mk export APP [--out D]  the same as a PyScript page (0.9.x only; `build` replaces it)
     mk vscode.test          the extension: manifest, snippets, client, grammar (needs npm)
     mk gallery              build every example, measure it in Chromium, write www/gallery/
-    mk site.dev             the Astro dev server for web/ (the landing page, the gallery index)
+    mk site.dev             the dev server for web/ (the landing page, the gallery index)
     mk site.build           frontage.optersoft.com into ./www: the site, the gallery, wheels, playground
     mk site.deploy          build, then publish ./www to Cloudflare Pages by hand (fallback)
 
@@ -210,37 +210,60 @@ def gallery(*, out: str = "", quick: bool = False) -> None:
 
 
 WEB = ROOT / "web"
-#: The chrome, a `file:../../astro` path dependency of web/package.json. On the laptop it is the
-#: sibling checkout; on a builder that has only this repo (Cloudflare's), `site.build` clones it.
-ASTRO = ROOT.parent / "astro"
-ASTRO_GIT = "https://github.com/optersoft/astro.git"
+#: The Optersoft chrome, a path dependency like every other sibling here. On the laptop it is
+#: the checkout beside this repo; on a builder that has only this one (Cloudflare's),
+#: `site.build` clones it. `web/site.py` imports it, so it has to be importable.
+BRAND = ROOT.parent / "brand"
+BRAND_GIT = "https://github.com/optersoft/brand.git"
 
 
 def _web_deps() -> None:
-    if not ASTRO.is_dir():
-        note(f"cloning the chrome into {ASTRO}")
-        sh("git", "clone", "--depth", "1", ASTRO_GIT, str(ASTRO))
-    if not (WEB / "node_modules").is_dir():
-        sh("npm", "ci", cwd=WEB)
+    if not BRAND.is_dir():
+        note(f"cloning the chrome into {BRAND}")
+        sh("git", "clone", "--depth", "1", BRAND_GIT, str(BRAND))
 
 
-@task(name="site.dev", requires=["npm"])
+def _web_env() -> dict:
+    """The environment `frontage site` needs for web/: the chrome on the path."""
+    import os
+
+    path = os.environ.get("PYTHONPATH", "")
+    return {"PYTHONPATH": f"{BRAND}{os.pathsep}{path}" if path else str(BRAND)}
+
+
+@task(name="site.dev", requires=["uv"])
 def site_dev(*args: str) -> None:
-    """The Astro dev server for web/ on :4321 (the gallery index needs `mk gallery` to have run)."""
+    """The dev server for web/ on :8000, rebuilding the site when a file changes.
+
+    `--prerender` because a site has no file at `/gallery/` until something makes one; the
+    gallery index needs `mk gallery` to have run for its numbers.
+    """
     _web_deps()
-    sh("npx", "astro", "dev", *args, cwd=WEB)
+    sh(
+        "uv",
+        "run",
+        "--frozen",
+        "python",
+        "-m",
+        "frontage",
+        "serve",
+        str(WEB),
+        "--prerender",
+        *args,
+        env=_web_env(),
+    )
 
 
 @task(name="site.build", needs=[gallery])
 def site_build() -> None:
     """Assemble frontage.optersoft.com into ./www.
 
-    web/ is the Astro site: the landing page, the gallery index and the 404 (src/pages/), and
-    under public/ the playground and the runner as static files. It builds into web/dist,
-    which is merged into www/ beside the gallery apps. The playground carries its own copy of
-    the WebAssembly runtime at /playground/_frontage/, which is where its boot tag points;
-    `boot.js` finds the interpreter and both archives from its own URL, so nothing here
-    needs a rewrite rule.
+    web/ is a **frontage site** — `pages/` is the site map, the chrome is `optersoft_brand`,
+    and every page of it ships no runtime — built straight into www/ beside the gallery apps.
+    Under public/ the playground and the runner are static files; the playground carries its
+    own copy of the WebAssembly runtime at /playground/_frontage/, which is where its boot
+    tag points, and `boot.js` finds the interpreter and both archives from its own URL, so
+    nothing here needs a rewrite rule.
 
     `mk gallery` has already written www/gallery/ by the time this runs, so it is preserved
     rather than rebuilt: the numbers on that page come from a real browser and are not
@@ -255,10 +278,23 @@ def site_build() -> None:
     if WWW.exists():
         shutil.rmtree(WWW)
     _web_deps()
-    sh("npx", "astro", "build", cwd=WEB)
-    shutil.copytree(WEB / "dist", WWW)
+    sh(
+        "uv",
+        "run",
+        "--frozen",
+        "python",
+        "-m",
+        "frontage",
+        "site",
+        str(WEB),
+        "--out",
+        str(WWW),
+        "--tailwind",
+        env=_web_env(),
+    )
     if keep.exists():
-        # Merged into the gallery directory Astro just made, one entry at a time. `shutil.move`
+        # Merged into the gallery directory the build just made, one entry at a time.
+        # `shutil.move`
         # of the whole directory would put it *inside* that one — `www/gallery/_gallery-keep/`
         # — and every card on the page links to `./<app>/`, so the whole gallery 404s while
         # the index that lists it looks perfectly well.

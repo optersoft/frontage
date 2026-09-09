@@ -189,7 +189,15 @@ class Route:
 
         A `[lang]` segment whose value is the default locale contributes nothing, so the main
         language is at `/` and the others under `/es/`, `/ca/`.
+
+        A page module may set `PATH` to say where it goes instead. A URL that does not end in
+        `/` is written as **that file** rather than as `<url>/index.html`, which is how a site
+        gets a `404.html` — the file a static host serves, with a 404 status, for a path that
+        matches nothing.
         """
+        fixed = getattr(self.module, "PATH", None) if self.module is not None else None
+        if fixed:
+            return fixed if fixed.startswith("/") else "/" + fixed
         params = params or {}
         parts = []
         for part in self.parts:
@@ -356,10 +364,9 @@ def write_page(out, template, url, inner, islands, drawn, head, lang=None):
     html = prerender_cli.island_script(html) if islands else prerender_cli.strip_boot(html)
     if islands:
         html = prerender_cli.add_replay(html)
-    parts = [p for p in url.strip("/").split("/") if p]
-    target = out.joinpath(*parts) / "index.html" if parts else out / "index.html"
+    target, depth = written_at(out, url)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(prerender_cli.relocate(html, len(parts)))
+    target.write_text(prerender_cli.relocate(html, depth))
     return html
 
 
@@ -383,6 +390,16 @@ def set_lang(template, lang):
     attrs = match.group(1)
     attrs = _LANG_ATTR.sub(f'lang="{lang}"', attrs) if _LANG_ATTR.search(attrs) else f'{attrs} lang="{lang}"'
     return template[: match.start()] + f"<html{attrs}>" + template[match.end() :]
+
+
+def written_at(out, url):
+    """`(file, depth)` for a URL: `<url>/index.html` for a directory, the file itself for a
+    `PATH` that names one — and how many directories deep it sits, which is what `relocate`
+    and a stylesheet link need."""
+    parts = [p for p in url.strip("/").split("/") if p]
+    if url.endswith("/") or not parts:
+        return (out.joinpath(*parts) / "index.html" if parts else out / "index.html"), len(parts)
+    return out.joinpath(*parts), len(parts) - 1
 
 
 def write_endpoint(out, route, site):
@@ -625,13 +642,12 @@ def _link(out, url, link):
     """Put a stylesheet link into a page that is already written, at its own depth."""
     from . import prerender as prerender_cli
 
-    parts = [p for p in url.strip("/").split("/") if p]
-    target = out.joinpath(*parts) / "index.html" if parts else out / "index.html"
+    target, depth = written_at(out, url)
     html = target.read_text()
     if link in html:
         return
-    depth = prerender_cli.relocate(link, len(parts))
-    target.write_text(html.replace("</head>", f"  {depth}\n</head>", 1))
+    relative = prerender_cli.relocate(link, depth)
+    target.write_text(html.replace("</head>", f"  {relative}\n</head>", 1))
 
 
 def main(argv=None):

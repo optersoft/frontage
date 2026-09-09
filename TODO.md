@@ -676,7 +676,25 @@ decides, all in 0.10.0:
       it into a `<!--h-->` hole. An inline theme script with `&&` in it came out as
       `&amp;&amp;`, and the marker inside it was a line of JavaScript rather than a marker,
       so the template found one fewer than it had written and raised on the next row.
-- [ ] **0.13 next: `ISLAND.md` step G, the last one.** The Optersoft chrome as a frontage
+- [x] **0.13.3: `web/` is a frontage site — `ISLAND.md` step G, half of it (2026-09-09).**
+      frontage.optersoft.com is built by frontage, on `optersoft/brand` (the chrome, ported
+      from `@optersoft/astro` and pushed to github.com/optersoft/brand). `pages/` is the
+      landing page, the gallery index and `pages/404.py` — whose `PATH = "/404.html"` is the
+      new bit: `frontage site` writes `<url>/index.html`, and a host looking for `404.html`
+      would never find `/404/`. `layouts/site.py` is the chrome with this site's brand;
+      `tailwind.css` imports the chrome's `chrome.css` and `--tailwind` compiles one file.
+      `mk site.build` writes it straight into `www/`; `mk site.dev` is `frontage serve
+      --prerender`. **Astro, `@optersoft/astro`, `node_modules`, `package.json` and
+      `web/src/` are deleted**, and every page of the site makes four requests and carries no
+      `<script src>`.
+      ⚠ The chrome ships **no island**, which G's gate expected: the theme has to be applied
+      before first paint, so twelve lines are inline in the head, and the toggle's clicks
+      belong with them. Three islands the plan named, three better without one.
+- [ ] **G's other half: `site/` (optersoft.com) rebuilt from frontage.** 27 pages, three
+      locales, the theme toggle and the language switcher — both of which are now plain HTML
+      rather than islands. It is a separate repository (`~/optersoft/site`), it is live, and
+      its content is 27 pages of TypeScript modules that become YAML collections. When it
+      lands, `astro/` is retired for both sites and `ISLAND.md` is finished. The Optersoft chrome as a frontage
       component package in `optersoft/brand` (see the entry below). Acceptance, and the gate
       for E and F as well: `web/` and then `site/` rebuilt from frontage, `astro/` retired for
       them — 27 pages, three locales, the theme toggle as an island.

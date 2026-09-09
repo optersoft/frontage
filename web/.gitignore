@@ -1,5 +1,3 @@
-node_modules/
 dist/
-.astro/
-# written by `mk gallery` (the measured apps), read by src/pages/gallery/
-src/data/
+# written by `mk gallery` (the measured apps), read by pages/gallery/
+data/

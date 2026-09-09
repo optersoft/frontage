@@ -4,7 +4,7 @@ The gallery is the marketing and the acceptance test at once, so the numbers on 
 generated rather than typed: `mk gallery` builds each app with `frontage build`, serves the
 output, loads it in Chromium, and records what the browser actually transferred and how long
 it took to show something. If an app stops working the build fails; if it gets slower the page
-says so. The page is web/src/pages/gallery/index.astro (the Astro site); this writes the JSON
+says so. The page is web/pages/gallery/index.py (a frontage site); this writes the JSON
 it renders.
 
     mk gallery              build, measure, write www/gallery/ and web/src/data/gallery.json
@@ -65,9 +65,9 @@ APPS = [
 #: here rather than quietly publishing a number that includes 660 KB of it.
 PRERENDERED = {"islands", "blog"}
 
-#: Where the site's gallery page reads the result from (web/src/data/, gitignored). The page
-#: itself is web/src/pages/gallery/index.astro; this script only produces the facts.
-SITE_DATA = ROOT / "web" / "src" / "data" / "gallery.json"
+#: Where the site's gallery page reads the result from (web/data/, gitignored). The page
+#: itself is web/pages/gallery/index.py; this script only produces the facts.
+SITE_DATA = ROOT / "web" / "data" / "gallery.json"
 
 
 def free_port():

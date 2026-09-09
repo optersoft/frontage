@@ -1,0 +1,17 @@
+/* The root stylesheet: Tailwind, then the Optersoft chrome, then this site's own prose.
+   `frontage site --tailwind` compiles it into `tailwind.out.css` and links it in every page. */
+@import "tailwindcss";
+@import "../../brand/optersoft_brand/static/styles/chrome.css";
+
+/* The site's own Python is where its class names are written. */
+@source "./";
+
+/* A blurb writes `<code>` as prose, so it is styled here rather than with a utility class on
+   every occurrence. */
+.blurb code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background-color: color-mix(in srgb, currentColor 8%, transparent);
+  padding: 0.05em 0.35em;
+  border-radius: 0.25rem;
+}
