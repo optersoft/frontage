@@ -281,7 +281,8 @@ Markdown shows on reload with nothing to build.
   framework feature; if it comes it comes as an endpoint-style build hook, later.
 - **An integrations ecosystem.** Sitemap and RSS are one endpoint each. The Optersoft chrome
   becomes a component package the two sites import, which is what `@optersoft/astro` is
-  today with the Astro-specific half removed.
+  today with the Astro-specific half removed — **in a repository of its own**, not in this
+  one (§6).
 - **`.astro` files.** A frontage page is Python and its markup is a t-string; there is no
   reason to invent a fourth template syntax.
 
@@ -295,7 +296,7 @@ Markdown shows on reload with nothing to build.
 | ✅ **D. content** (0.12.0) | `frontage.content`: collections, front matter through `frontage.schema`, Markdown with `:::`, an `::: island` container in prose | a collection with a bad front matter fails the build naming the file and the field |
 | **E. pages** | `frontage site`, file routing, `static_paths`, layouts, endpoints, `_redirects` | `web/` rebuilt from frontage, byte-comparable HTML, the gallery cards as `never` islands |
 | **F. locales** | the `[lang]` convention, `hreflang()` | `site/` rebuilt: 27 pages, three locales, the theme toggle and language switcher as `idle` islands, sitemap from an endpoint |
-| **G. the chrome** | `@optersoft/astro` → a frontage component package the two sites share | both sites on it, `astro/` retired for them |
+| **G. the chrome** | a **repository of its own** (`optersoft/chrome`), a frontage component the two sites import | both sites on it, `astro/` retired for them |
 
 A is the whole idea and stands alone; C is a one-line consequence of A; B makes A honest for
 a page with more than one island; D and E are the content site; F and G are the acceptance
@@ -383,6 +384,30 @@ third site, and the one with the most islands per page, once D lands.
   trigger, and one name for both is tempting; the proposal keeps two, because "mount" is
   what an app does once and "island" is what a page does many times, and a reader of either
   should not have to know the other.
+- **Where the chrome lives. Decided 2026-09-09: a project of its own.** Not a subpackage of
+  `frontage`, and not `astro/` renamed. Three reasons, and the third is the interesting one:
+
+  - **It is not the framework's.** `frontage` is Apache-2.0 and shipped to strangers; the
+    chrome is one company's logo, fonts, palette and footer. The rule that says frontage's
+    own components are subpackages ("no more `frontage-*` projects on PyPI") is about not
+    fragmenting the *framework*, and it argues the same way here: company branding does not
+    belong in the framework's wheel.
+  - **`astro/` is the precedent, not the home.** Its npm package is `@optersoft/astro`, its
+    peer dependencies are Astro and Tailwind, and its file format is `.astro`. A frontage
+    component shares none of that; it shares the brand.
+  - **The brand is already three copies, and they have drifted.** `astro/src/styles/brand.css`
+    is 3,834 bytes and `dioxus-chrome/assets/brand.css` is 4,429 — the parent `CLAUDE.md`
+    says "keep both equal", which is a rule that has already been broken, and `theme.css`
+    exists in only one of them. Adding a *third* copy for frontage would make it worse. So
+    the recommendation is stronger than the decision: `optersoft/chrome` should be the
+    **source of truth for the brand** — the fonts, the palette, `brand.css`, `theme.css`,
+    the logo — and ship it in the forms the fleet consumes (a frontage component now, the
+    Dioxus crate and the npm package folded in after), which deletes the "keep both equal"
+    rule instead of restating it.
+
+  One constraint on the transport: `web/`'s CI builds off this laptop, so whatever the chrome
+  is, that build has to be able to fetch it — which is exactly why `astro/` is public on
+  GitHub, and the same answer applies.
 - **How much of `site/` is copy.** Twenty-seven pages in three locales as TypeScript content
   modules. Porting them to YAML collections is a day; it is also the moment to find out
   whether a content model designed for Astro is right for anything else.

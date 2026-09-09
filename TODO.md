@@ -612,6 +612,15 @@ decides, all in 0.10.0:
       routing, `static_paths`, layouts and endpoints (E); locales (F); the Optersoft chrome as
       a component package (G). Acceptance: `web/` and then `site/` rebuilt from it and
       `astro/` retired for them.
+- [ ] **The chrome is a project of its own — `optersoft/chrome` (decided 2026-09-09, David).**
+      Not a `frontage` subpackage and not `astro/` renamed: `frontage` is Apache-2.0 and
+      shipped to strangers, and the chrome is one company's logo, fonts, palette and footer.
+      ⚠ It should be the **source of truth for the brand**, not a third copy of it:
+      `astro/src/styles/brand.css` is 3,834 bytes against `dioxus-chrome/assets/brand.css`'s
+      4,429, and `theme.css` exists in only one of them — the parent `CLAUDE.md`'s "keep both
+      equal" is already broken, and a third copy makes it worse. `web/`'s CI builds off this
+      laptop, so the chrome has to be fetchable there, which is why `astro/` is public on
+      GitHub and is the same answer here. `ISLAND.md` §6 has the reasoning.
 - [ ] A content build ships the Markdown it rendered. `build` copies the app directory, and
       `content/` goes with it like the `.py` sources do — harmless for a public blog, wrong
       for a site with drafts in the tree. The fix is not to special-case the name: it is for
