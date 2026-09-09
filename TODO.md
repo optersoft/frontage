@@ -558,7 +558,7 @@ decides, all in 0.10.0:
       ordered floats sort in 2.0 ms on the wasm, 2.5 with a key** (MicroPython: 269 and
       1,440). The gate was under 5 ms. `frontage.table` sorts with `sorted` and needs nothing
       else.
-- [ ] **0.11: sites — static generation and islands (`SITES.md`, planned 2026-09-09).** The
+- [ ] **0.11: sites — static generation and islands (`ISLAND.md`, planned 2026-09-09).** The
       steps, each a release: islands in the loader (`island(view, when=)`, one runtime per
       page, booted on the first trigger); islands as chunks; zero-runtime pages; content
       collections over `frontage.schema` with Markdown; `frontage site` with file routing,
