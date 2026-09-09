@@ -26,9 +26,9 @@ and whatever nothing adopted.
 """
 
 from . import reactive
-from .errors import format_exception
+from .errors import RenderError, format_exception
 from .reactive import Context, Owner, RenderEffect, Signal, on_cleanup, provide, spawn, use
-from .renderer import HtmlRenderer, escape
+from .renderer import _RAW_TEXT, HtmlRenderer, escape
 
 try:  # the runtime's native template path (rust/vm/src/view.rs); CPython has none
     import _view
@@ -410,6 +410,16 @@ def _compile(element):
             element_holes.append(dynamic)
         parts.append(">")
         if el.tag in _VOID:
+            return
+        if el.tag in _RAW_TEXT:
+            # `<script>` and `<style>` hold raw text: a `<!--h-->` in one is not a marker, it
+            # is a line of JavaScript, and the template it belongs to then finds one marker
+            # fewer than it wrote. Their text goes into the HTML as it stands.
+            for child in el.children:
+                if type(child) is not Text or callable(child.value):
+                    raise RenderError(f"<{el.tag}> holds text, not {type(child).__name__.lower()}: it is not markup")
+                parts.append(str(child.value))
+            parts.append(f"</{el.tag}>")
             return
         for child in el.children:
             if isinstance(child, Element):

@@ -296,7 +296,7 @@ Markdown shows on reload with nothing to build.
 | ✅ **D. content** (0.12.0) | `frontage.content`: collections, front matter through `frontage.schema`, Markdown with `:::`, an `::: island` container in prose | a collection with a bad front matter fails the build naming the file and the field |
 | ✅ **E. pages** (0.13.0) | `frontage site`, file routing, `static_paths`, layouts, endpoints, `_redirects`, `public/` | six pages of the example ship no runtime and the seventh boots it on scroll; `web/` rebuilt is F+G's gate, not this one |
 | ✅ **F. locales** (0.13.1) | parameters in directories, `LOCALES` in `site.py` with the default at `/`, `frontage.i18n`'s `hreflang()` and `switcher()`, `collection().locale()` | twelve pages in three languages, the switcher moving sideways on the page you are on, and **no runtime at all**; `site/` rebuilt is G's gate |
-| **G. the chrome** | a **repository of its own**, `optersoft/brand`: a frontage component the two sites import | both sites on it, `astro/` retired for them |
+| 🔨 **G. the chrome** (in progress) | `optersoft/brand`, the chrome as frontage components — shipped 0.1.0; `web/` and `site/` not yet on it | both sites on it, `astro/` retired for them |
 
 A is the whole idea and stands alone; C is a one-line consequence of A; B makes A honest for
 a page with more than one island; D and E are the content site; F and G are the acceptance
@@ -392,6 +392,18 @@ third site, and the one with the most islands per page, once D lands.
 - **`<html lang>` has to be the build's.** A layout cannot reach the element above everything
   it renders, and a page that says nothing there says "English" to a screen reader, a
   translator and a hyphenation engine whatever else on it is Catalan. (0.13.1)
+- **The chrome ships no runtime either, and that is the third time the plan expected an
+  island.** G's gate says "the theme toggle as an `idle` island". But the theme has to be
+  applied **before first paint** or the page flashes the wrong colour scheme, and nothing
+  that has to be fetched can do that — not 265 KB, not 2 KB. So twelve lines are inline in
+  the head, and once a page carries those, the toggle's three click handlers belong with
+  them rather than in an island that would download a runtime on every page of a content
+  site to set a class and a `localStorage` key. `optersoft/brand` renders a full Optersoft
+  page — brand font, three-way theme with persistence, skip link, footer — in **five
+  requests, none of them a runtime**.
+  Counting the language switcher (§F) and this, the plan named three islands for the two
+  sites and all three turned out to be better without one. The pattern is worth stating:
+  **an island is for state a reader creates, not for a fact the build already knew.**
 - **The naming question answered itself.** `island(view, when=)` and `mount(view, target,
   when=)` are two names because they take different second arguments; `when=` is the same
   word in both, and `"never"` on a mount is what makes the page static.

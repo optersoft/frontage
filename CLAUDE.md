@@ -3,8 +3,9 @@
 Frontage: a fine-grained reactive UI framework for Python in the browser, on its own Python
 runtime compiled to WebAssembly (`rust/`), published to PyPI as `frontage`, Apache 2.0,
 copyright Optersoft. Rewritten clean-room from `SPEC.md` per `DESIGN.md`; `main` is at
-**0.13.1** — islands and static pages (`ISLAND.md` steps A–C), content collections (D),
-`frontage site` (E) and locales (F) — and past milestone **M11** (0.9.0: the WebAssembly boot, the framework as precompiled bytecode, a dev
+**0.13.2** — islands and static pages (`ISLAND.md` steps A–C), content collections (D),
+`frontage site` (E), locales (F) and what the chrome needed from the framework (G, in
+progress) — and past milestone **M11** (0.9.0: the WebAssembly boot, the framework as precompiled bytecode, a dev
 server that swaps modules into the running page, C/Rust libraries as plain imports — after
 M9's prerendering with hydration, transitions and async memos) and, unreleased, **M12/0.10**:
 the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript are gone**
@@ -112,6 +113,12 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
   the DOM, a `_root` flag `mount` sets (`mark_root`) on the HtmlRenderer's target and a
   parent walk otherwise. The view layer passes `target=` to every `RenderEffect` it creates;
   a user `RenderEffect` without one is assumed on screen and parks.
+- **`<script>` and `<style>` hold raw text, and two places have to know it.** `to_html` does
+  not escape their content — an inline theme script with `&&` in it came out as `&amp;&amp;`
+  and stopped being JavaScript — and the template compiler puts their text into the HTML
+  instead of turning it into a `<!--h-->` hole, because a comment inside a script is a line
+  of the script and the template then finds one marker fewer than it wrote. Anything but text
+  in one is a `RenderError`.
 - **Count DOM operations, and count Python calls.** The `RecordingRenderer` exists so tests
   assert how few operations an update costs; the op stream makes a batch one crossing, but
   every operation is still work in the document. A change that adds operations to a hot path

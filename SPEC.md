@@ -169,6 +169,9 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - L6 The build writes `<html lang="…">` from the page's `[lang]`, because a layout cannot reach the element above everything it renders. [0.13.1]
 - L7 `collection(name).locale(lang)` is `content/<name>/<lang>/`: a directory per language, because two languages of one entry share a slug and a flat read would collide them. [0.13.1]
 
+- L8 `STATIC` in `site.py` is a list of directories copied into the output, a bare path at the root and a `(path, where)` pair under `where`: what lets a site take a stylesheet, four fonts and a favicon from a **package** without any of them living in the site's repository. A directory that is not there is an error naming it. [0.13.2]
+- V1 `<script>` and `<style>` hold **raw text**: their content is neither escaped when written nor turned into hydration markers when a template is compiled. Anything but text in one is an error saying so. [0.13.2]
+
 ## 14. The layer above (M5)
 
 - L1 `State` subclasses declare fields with `field(default)`; each instance gets a signal per field; reading the attribute tracks, assigning writes; `@computed` is a memo per instance; methods are handlers; `signal(name)` returns the Signal. Works on MicroPython (no `__getattribute__`, no `__mro__`). [M5]

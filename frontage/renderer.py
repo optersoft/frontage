@@ -7,6 +7,10 @@ that serialise to HTML. `RecordingRenderer` wraps another renderer and keeps a l
 operation, which is how a test asserts *how little* a change touched.
 """
 
+#: Elements whose content is raw text: the parser does not read markup in them, and neither
+#: does a serialiser write escapes into them.
+_RAW_TEXT = {"script", "style"}
+
 _VOID = {
     "area",
     "base",
@@ -164,11 +168,14 @@ class HtmlNode:
             node = node.parent
         return ev
 
-    def to_html(self, comments=False):
+    def to_html(self, comments=False, raw=False):
         if self.tag is None:
             if self.comment:
                 return f"<!--{self.text}-->" if comments else ""
-            return escape(self.text)
+            # `<script>` and `<style>` are *raw text* elements: their content is not parsed as
+            # markup and escaping it is wrong, not merely unnecessary. An inline theme script
+            # with `&&` in it came out as `&amp;&amp;` and stopped being JavaScript.
+            return self.text if raw else escape(self.text)
         out = ["<", self.tag]
         for name, value in self.attrs.items():
             if value is True:
@@ -183,8 +190,9 @@ class HtmlNode:
         out.append(">")
         if self.tag in _VOID:
             return "".join(out)
+        raw = self.tag in _RAW_TEXT
         for child in self.children:
-            out.append(child.to_html(comments))
+            out.append(child.to_html(comments, raw))
         out.append(f"</{self.tag}>")
         return "".join(out)
 

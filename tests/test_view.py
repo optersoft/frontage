@@ -61,3 +61,24 @@ def test_build_clones_one_template_and_fills_the_text_holes():
 @pytest.mark.parametrize("tag", ["br", "hr", "img"])
 def test_void_tags(tag):
     assert render_to_string(getattr(h, tag)()) == f"<{tag}>"
+
+
+# --- raw text elements ---------------------------------------------------------------------
+
+
+def test_script_and_style_hold_raw_text_not_markup():
+    """`<script>` and `<style>` are raw text elements: escaping their content is wrong.
+
+    An inline theme script with `&&` in it came out as `&amp;&amp;` and stopped being
+    JavaScript — and the `<!--h-->` the template compiler wrote between its lines was not a
+    marker there but a line of the script, so the template found one marker fewer than it
+    had written and raised on the next row.
+    """
+    from frontage.view import h, render_to_string
+
+    assert render_to_string(lambda: h.script("if (a && b) x(1);")) == "<script>if (a && b) x(1);</script>"
+    assert render_to_string(lambda: h.style('.a::after{content:"<"}')) == '<style>.a::after{content:"<"}</style>'
+    # Only in those two: everything else is markup and is escaped.
+    assert render_to_string(lambda: h.p("a && b")) == "<p>a &amp;&amp; b</p>"
+    # And a script is text, not a place to put a view: the boundary shows the sentence.
+    assert "&lt;script&gt; holds text" in render_to_string(lambda: h.script(h.b("no")))

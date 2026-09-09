@@ -507,6 +507,7 @@ def build(root, out=None, quiet=False, timeout=30.0, tailwind=False):
 
     if (root / PUBLIC).is_dir():
         shutil.copytree(root / PUBLIC, out, dirs_exist_ok=True, ignore=IGNORE)
+    _static(out, root, config)
     _redirects(out, config)
     if tailwind:
         link = build_cli.build_tailwind(root, out, quiet=quiet)
@@ -575,6 +576,32 @@ def _declare(template, declarations, styles):
     # that `island_script` will find and move onto the loader.
     tag = build_cli.boot_tag("app", declarations=declarations)
     return template.replace("</body>", f"{tag}\n</body>", 1)
+
+
+def _static(out, root, config):
+    """`STATIC` in `site.py`: directories from outside the site, copied in.
+
+    `public/` is the site's own files. A **package's** are not the site's — a shared chrome
+    brings a stylesheet, four font files and a favicon, and none of them belong in a site's
+    repository — so a site names where they are and where they should land:
+
+        import optersoft_brand
+        STATIC = [(optersoft_brand.static, "brand")]     # → /brand/…
+
+    A bare path lands at the root. Nothing is *discovered*: a directory that ends up in the
+    output is one the site asked for by name, which is the difference between assets and
+    surprises.
+    """
+    for item in getattr(config, "STATIC", ()) or ():
+        source, where = item if isinstance(item, (list, tuple)) else (item, "")
+        source = Path(source)
+        if not source.is_absolute():
+            source = root / source
+        if not source.is_dir():
+            raise SiteError(f"STATIC: {source} is not a directory")
+        target = out.joinpath(*[p for p in str(where).strip("/").split("/") if p])
+        target.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source, target, dirs_exist_ok=True, ignore=IGNORE)
 
 
 def _redirects(out, config):

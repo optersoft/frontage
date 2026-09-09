@@ -183,3 +183,41 @@ def test_the_site_command_runs(tmp_path):
     )
     assert run.returncode == 0, run.stderr
     assert "1 page(s)" in run.stdout and "no runtime" in run.stdout
+
+
+# --- assets from outside the site --------------------------------------------------------------
+
+
+def test_static_takes_directories_from_outside_the_site(tmp_path):
+    """A shared chrome brings a stylesheet and four fonts, and none of them are the site's."""
+    package = tmp_path / "elsewhere"
+    (package / "fonts").mkdir(parents=True)
+    (package / "chrome.css").write_text("body{}")
+    (package / "fonts" / "a.woff2").write_bytes(b"font")
+    site = tmp_path / "site"
+    _site(site, **{"pages__index.py": "from frontage import h\n\n\ndef page():\n    return h.p('x')\n"})
+    (site / "site.py").write_text(f"STATIC = [({str(package)!r}, 'brand')]\n")
+    out = tmp_path / "out"
+    build(site, out, quiet=True)
+    assert (out / "brand" / "chrome.css").read_text() == "body{}"
+    assert (out / "brand" / "fonts" / "a.woff2").is_file()
+
+
+def test_a_bare_static_path_lands_at_the_root(tmp_path):
+    package = tmp_path / "elsewhere"
+    package.mkdir()
+    (package / "favicon.ico").write_bytes(b"icon")
+    site = tmp_path / "site"
+    _site(site, **{"pages__index.py": "from frontage import h\n\n\ndef page():\n    return h.p('x')\n"})
+    (site / "site.py").write_text(f"STATIC = [{str(package)!r}]\n")
+    out = tmp_path / "out"
+    build(site, out, quiet=True)
+    assert (out / "favicon.ico").is_file()
+
+
+def test_a_static_directory_that_is_not_there_says_so(tmp_path):
+    site = tmp_path / "site"
+    _site(site, **{"pages__index.py": "from frontage import h\n\n\ndef page():\n    return h.p('x')\n"})
+    (site / "site.py").write_text("STATIC = ['nowhere']\n")
+    with pytest.raises(SiteError, match="is not a directory"):
+        build(site, tmp_path / "out", quiet=True)

@@ -660,6 +660,22 @@ decides, all in 0.10.0:
       onto every root-absolute `href` and `src` in the output — one pass over the written
       HTML, not a helper every page has to call (Astro's `base`). Written down in the chapter
       and the repo README meanwhile.
+- [ ] An island whose component lives in an **installed package** is not packed.
+      `build.required` reads imports to decide which component packages to ship, and an
+      island's own module has no reason to import its package by name — only the spec says
+      it (`optersoft_brand.theme:toggle` needs `optersoft_brand`). Ten lines in
+      `site.write_runtime` fix it, and they were written and then reverted, because the
+      chrome that motivated them turned out to need no island at all. Do it when something
+      real asks: it fails as a module the page cannot import, which is a confusing way to
+      find out.
+- [x] **0.13.2: what step G needed from the framework (2026-09-09).** `STATIC` in `site.py`
+      — a list of directories copied into the output, `(path, where)` to place them — so a
+      site can take a stylesheet, four fonts and a favicon from a **package** without any of
+      them living in the site's repository. And `<script>`/`<style>` as **raw text**: their
+      content is no longer escaped on the way out, and the template compiler no longer turns
+      it into a `<!--h-->` hole. An inline theme script with `&&` in it came out as
+      `&amp;&amp;`, and the marker inside it was a line of JavaScript rather than a marker,
+      so the template found one fewer than it had written and raised on the next row.
 - [ ] **0.13 next: `ISLAND.md` step G, the last one.** The Optersoft chrome as a frontage
       component package in `optersoft/brand` (see the entry below). Acceptance, and the gate
       for E and F as well: `web/` and then `site/` rebuilt from frontage, `astro/` retired for
