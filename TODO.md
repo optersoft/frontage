@@ -646,6 +646,20 @@ decides, all in 0.10.0:
       entry and took the focus the test is about with it. It waits for the watcher to absorb
       the change before loading the page now, which makes the test about focus rather than
       about timing. Four full runs green since.
+- [x] **The academy covers sites and locales (2026-09-09).** A nineteenth chapter,
+      `python/frontage/sites.md`, with `gitlab.com/optersoft/python/frontage-sites` — the
+      thirteenth chapter repository: eight pages in two languages, 388 bytes for the home
+      page, no `<script>` in the output at all. All thirteen pipelines on 0.13.1, all
+      thirteen apps rebuilt and `frontage check`ed against the published wheel, all thirteen
+      pages live.
+- [ ] **A site's links are absolute, so it needs a root.** `/blog/` is what the build knows,
+      so a site served under a path — a GitHub Pages *project* site is `user.github.io/repo/`
+      — follows its own links out of the deployment. GitLab Pages gives every project its own
+      domain, which is why the chapter's site works, and Cloudflare Pages and Netlify serve a
+      directory at `/`. The general fix is a `BASE_PATH` in `site.py` that the build prefixes
+      onto every root-absolute `href` and `src` in the output — one pass over the written
+      HTML, not a helper every page has to call (Astro's `base`). Written down in the chapter
+      and the repo README meanwhile.
 - [ ] **0.13 next: `ISLAND.md` step G, the last one.** The Optersoft chrome as a frontage
       component package in `optersoft/brand` (see the entry below). Acceptance, and the gate
       for E and F as well: `web/` and then `site/` rebuilt from frontage, `astro/` retired for
