@@ -1,11 +1,11 @@
-Frontage
+frontage-api
 Copyright 2026 Optersoft, S.L.
 
 "Frontage" is a trademark of Optersoft, S.L. The Apache License grants no
 trademark rights (section 6); a derivative work must use a different name.
 
-Frontage's reactive model follows Solid (MIT) and Leptos (MIT); the project
-began on 2026-09-05 as a fork of PuePy (Apache 2.0), which was replaced by a
-clean-room rewrite. None of their code is included. The fork is this
-repository's own first commit, so it remains in the published history under
-its own notice.
+frontage-api's request interface follows the shape of the RSGI specification
+(Granian, BSD-3-Clause) and its route surface follows the shape of FastAPI
+(MIT). Neither project's code is included, and none of it was read while
+writing this: their specifications and documentation are the sources, per the
+clean-room rule this project inherits from frontage.
