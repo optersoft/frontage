@@ -30,12 +30,19 @@ written once, beside the pages, only if some page has one.
 
 import argparse
 import inspect
+import re
 import shutil
 import sys
 from pathlib import Path
 
 from . import PROG, frontage_rt
 from . import build as build_cli
+
+#: The one parameter name the build knows something about: the locale. `pages/[lang]/…` is
+#: the tree §3.5 of ISLAND.md describes, and the *default* locale contributes no segment, so
+#: English lives at `/` and Spanish at `/es/` — which is what a site with a main language
+#: actually wants, and what Astro spells `prefixDefaultLocale: false`.
+LOCALE = "lang"
 
 PAGES = "pages"
 LAYOUTS = "layouts"
@@ -66,18 +73,62 @@ class SiteError(Exception):
 
 
 class Site:
-    """What a page or an endpoint is handed when it asks: the URLs, and the site's own."""
+    """What a page or an endpoint is handed when it asks: the URLs, the locales, the site's own.
 
-    def __init__(self, base="", pages=()):
+    `LOCALES` in `site.py` is a list whose **first entry is the default**, and the default
+    contributes no URL segment: `["en", "es", "ca"]` makes `/`, `/es/` and `/ca/`.
+    """
+
+    def __init__(self, base="", pages=(), locales=()):
         self.base = base.rstrip("/")
         self.pages = list(pages)
+        self.locales = list(locales)
+
+    @property
+    def default_locale(self):
+        return self.locales[0] if self.locales else None
 
     def url(self, path):
         """An absolute URL for a path, when `BASE` is set; the path itself when it is not."""
         return f"{self.base}{path}" if self.base else path
 
+    def paths(self, name=LOCALE):
+        """`static_paths()` for a `pages/[lang]/…` tree: one build per locale."""
+        return [{name: locale} for locale in self.locales]
+
+    def locale_of(self, path):
+        """Which locale a path is in, by its first segment; the default when it has none."""
+        first = path.strip("/").split("/")[0] if path.strip("/") else ""
+        return first if first in self.locales and first != self.default_locale else self.default_locale
+
+    def translate(self, path, locale):
+        """The same page in another locale: `/es/blog/` and `en` is `/blog/`.
+
+        A path, not a guess — every URL the build made is in `pages`, so a language switcher
+        can be plain links, and on a static site it should be: a switcher that is an island
+        makes the reader wait for a runtime to follow a link the page already knows.
+        """
+        current = self.locale_of(path)
+        rest = path
+        if current != self.default_locale:
+            rest = "/" + path.strip("/")[len(current) :].lstrip("/")
+        if not rest.endswith("/"):
+            rest += "/"
+        if locale == self.default_locale:
+            return rest
+        return f"/{locale}{rest}" if rest != "/" else f"/{locale}/"
+
+    def alternates(self, path):
+        """`[(locale, path)]` for every locale this page exists in, the current one included."""
+        found = []
+        for locale in self.locales:
+            other = self.translate(path, locale)
+            if not self.pages or other in self.pages:
+                found.append((locale, other))
+        return found
+
     def __repr__(self):
-        return f"<Site {self.base or '(no BASE)'}: {len(self.pages)} pages>"
+        return f"<Site {self.base or '(no BASE)'}: {len(self.pages)} pages, {len(self.locales)} locales>"
 
 
 # --- the routes a directory describes ---------------------------------------------------------
@@ -119,29 +170,55 @@ class Route:
     @property
     def parameter(self):
         """`slug` for `[slug].py`, `path` for `[...path].py`, else None."""
-        if self.stem.startswith("[") and self.stem.endswith("]"):
-            return self.stem[1:-1].lstrip(".")
-        return None
+        return _parameter(self.stem)
+
+    @property
+    def parameters(self):
+        """Every parameter in the path, directories first: `pages/[lang]/blog/[slug].py` is
+        `["lang", "slug"]`, and `static_paths()` returns a dict with both in it."""
+        found = [_parameter(part) for part in self.parts]
+        return [name for name in found + [self.parameter] if name]
 
     @property
     def rest(self):
         """Does `[...path]` swallow the rest of the URL?"""
         return self.stem.startswith("[...")
 
-    def url(self, params=None):
-        """The URL this file makes, for these params."""
-        parts = list(self.parts)
+    def url(self, params=None, default_locale=None):
+        """The URL this file makes, for these params.
+
+        A `[lang]` segment whose value is the default locale contributes nothing, so the main
+        language is at `/` and the others under `/es/`, `/ca/`.
+        """
+        params = params or {}
+        parts = []
+        for part in self.parts:
+            parts += self._segment(part, params, default_locale)
         if self.is_endpoint:
             return "/" + "/".join(parts + [self.stem])
-        name = self.parameter
-        if name is not None:
-            value = str((params or {}).get(name, "")).strip("/")
-            if not value:
-                raise SiteError(f"{self.relative}: static_paths() gave no {name!r} for one of its pages")
-            parts += value.split("/")
+        if self.parameter is not None:
+            parts += self._segment(self.stem, params, default_locale)
         elif self.stem != "index":
             parts.append(self.stem)
         return "/" + "".join(part + "/" for part in parts)
+
+    def _segment(self, part, params, default_locale):
+        name = _parameter(part)
+        if name is None:
+            return [part]
+        value = str(params.get(name, "")).strip("/")
+        if name == LOCALE and value and value == default_locale:
+            return []
+        if not value:
+            raise SiteError(f"{self.relative}: static_paths() gave no {name!r} for one of its pages")
+        return value.split("/")
+
+
+def _parameter(part):
+    """`slug` for `[slug]`, `path` for `[...path]`, None for a literal segment."""
+    if part.startswith("[") and part.endswith("]"):
+        return part[1:-1].lstrip(".")
+    return None
 
 
 def _slug(part):
@@ -188,21 +265,32 @@ def load(route, root):
     return module
 
 
-def targets(route):
+def targets(route, site):
     """`[params]` for this route: one empty dict for a static page, `static_paths()` for a
-    dynamic one — and a sentence rather than a traceback when a dynamic page has none."""
-    if route.parameter is None:
+    dynamic one — and a sentence rather than a traceback when a dynamic page has none.
+
+    `static_paths()` may take `site`, which is how a `pages/[lang]/…` tree says "one per
+    locale" without importing the site's own config: `return site.paths()`.
+    """
+    names = route.parameters
+    if not names:
         return [{}]
     paths = getattr(route.module, "static_paths", None)
     if paths is None:
+        bracketed = ", ".join(f"[{name}]" for name in names)
         raise SiteError(
-            f"{route.relative}: a page whose name is [{route.parameter}] is built once per value, "
+            f"{route.relative}: a page with {bracketed} in its path is built once per value, "
             "so it needs a `static_paths()` returning the params — like Astro's getStaticPaths"
         )
-    found = paths()
+    found = call(paths, {}, site)
     if not isinstance(found, (list, tuple)):
         raise SiteError(f"{route.relative}: static_paths() returns a list of dicts, not {type(found).__name__}")
-    return [dict(item) if isinstance(item, dict) else {route.parameter: item} for item in found]
+    out = [dict(item) if isinstance(item, dict) else {names[-1]: item} for item in found]
+    for params in out:
+        missing = [name for name in names if name not in params]
+        if missing:
+            raise SiteError(f"{route.relative}: static_paths() left out {', '.join(missing)} for one of its pages")
+    return out
 
 
 def call(function, params, site):
@@ -256,11 +344,11 @@ def render(route, params, url, root, site, timeout=30.0, debug=True):
     return inner, islands, drawn, prerender_cli._merge(prerender_cli.heads)
 
 
-def write_page(out, template, url, inner, islands, drawn, head):
+def write_page(out, template, url, inner, islands, drawn, head, lang=None):
     """Assemble one page and write it at `<url>index.html`."""
     from . import prerender as prerender_cli
 
-    html = prerender_cli.inject(template, "#app", inner, [], hydrate=False)
+    html = prerender_cli.inject(set_lang(template, lang), "#app", inner, [], hydrate=False)
     if drawn:
         html = prerender_cli.splice_islands(html, drawn)
     html = prerender_cli.apply_head(html, head)
@@ -273,6 +361,28 @@ def write_page(out, template, url, inner, islands, drawn, head):
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(prerender_cli.relocate(html, len(parts)))
     return html
+
+
+_HTML_TAG = re.compile(r"<html\b([^>]*)>", re.I)
+_LANG_ATTR = re.compile(r"""\blang\s*=\s*["'][^"']*["']""", re.I)
+
+
+def set_lang(template, lang):
+    """`<html lang="es">` for a page in Spanish.
+
+    A layout cannot reach the `<html>` element — it is above everything a page renders — and
+    a page that says nothing here says "English" to a screen reader, to a translator and to a
+    hyphenation engine, whatever else on it is Catalan. The build knows the locale from the
+    `[lang]` in the path, so it writes it.
+    """
+    if not lang:
+        return template
+    match = _HTML_TAG.search(template)
+    if match is None:
+        return template
+    attrs = match.group(1)
+    attrs = _LANG_ATTR.sub(f'lang="{lang}"', attrs) if _LANG_ATTR.search(attrs) else f'{attrs} lang="{lang}"'
+    return template[: match.start()] + f"<html{attrs}>" + template[match.end() :]
 
 
 def write_endpoint(out, route, site):
@@ -367,11 +477,21 @@ def build(root, out=None, quiet=False, timeout=30.0, tailwind=False):
     try:
         for route in found:
             load(route, root)
+        # The site is made in two halves: what the config says, so `static_paths(site)` can
+        # ask for the locales, and then the URLs, which only exist once it has.
+        site = Site(getattr(config, "BASE", ""), locales=getattr(config, "LOCALES", ()))
         pages = [
-            (route, params, route.url(params)) for route in found if not route.is_endpoint for params in targets(route)
+            (route, params, route.url(params, site.default_locale))
+            for route in found
+            if not route.is_endpoint
+            for params in targets(route, site)
         ]
-        site = Site(getattr(config, "BASE", ""), [url for _, _, url in pages])
-        rendered = [(url, *render(route, params, url, root, site, timeout)) for route, params, url in pages]
+        site.pages = [url for _, _, url in pages]
+        # The locale travels with the page: `<html lang>` is above everything a layout can
+        # reach, so the build is what writes it.
+        rendered = [
+            (url, params.get(LOCALE), *render(route, params, url, root, site, timeout)) for route, params, url in pages
+        ]
         endpoints = [write_endpoint(out, route, site) for route in found if route.is_endpoint]
     finally:
         sys.path.remove(str(root))
@@ -379,11 +499,11 @@ def build(root, out=None, quiet=False, timeout=30.0, tailwind=False):
             sys.modules.pop(route.name, None)
         _forget(root)
 
-    specs = sorted({island.spec for _, _, islands, _, _ in rendered for island in islands})
+    specs = sorted({island.spec for _, _, _, islands, _, _ in rendered for island in islands})
     declarations, styles = write_runtime(out, root, specs, quiet=quiet) or ([], [])
     template = _declare(template, declarations, styles)
-    for url, inner, islands, drawn, head in rendered:
-        write_page(out, template, url, inner, islands, drawn, head)
+    for url, lang, inner, islands, drawn, head in rendered:
+        write_page(out, template, url, inner, islands, drawn, head, lang)
 
     if (root / PUBLIC).is_dir():
         shutil.copytree(root / PUBLIC, out, dirs_exist_ok=True, ignore=IGNORE)

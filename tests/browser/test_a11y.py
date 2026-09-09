@@ -1,5 +1,7 @@
 """Focus, in Chromium: where the next Tab starts after a navigation."""
 
+import time
+
 from playwright.sync_api import Page, expect
 
 FOCUS_APP = """from frontage import A, Route, Router, h, mount
@@ -23,6 +25,12 @@ mount(
 def test_focus_moves_into_the_new_content(editable, page: Page):
     base, app = editable
     (app / "counter.py").write_text(FOCUS_APP)
+    # The dev server's watcher polls every 0.3s, and it has not seen this write yet: left
+    # alone it notices a moment after the page has loaded and swaps the module, which re-runs
+    # the entry and takes the focus this test is about with it. Waiting for the watcher to
+    # absorb the change *before* the page loads is what makes this about focus and not about
+    # timing. (It failed roughly one full-suite run in three before this line.)
+    time.sleep(0.7)
     page.goto(f"{base}/index.html")
     expect(page.locator("#home")).to_be_visible(timeout=30_000)
 

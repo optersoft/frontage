@@ -627,10 +627,29 @@ decides, all in 0.10.0:
       rest route an endpoint named `path]`.
       ⚠ E's gate in the plan was "`web/` rebuilt from frontage" — that is F+G's, since `web/`
       is on `@optersoft/astro`. E's own gate is the one above.
-- [ ] **0.13 next: `ISLAND.md` steps F and G, each a release.** Locales — the `pages/[lang]/`
-      convention and a `hreflang()` helper (F); the Optersoft chrome as a component package in
-      `optersoft/brand` (G). Acceptance: `web/` and then `site/` rebuilt from frontage and
-      `astro/` retired for them.
+- [x] **0.13.1: locales — `ISLAND.md` step F (2026-09-09).** A parameter can be a directory,
+      so `pages/[lang]/blog/[slug].py` has two and `static_paths()` returns both;
+      `static_paths(site)` gets the site, so a locale tree is `return site.paths()`.
+      `LOCALES` in `site.py` is a list whose first entry is the default and contributes **no
+      URL segment**, so English is at `/` and Spanish at `/es/`. `frontage.i18n` writes the
+      `hreflang` alternates (with `x-default`) and the switcher; `collection().locale(lang)`
+      is `content/<name>/<lang>/`; the build writes `<html lang>`, which no layout can reach.
+      `examples/locales` is twelve pages in three languages, `tests/test_locales.py`,
+      `tests/browser/test_locales.py`, `SPEC.md` §13.
+      ⚠ **The switcher is not an island, and the plan expected one.** The build made every
+      page, so `site.translate(path, "es")` is an answer and the switcher is two `<a>` and a
+      `<span>` — a reader changing language waits for a document, not for a runtime. The
+      example fetches nothing under `_frontage/` at all.
+- [x] **The a11y focus test was flaky, about one full-suite run in three.** `editable` starts
+      `frontage serve` and the test then writes `counter.py`; the watcher had not seen the
+      write yet, so it swapped the module a moment *after* the page loaded, which re-ran the
+      entry and took the focus the test is about with it. It waits for the watcher to absorb
+      the change before loading the page now, which makes the test about focus rather than
+      about timing. Four full runs green since.
+- [ ] **0.13 next: `ISLAND.md` step G, the last one.** The Optersoft chrome as a frontage
+      component package in `optersoft/brand` (see the entry below). Acceptance, and the gate
+      for E and F as well: `web/` and then `site/` rebuilt from frontage, `astro/` retired for
+      them — 27 pages, three locales, the theme toggle as an island.
 - [ ] The gallery cannot show a *site*. `tools/gallery.py` builds one app per card with
       `frontage build` or `frontage prerender`; `frontage site` is a third command and a card
       would be a whole tree rather than a page. Either teach it a `SITE` set whose card

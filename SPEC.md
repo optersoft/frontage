@@ -159,7 +159,17 @@ line is a test to write. `[M1]` etc. marks the milestone that must satisfy it.
 - S7 The document each page goes into is the site's `index.html` — an element with `id="app"` is where the page goes, and the default template makes that the `<body>` so a page's markup is the body's children. A template without one is an error. [0.13]
 - S8 `frontage serve --prerender` on a directory with a `pages/` builds the site and serves it, rebuilding when a file changes; the site's own modules are dropped from `sys.modules` between builds, so a collection re-reads its directory. [0.13]
 
-## 13. The layer above (M5)
+## 13. Locales (0.13.1)
+
+- L1 A parameter can be a **directory**: `pages/[lang]/blog/[slug].py` has two, and `static_paths()` returns a dict with both — one left out is an error naming it. [0.13.1]
+- L2 `LOCALES` in `site.py` is a list whose **first entry is the default**, and a `[lang]` segment whose value is the default contributes no URL: `["en", "es", "ca"]` makes `/`, `/es/` and `/ca/`. Only `lang` is special, and only against the default, so a slug that reads like a locale is a slug. [0.13.1]
+- L3 `static_paths()` may take `site`, so a `pages/[lang]/…` tree says "one per locale" as `return site.paths()` without importing the site's own config. [0.13.1]
+- L4 `Site.translate(path, locale)` is the same page in another language and `Site.alternates(path)` is every language it exists in — answers, not guesses, because the build made every URL before any page was rendered. `Site.locale_of(path)` reads the first segment. [0.13.1]
+- L5 `frontage.i18n.hreflang(site, path)` writes the `<link rel="alternate" hreflang=…>` tags, `x-default` included, absolute when `BASE` is set; `switcher(site, path, labels=…)` is the language switcher **as plain links**, with the current language a `<span aria-current>` rather than a link to itself. [0.13.1]
+- L6 The build writes `<html lang="…">` from the page's `[lang]`, because a layout cannot reach the element above everything it renders. [0.13.1]
+- L7 `collection(name).locale(lang)` is `content/<name>/<lang>/`: a directory per language, because two languages of one entry share a slug and a flat read would collide them. [0.13.1]
+
+## 14. The layer above (M5)
 
 - L1 `State` subclasses declare fields with `field(default)`; each instance gets a signal per field; reading the attribute tracks, assigning writes; `@computed` is a memo per instance; methods are handlers; `signal(name)` returns the Signal. Works on MicroPython (no `__getattribute__`, no `__mro__`). [M5]
 - L2 `frontage.widgets`: `text_input`, `textarea`, `number_input`, `slider`, `checkbox`, `select`, `radio_group`, `button`, each bound to a Signal, with an optional label and a class hook. [M5]

@@ -1,8 +1,8 @@
 # Frontage for sites: static generation and islands — the 0.11 plan
 
-**Status: steps A–C shipped in 0.11, **D in 0.12.0 and E in 0.13.0** (2026-09-09) — `frontage/island.py`,
+**Status: steps A–C shipped in 0.11, **D in 0.12.0, E in 0.13.0 and F in 0.13.1** (2026-09-09) — `frontage/island.py`,
 `_runtime/island.js`, `examples/islands`, `tests/test_island.py` and
-`tests/browser/test_island.py`; then `frontage/content/`, `examples/blog`, `tests/test_content.py` and `tests/browser/test_content.py`; then `frontage/cli/site.py`, `examples/site`, `tests/test_site.py` and `tests/browser/test_site.py`. F and G are unbuilt.** The question this answers is "can
+`tests/browser/test_island.py`; then `frontage/content/`, `examples/blog`, `tests/test_content.py` and `tests/browser/test_content.py`; then `frontage/cli/site.py`, `examples/site`, `tests/test_site.py` and `tests/browser/test_site.py`; then `frontage/i18n.py`, `examples/locales` and their tests. G is unbuilt.** The question this answers is "can
 frontage do what Astro does for a content site", and the answer is *most of it, better in
 one respect, and three things deliberately not* — with the site you are reading this from
 (`web/`, an Astro site) and optersoft.com (`site/`, Astro, three locales, 27 pages) as the
@@ -295,7 +295,7 @@ Markdown shows on reload with nothing to build.
 | ✅ **C. zero-runtime pages** (0.11.0) | `mount(…, when="never")`; the boot tag and its preload hints written only where an island is | a built content page makes no `_frontage/` request |
 | ✅ **D. content** (0.12.0) | `frontage.content`: collections, front matter through `frontage.schema`, Markdown with `:::`, an `::: island` container in prose | a collection with a bad front matter fails the build naming the file and the field |
 | ✅ **E. pages** (0.13.0) | `frontage site`, file routing, `static_paths`, layouts, endpoints, `_redirects`, `public/` | six pages of the example ship no runtime and the seventh boots it on scroll; `web/` rebuilt is F+G's gate, not this one |
-| **F. locales** | the `[lang]` convention, `hreflang()` | `site/` rebuilt: 27 pages, three locales, the theme toggle and language switcher as `idle` islands, sitemap from an endpoint |
+| ✅ **F. locales** (0.13.1) | parameters in directories, `LOCALES` in `site.py` with the default at `/`, `frontage.i18n`'s `hreflang()` and `switcher()`, `collection().locale()` | twelve pages in three languages, the switcher moving sideways on the page you are on, and **no runtime at all**; `site/` rebuilt is G's gate |
 | **G. the chrome** | a **repository of its own**, `optersoft/brand`: a frontage component the two sites import | both sites on it, `astro/` retired for them |
 
 A is the whole idea and stands alone; C is a one-line consequence of A; B makes A honest for
@@ -377,6 +377,21 @@ third site, and the one with the most islands per page, once D lands.
   the one it can meet alone: the example site's six ordinary pages fetch nothing under
   `_frontage/` and the seventh boots the runtime when a reader scrolls to its island. The
   `web/` rebuild is the acceptance test for E+F+G together, and it stays in the table.
+- **The language switcher does not want to be an island, and that was a surprise.** The gate
+  for F said "the theme toggle and language switcher as `idle` islands", because that is what
+  the Astro site does. But the build made every page and knows their URLs, so
+  `site.translate(path, "es")` is an *answer*: the switcher is two `<a>` and a `<span>`, and
+  a reader changing language waits for a document rather than for a quarter of a megabyte of
+  runtime. `examples/locales` is twelve pages in three languages that fetch nothing at all.
+  The theme toggle is still an island, because a toggle really does need state. (0.13.1)
+- **The default locale is a list, not a configuration object.** `LOCALES = ["en", "es",
+  "ca"]` in `site.py`, first entry default, and a `[lang]` segment equal to the default
+  contributes nothing — which is Astro's `prefixDefaultLocale: false` without the object it
+  lives in. Only `lang` is special and only against the default, so a slug that reads like a
+  locale stays a slug. (0.13.1)
+- **`<html lang>` has to be the build's.** A layout cannot reach the element above everything
+  it renders, and a page that says nothing there says "English" to a screen reader, a
+  translator and a hyphenation engine whatever else on it is Catalan. (0.13.1)
 - **The naming question answered itself.** `island(view, when=)` and `mount(view, target,
   when=)` are two names because they take different second arguments; `when=` is the same
   word in both, and `"never"` on a mount is what makes the page static.

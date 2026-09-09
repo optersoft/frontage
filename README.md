@@ -8,7 +8,7 @@ router; running on its own Python runtime compiled to WebAssembly, with the fram
 precompiled bytecode. No JavaScript, no Node, no bundler: you write Python and the browser
 runs it.
 
-> **Status: 0.13.0, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete
+> **Status: 0.13.1, alpha.** The rewrite planned in [DESIGN.md](DESIGN.md) is complete
 > through M12. Reactive core, store, templates (`h` and `html(t"…")`), control flow and
 > boundaries, `Resource`/`Action`, a nested router, widgets, `State`, timers, the playground
 > (0.2–0.3); **prerendering with hydration** (0.4), pages that show before Python loads;
@@ -162,6 +162,13 @@ with nothing interactive on it carries **no script at all**; the runtime is writ
 beside the pages, only if some page has an island. `frontage serve --prerender` is the same
 build with a file watcher in front of it. `examples/site` is seven pages, six of which fetch
 nothing.
+
+A parameter can be a directory, so `pages/[lang]/blog/[slug].py` is a site in as many
+languages as `LOCALES` in `site.py` names — the first of them at `/`, the rest under `/es/`,
+`/ca/`. `frontage.i18n` writes the `hreflang` alternates and the language switcher, and the
+switcher is **plain links**: the build made every page, so `site.translate(path, "es")` is an
+answer rather than a guess, and a reader changing language waits for a document instead of a
+runtime. `examples/locales` is twelve pages in three languages that fetch nothing at all.
 
 Tailwind with no build at all: the playground loads Tailwind's browser build, so utility
 classes work as you type. The [Style](https://academy.optersoft.com/python/frontage/style),

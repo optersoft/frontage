@@ -216,6 +216,15 @@ class Collection:
             reverse = by_date  # newest first, which is what a list of posts means
         return sorted(found, key=key, reverse=reverse)
 
+    def locale(self, lang):
+        """The same collection in one language: `content/<name>/<lang>/`.
+
+        A translated collection is a directory per language, which is the layout a person
+        would pick anyway — and it has to be a *view*, not a filter, because two languages
+        of one post share a slug and a flat read would collide them.
+        """
+        return Collection(f"{self.name}/{lang}", self.schema, self.root / lang, self.suffixes)
+
     def get(self, slug):
         """One entry by slug, with a message that lists the alternatives when it is not there."""
         for entry in self.entries():
