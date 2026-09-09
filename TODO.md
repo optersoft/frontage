@@ -558,6 +558,14 @@ decides, all in 0.10.0:
       ordered floats sort in 2.0 ms on the wasm, 2.5 with a key** (MicroPython: 269 and
       1,440). The gate was under 5 ms. `frontage.table` sorts with `sorted` and needs nothing
       else.
+- [ ] **0.11: sites — static generation and islands (`SITES.md`, planned 2026-09-09).** The
+      steps, each a release: islands in the loader (`island(view, when=)`, one runtime per
+      page, booted on the first trigger); islands as chunks; zero-runtime pages; content
+      collections over `frontage.schema` with Markdown; `frontage site` with file routing,
+      `static_paths`, layouts, endpoints; locales; the Optersoft chrome as a component
+      package. Acceptance: `web/` and then `site/` rebuilt from it and `astro/` retired for
+      them. The number behind it: a prerendered page is 455 bytes over the wire and today
+      waits for 265 KB of runtime whether or not anything on it is interactive.
 - [ ] **`frontage.frame`: a columnar engine as a Rust module of its own** (`data-fr-js`,
       `wasm32-unknown-unknown`, `no_std`): filter, sort, group/aggregate, rolling, resample,
       CSV and Arrow in; handles in Python, `Float64Array`s to the chart, a windowed `table`
