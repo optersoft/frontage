@@ -195,9 +195,12 @@ the runtime is frontage's own since 2026-09-08, and **MicroPython and PyScript a
 - **An island is a `mount` with a trigger, and the page says which of the two it is.** A
   built static page (`mount(…, when="never")`) carries no boot tag, so its entry is never run
   in the browser: `frontage.island` is what the boot runs, and it mounts each `<fr-island>`
-  over the markup already there. The same `when="never"` line under `frontage serve` — where
-  there *is* a boot tag and the entry does run — mounts as usual and the islands render
-  live, which is what makes the dev loop unchanged. Three things are not obvious: the
+  over the markup already there. The same `when="never"` line everywhere the entry runs by
+  itself — `frontage serve`, the playground, a live-code frame — mounts as usual and the
+  islands render live, which is what makes the dev loop unchanged. ⚠ What tells the two apart
+  is **`window.__frontageIslands`**, which `island.js` and nothing else creates; it must not
+  be "the page has no boot tag", because the runner and the playground have none either and
+  a static page typed into one then renders nothing at all. Three things are not obvious: the
   wrapper is `display: contents` and so generates no box, so the loader's
   `IntersectionObserver` watches the island's **children**, never the wrapper; each island is
   prerendered in a pass of its own (its own resource registry, memo ordinals and

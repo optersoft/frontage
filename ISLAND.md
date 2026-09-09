@@ -311,10 +311,13 @@ third site, and the one with the most islands per page, once D lands.
 - **A static page's entry is never run in the browser**, so `frontage.island` is what the
   boot runs as `__main__`. That is why every import in it is absolute: a relative import in a
   module running as `__main__` resolves against `__main__` and fails.
-- **`when="never"` is one call with two readings**, and the page itself says which: a page
-  the loader drives has no boot tag, so `mount(…, when="never")` does nothing there, while
-  under `frontage serve` — where there is a boot tag and the entry does run — it mounts as
-  usual and the islands render live. Nothing had to be configured to get both.
+- **`when="never"` is one call with two readings**, and the page itself says which:
+  `window.__frontageIslands` exists exactly when the island loader is driving, so
+  `mount(…, when="never")` does nothing there, while everywhere the entry runs by itself —
+  `frontage serve`, the playground, a live-code frame — it mounts as usual and the islands
+  render live. Nothing had to be configured to get both. The first version asked whether the
+  page had a boot tag, which is true of the loader *and* of the runner: a static page typed
+  into a docs frame rendered nothing at all, silently. (0.11.2)
 - **An island does not get the page's hydration data, it gets its own.** Each is rendered in
   a pass of its own, with its own resource registry, its own memo ordinals and its own
   `unique_id` scope, and its settled values are written beside its wrapper — because in the

@@ -96,6 +96,40 @@ def _prerender(name, source="", example=ROOT):
     return out
 
 
+#: A static page typed into a live-code frame. The runner has no boot tag and no island
+#: loader — it is handed a program and runs it — so `when="never"` must mount there like any
+#: other page, islands rendered where they stand. The first version of this told the two
+#: apart by the boot tag, and every `::: frontage` block in the docs showing a static page
+#: would have been a blank frame.
+RUNNER_PROGRAM = """from frontage import html, island, mount
+
+
+def badge(label="hi"):
+    return html(t"<b id='badge'>{label}</b>")
+
+
+def page():
+    return html(t"<main id='page'>a static page: {island(badge, when='visible', label='island')}</main>")
+
+
+mount(page, "#app", when="never")
+"""
+
+
+@pytest.fixture(scope="module")
+def runner():
+    """`web/public/runner.html` with the runtime beside it: the page a live-code frame is."""
+    from frontage.cli import frontage_rt
+
+    out = BUILD / "island-runner"
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir(parents=True)
+    frontage_rt.site_files(out / "_frontage")
+    shutil.copy2(ROOT / "web" / "public" / "runner.html", out / "runner.html")
+    return out
+
+
 @pytest.fixture(scope="module")
 def pages():
     """Three prerendered directories under `build/`, which the suite's server already serves."""
@@ -216,3 +250,17 @@ def test_a_click_on_an_island_that_has_not_hydrated_yet_is_replayed(server, page
     page.click("#inc-b")
     expect(page.locator("#v-b")).to_have_text("2")
     assert page.locator("#v-a").text_content() == "1", "the replay reached the wrong island"
+
+
+def test_a_static_page_typed_into_the_runner_still_mounts(server, page: Page, runner):
+    """No boot tag and no loader: the runner is handed a program, so `when="never"` mounts."""
+    import json
+    import urllib.parse
+
+    fragment = urllib.parse.quote(json.dumps({"code": RUNNER_PROGRAM, "markup": ""}))
+    page.goto(f"{server}/build/island-runner/runner.html#{fragment}")
+    expect(page.locator("#page")).to_contain_text("a static page", timeout=30_000)
+    # And the island is the component, rendered where it stands: there is nothing to defer
+    # on a page nobody built.
+    expect(page.locator("#badge")).to_have_text("island")
+    assert page.locator("fr-island").count() == 0

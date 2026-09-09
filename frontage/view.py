@@ -911,15 +911,20 @@ def mount(view, parent, renderer=None, debug=True, fallback=None, clear=True, hy
     writes no boot tag, so a visitor downloads HTML and stops — nothing hydrates and no
     runtime is fetched. What comes alive on such a page is its `island`s, each on a trigger
     of its own (`frontage.island`). An island's module is imported in the browser to hydrate
-    it, and importing the app's entry runs this line again; a page the island loader drives
-    carries no boot tag, and that is what tells this call there is nothing to do.
+    it, and importing the app's entry runs this line again — so on such a page this call must
+    do nothing, while everywhere else the entry runs (`frontage serve`, the playground, a
+    live-code frame) it must mount as usual, islands rendered where they stand.
+
+    What tells the two apart is `window.__frontageIslands`, which `island.js` and nothing else
+    creates: it is there exactly when the island loader is driving the page, and it is set
+    before the runtime starts, so it is already there by the time an island imports the entry.
     """
     reactive.set_debug(debug)
     if when == "never":
-        from .runtime import document, in_browser, prerender
+        from .runtime import in_browser, prerender, window
 
         if in_browser:
-            if document.querySelector("script[data-fr-boot]") is None:
+            if getattr(window, "__frontageIslands", None) is not None:
                 return _Root(Owner(parent=None), [])
         elif prerender.active and isinstance(parent, str):
             prerender.mounts.append((parent, view, debug, fallback, when))

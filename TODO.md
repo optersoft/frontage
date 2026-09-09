@@ -602,6 +602,13 @@ decides, all in 0.10.0:
       Also `frontage prerender --quiet`, which the gallery needed, and which `build` and
       `serve` already had; the command's summary line now names the islands and says when a
       page is static.
+- [x] **0.11.2: a static page in a live-code frame (2026-09-09).** `mount(…, when="never")`
+      asked whether the page had a boot tag to decide whether the island loader was driving —
+      and the runner and the playground have no boot tag either, so a static page typed into
+      one **rendered nothing**, silently. It now asks for `window.__frontageIslands`, which
+      `island.js` and nothing else creates. Found while writing the academy's islands chapter,
+      whose every `::: frontage` block would have been a blank frame; `tests/browser/`
+      exercises `web/public/runner.html` now, which had no browser test at all.
 - [ ] **`frontage.frame`: a columnar engine as a Rust module of its own** (`data-fr-js`,
       `wasm32-unknown-unknown`, `no_std`): filter, sort, group/aggregate, rolling, resample,
       CSV and Arrow in; handles in Python, `Float64Array`s to the chart, a windowed `table`
