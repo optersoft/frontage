@@ -41,5 +41,10 @@ where code should go.
 - **Every misconfiguration is fatal before the socket binds**, the empty allow-list included —
   a private site nobody can open beats one anybody can, and a worker that discovers this at
   request time would have already served a page.
+- **A fleet unit gives a binary no arguments and waits for `READY=1`.** That is why every
+  option is also `FRONTAGE_API_*` in the environment and why `serve()` ends with
+  `notify_ready()`; a `Type=notify` unit that never hears it is killed at `TimeoutStartSec`
+  and reads as a crash-loop. And its smoke requires **200**, so `/healthz` and `/version` are
+  answered by the server itself in `--serve` mode, where there is no app to own them.
 - **Clean room, as everywhere here.** Granian's and FastAPI's docs and specifications are fine;
   their source is not opened. The RSGI *shape* is copied from its specification, nothing else.

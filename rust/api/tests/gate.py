@@ -5,7 +5,9 @@
     python3 rust/api/tests/gate.py                 # from the repository root, or anywhere
 
 No dependencies and no network: the standard library starts the binary with `--auth google`
-over `rust/api/examples/private/app.py` and checks who is answered what. Google is never
+over `rust/api/examples/private/app.py` and checks who is answered what, then does it again with
+**no app and no arguments at all** — `--serve` out of the environment, which is the shape a
+fleet unit deploys, since its `ExecStart=` carries the binary path and nothing else. Google is never
 reached, because everything up to the consent screen is ours — the redirect, the state cookie,
 the PKCE challenge — and everything after it is the `id_token` verification, which has unit
 tests of its own.
@@ -31,6 +33,7 @@ import urllib.request
 
 CRATE = pathlib.Path(__file__).resolve().parent.parent
 PORT = 8793
+FILES_PORT = 8794
 BASE = f"http://127.0.0.1:{PORT}"
 EMAIL = "reader@optersoft.com"
 failures = []
@@ -52,8 +55,8 @@ class NoRedirects(urllib.request.HTTPRedirectHandler):
 opener = urllib.request.build_opener(NoRedirects)
 
 
-def get(path, cookie=None):
-    request = urllib.request.Request(BASE + path)
+def get(path, cookie=None, base=None):
+    request = urllib.request.Request((base or BASE) + path)
     if cookie:
         request.add_header("Cookie", cookie)
     try:
@@ -67,13 +70,78 @@ def b64(raw):
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
 
-def session_cookie(secret, email, ttl=3600):
+def session_cookie(secret, email, ttl=3600, name="private_session"):
     """The cookie the callback mints, minted here: HS256 over `{sub, exp}`."""
     header = b64(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
     claims = b64(json.dumps({"sub": email, "exp": int(time.time()) + ttl}, separators=(",", ":")).encode())
     signed = f"{header}.{claims}"
     mac = hmac.new(secret.encode(), signed.encode(), hashlib.sha256).digest()
-    return f"private_session={signed}.{b64(mac)}"
+    return f"{name}={signed}.{b64(mac)}"
+
+
+def auth_env(base, secret_file):
+    """What a deployment sets. `AUTH_COOKIE_SECURE` is not among them: an http base is what
+    drops `Secure`, and this test could not send a cookie back over plain HTTP otherwise."""
+    return dict(
+        os.environ,
+        FRONTAGE_AUTH_GOOGLE_CLIENT_ID="test-client-id",
+        FRONTAGE_AUTH_GOOGLE_CLIENT_SECRET="test-client-secret",
+        FRONTAGE_AUTH_BASE_URL=base,
+        FRONTAGE_AUTH_ALLOWED_EMAILS=f"  {EMAIL.upper()} , ",
+        FRONTAGE_AUTH_SECRET_FILE=str(secret_file),
+    )
+
+
+def wait_for(base, path="/healthz"):
+    deadline = time.time() + 20
+    while time.time() < deadline:
+        try:
+            opener.open(base + path, timeout=0.5).read()
+            return True
+        except urllib.error.HTTPError:
+            return True
+        except OSError:
+            time.sleep(0.05)
+    return False
+
+
+def files_only(binary, tmp):
+    """The shape a private site deploys as: no app, no arguments, and the whole configuration
+    out of the environment — which is all a fleet unit's `ExecStart=` can carry (`API.md` §5a).
+    """
+    base = f"http://127.0.0.1:{FILES_PORT}"
+    secret_file = pathlib.Path(tmp) / "files_secret"
+    env = dict(
+        auth_env(base, secret_file),
+        FRONTAGE_API_SERVE=str(CRATE / "examples" / "private" / "www"),
+        FRONTAGE_API_ADDR=f"127.0.0.1:{FILES_PORT}",
+        FRONTAGE_API_WORKERS="2",
+        FRONTAGE_API_AUTH="google",
+        FRONTAGE_API_AUTH_LABEL="governor",
+        BUILD_ID="deadbeef",
+    )
+    proc = subprocess.Popen([str(binary)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            start_new_session=True, env=env)
+    try:
+        if not wait_for(base):
+            check("the files-only server came up on env alone", False, "it never answered")
+            return
+        status, _, body = get("/healthz", base=base)
+        check("--serve answers the liveness probe 200, not a redirect", status == 200 and body == b"ok", str(status))
+
+        status, _, body = get("/version", base=base)
+        check("and /version, which a deploy reads", status == 200 and b"deadbeef" in body, f"{status} {body[:60]}")
+
+        status, headers, _ = get("/", base=base)
+        check("a stranger cannot read the site", status == 303 and headers.get("location") == "/login?return_to=%2F", str(status))
+
+        good = session_cookie(secret_file.read_text().strip(), EMAIL, name="governor_session")
+        status, _, body = get("/", cookie=good, base=base)
+        check("a signed-in reader gets index.html with no interpreter in the process",
+              status == 200 and b"private page" in body, str(status))
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)
 
 
 def main():
@@ -84,32 +152,14 @@ def main():
     root = CRATE.parent.parent
     with tempfile.TemporaryDirectory() as tmp:
         secret_file = pathlib.Path(tmp) / "auth_secret"
-        env = dict(
-            os.environ,
-            FRONTAGE_AUTH_GOOGLE_CLIENT_ID="test-client-id",
-            FRONTAGE_AUTH_GOOGLE_CLIENT_SECRET="test-client-secret",
-            # An http base is what a dev deployment looks like, and it is what drops `Secure`
-            # from the cookies — without which this test could not send one back.
-            FRONTAGE_AUTH_BASE_URL=BASE,
-            FRONTAGE_AUTH_ALLOWED_EMAILS=f"  {EMAIL.upper()} , ",
-            FRONTAGE_AUTH_SECRET_FILE=str(secret_file),
-        )
+        env = auth_env(BASE, secret_file)
         proc = subprocess.Popen(
             [str(binary), str(app), "--addr", f"127.0.0.1:{PORT}", "--workers", "2",
              "--path", str(root), "--auth", "google", "--auth-label", "private"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True, env=env,
         )
         try:
-            deadline = time.time() + 20
-            while time.time() < deadline:
-                try:
-                    opener.open(BASE + "/healthz", timeout=0.5).read()
-                    break
-                except urllib.error.HTTPError:
-                    break
-                except OSError:
-                    time.sleep(0.05)
-            else:
+            if not wait_for(BASE):
                 sys.exit("the server never came up")
 
             status, headers, _ = get("/")
@@ -178,6 +228,8 @@ def main():
         finally:
             proc.terminate()
             proc.wait(timeout=10)
+
+        files_only(binary, tmp)
 
     print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all good'}")
     return 1 if failures else 0

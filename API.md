@@ -453,10 +453,26 @@ two cannot drift apart — unset reads as production), `…_ALLOWED_EMAILS`, and
 ones above. **Every missing piece is fatal at startup**, including an empty allow-list: a
 private site nobody can open is a better failure than one anybody can.
 
-**Gate:** `python3 rust/api/tests/gate.py` — 15 assertions against the real binary with no
+**What a fleet deploy needed, and it was not the flow.** Three things, found by reading
+`hive-deploy` rather than by running it: a `binary` app's unit is **`Type=notify`**, so the
+process must send `READY=1` on `$NOTIFY_SOCKET` or systemd kills it at `TimeoutStartSec`
+believing it never started; that unit's **`ExecStart=` carries no arguments** — it is the
+release's binary path and nothing else — so every option is now also `FRONTAGE_API_*` in the
+environment, which is what `EnvironmentFile=` supplies; and the smoke **requires 200**, so a
+`liveness_path` behind the gate answering `303` fails every deploy. That last one is why
+`/healthz` and `/version` are public and why the fleet.toml block's original plan — smoke `/`
+and assert the redirect — cannot work as written.
+
+**`--serve DIR` is the fourth**, and it is the one that made the deploy small: a private site
+is a directory of prerendered pages, so the server takes the directory and runs **no
+interpreter at all** — no app module, no `frontage_api` package tree to ship beside it, no VM
+per worker. `governor` deploys as this binary plus its `www/`, and that is the whole artifact.
+
+**Gate:** `python3 rust/api/tests/gate.py` — 19 assertions against the real binary with no
 network in them, because everything up to the consent screen is ours (the redirect, the PKCE
 challenge, the state cookie) and the authenticated half is minted from the secret the server
-persisted, which is the only honest way to assert that a signed-in visitor gets the page.
+persisted, which is the only honest way to assert that a signed-in visitor gets the page. The
+last four run the server the way a box does: `--serve`, no arguments, everything from env.
 
 ## 6. The plan, in order, with its gates
 

@@ -34,8 +34,9 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tower_http::services::ServeDir;
 
-/// Where the app module lives, for the workers that have not built their VM yet.
-static SOURCE: OnceLock<(PathBuf, String, Vec<PathBuf>, bool)> = OnceLock::new();
+/// Where the app module lives, for the workers that have not built their VM yet. `None` is
+/// `--serve DIR`: files and the gate, and no interpreter anywhere in the process.
+static SOURCE: OnceLock<Option<(PathBuf, String, Vec<PathBuf>, bool)>> = OnceLock::new();
 
 /// `App(static=…)`, resolved once at startup. Read by every worker, written by none.
 static STATIC_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
@@ -54,8 +55,12 @@ thread_local! {
 }
 
 pub struct Config {
+    /// The app's own directory, or — with no `module` — the directory of files to serve.
     pub dir: PathBuf,
-    pub module: String,
+    /// The app module, or `None` for `--serve DIR`: a private site is a directory of
+    /// prerendered pages, and asking it to carry a Python app that serves them (and the
+    /// runtime's package tree beside it) buys nothing at all.
+    pub module: Option<String>,
     pub addr: String,
     pub workers: usize,
     /// Extra module search directories, after the app's own. `frontage_api` and
@@ -73,25 +78,37 @@ pub struct Config {
 /// Load the app once here to fail loudly at startup, then hand a clone of the listener to
 /// every worker.
 pub fn serve(config: Config) -> Result<(), String> {
-    let _ = SOURCE.set((config.dir.clone(), config.module.clone(), config.search.clone(), config.stress));
-    let probe = App::load(config.dir.clone(), &config.module, &config.search, config.stress)?;
-    let paths = probe.paths();
-    // Relative to the app's own directory, which is where an author means it.
-    let statics = probe.statics.as_ref().map(|d| config.dir.join(d));
+    let source = config.module.clone().map(|m| (config.dir.clone(), m, config.search.clone(), config.stress));
+    let _ = SOURCE.set(source.clone());
+    let (paths, statics) = match &source {
+        Some((dir, module, search, stress)) => {
+            let probe = App::load(dir.clone(), module, search, *stress)?;
+            let paths = probe.paths();
+            // Relative to the app's own directory, which is where an author means it.
+            let statics = probe.statics.as_ref().map(|d| dir.join(d));
+            (paths, statics)
+        }
+        None => (Vec::new(), Some(config.dir.clone())),
+    };
     if let Some(dir) = &statics {
         if !dir.is_dir() {
             return Err(format!("static={}: not a directory", dir.display()));
         }
     }
     let _ = STATIC_DIR.set(statics);
-    drop(probe);
 
     // The gate is read once here, not per worker: a failure is a configuration error and
     // must stop the process before it binds, rather than surface as one worker in four
     // serving a private site to nobody in particular.
     #[cfg(feature = "auth")]
     let auth: Option<Arc<Auth>> = if config.auth {
-        let label = config.auth_label.clone().unwrap_or_else(|| config.module.clone());
+        // The label names the session cookie and titles the login page. `--serve` has no
+        // module to borrow a name from, so it falls back to the directory's.
+        let label = config.auth_label.clone().unwrap_or_else(|| {
+            config.module.clone().unwrap_or_else(|| {
+                config.dir.file_name().and_then(|n| n.to_str()).unwrap_or("frontage").to_string()
+            })
+        });
         Some(Arc::new(Auth::from_env(&label, &config.dir)?))
     } else {
         None
@@ -104,7 +121,8 @@ pub fn serve(config: Config) -> Result<(), String> {
     let listener = std::net::TcpListener::bind(&config.addr).map_err(|e| format!("{}: {e}", config.addr))?;
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     let local = listener.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| config.addr.clone());
-    println!("frontage-api: {} on http://{local}, {} worker(s){}", config.module, config.workers,
+    println!("frontage-api: {} on http://{local}, {} worker(s){}",
+             config.module.as_deref().unwrap_or("files only"), config.workers,
              if config.stress { ", GC stress" } else { "" });
     for p in &paths {
         println!("  {p}");
@@ -130,6 +148,7 @@ pub fn serve(config: Config) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
         threads.push(worker);
     }
+    notify_ready();
     for t in threads {
         match t.join() {
             Ok(Ok(())) => {}
@@ -144,6 +163,35 @@ pub fn serve(config: Config) -> Result<(), String> {
 type Gate = Option<Arc<Auth>>;
 #[cfg(not(feature = "auth"))]
 type Gate = ();
+
+/// `READY=1` on `$NOTIFY_SOCKET`, for a `Type=notify` unit — which is what the fleet renders
+/// for a binary app, and which kills the service after `TimeoutStartSec` if nothing arrives.
+/// Off systemd there is no socket and this does nothing.
+///
+/// It is a datagram and a dozen lines, so it is written here rather than taken as a
+/// dependency: a leading `@` means an abstract socket, which Linux spells as a leading NUL and
+/// nothing else needs to know.
+fn notify_ready() {
+    let Some(path) = std::env::var_os("NOTIFY_SOCKET") else { return };
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::linux::net::SocketAddrExt;
+        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::net::{SocketAddr, UnixDatagram};
+        let bytes = path.as_bytes();
+        let address = if let Some(rest) = bytes.strip_prefix(b"@") {
+            SocketAddr::from_abstract_name(rest)
+        } else {
+            SocketAddr::from_pathname(std::path::Path::new(&path))
+        };
+        let sent = UnixDatagram::unbound().and_then(|s| address.and_then(|a| s.send_to_addr(b"READY=1\n", &a)));
+        if let Err(e) = sent {
+            eprintln!("frontage-api: could not signal READY to systemd: {e}");
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = path;
+}
 
 fn worker(socket: std::net::TcpListener, gate: Gate) -> Result<(), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -173,6 +221,11 @@ fn router(gate: Gate) -> Router {
 }
 
 async fn handle(request: Request) -> Response {
+    // `--serve DIR`: there is no app to ask, so a file is the only possible answer — and the
+    // two paths a deploy probes, which an app would have owned.
+    if matches!(SOURCE.get(), Some(None)) {
+        return files_only(request).await;
+    }
     let method = request.method().as_str().to_owned();
     let path = request.uri().path().to_owned();
     let query = request.uri().query().unwrap_or("").to_owned();
@@ -220,6 +273,30 @@ async fn handle(request: Request) -> Response {
     // Collect between requests rather than inside one.
     let _ = with_app(|app| app.settle_heap());
     response
+}
+
+/// What answers in `--serve DIR`: the deploy's two probes, then the files.
+///
+/// `/healthz` and `/version` are here because a fleet unit is smoke-tested on them and they
+/// have to answer **200** — the gate's `303` to a login page is what a deploy would otherwise
+/// read as a dead app. They are the only two paths the gate lets past unauthenticated, and
+/// neither says anything about the site.
+async fn files_only(request: Request) -> Response {
+    let (parts, _) = request.into_parts();
+    match parts.uri.path() {
+        "/healthz" => return (StatusCode::OK, "ok").into_response(),
+        "/version" => {
+            let build = std::env::var("BUILD_ID").unwrap_or_else(|_| "unknown".into());
+            let body = format!("{{\"server\":\"frontage-api {}\",\"build\":\"{build}\"}}", env!("CARGO_PKG_VERSION"));
+            return ([(axum::http::header::CONTENT_TYPE, "application/json")], body).into_response();
+        }
+        _ => {}
+    }
+    let Some(Some(dir)) = STATIC_DIR.get() else { return StatusCode::NOT_FOUND.into_response() };
+    match serve_file(dir, parts).await {
+        Some(response) => response,
+        None => (StatusCode::NOT_FOUND, "not found").into_response(),
+    }
 }
 
 /// Pump this thread's loop until the request's coroutine finishes, yielding to tokio in
@@ -342,7 +419,11 @@ fn with_app<T>(f: impl FnOnce(&mut App) -> T) -> Result<T, String> {
     APP.with(|cell| {
         let mut slot = cell.borrow_mut();
         if slot.is_none() {
-            let (dir, module, search, stress) = SOURCE.get().ok_or("serve() was not called")?;
+            let (dir, module, search, stress) = SOURCE
+                .get()
+                .ok_or("serve() was not called")?
+                .as_ref()
+                .ok_or("this server has no app: it was started with --serve")?;
             *slot = Some(App::load(dir.clone(), module, search, *stress)?);
         }
         Ok(f(slot.as_mut().expect("just loaded")))
