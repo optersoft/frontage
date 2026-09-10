@@ -11,6 +11,8 @@ fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let stress = args.iter().any(|a| a == "--stress");
     args.retain(|a| a != "--stress");
+    let docstrings = args.iter().any(|a| a == "--docstrings");
+    args.retain(|a| a != "--docstrings");
     let mut compile_to: Option<String> = None;
     if let Some(i) = args.iter().position(|a| a == "--compile") {
         compile_to = args.get(i + 1).cloned();
@@ -19,7 +21,7 @@ fn main() {
     let file = match args.first() {
         Some(f) => PathBuf::from(f),
         None => {
-            eprintln!("usage: fpy [--stress] FILE.py");
+            eprintln!("usage: fpy [--stress] [--docstrings] [--compile OUT.fbc] FILE.py");
             std::process::exit(2);
         }
     };
@@ -37,6 +39,10 @@ fn main() {
     let mut vm = Vm::new(Box::new(StdHost::new(search)));
     vm.heap.stress = stress;
     vm.argv = args.clone();
+    // A `.fbc` is what a page downloads, and every framework module here is heavily
+    // documented, so `--compile` drops docstrings unless asked otherwise. Running keeps
+    // them: `__doc__` working is Python's norm, and the differential cases assert it.
+    vm.keep_docstrings = docstrings || compile_to.is_none();
     frontage_compile::install(&mut vm);
     let code = match frontage_compile::compile(&mut vm, &source, &file.to_string_lossy()) {
         Ok(c) => c,

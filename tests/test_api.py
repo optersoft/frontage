@@ -413,7 +413,7 @@ def test_a_route_reads_its_types_from_annotations():
         return {"id": trip_id, "verbose": verbose}
 
     @app.post("/trips")
-    async def create(body: Trip):
+    async def create(body: Trip):  # ty: ignore[invalid-type-form]
         return {"stored": body}
 
     client = Client(app)
@@ -447,7 +447,20 @@ def test_an_annotation_nothing_can_resolve_is_ignored_not_an_error():
     app = App()
 
     @app.get("/x")
-    async def x(thing: "SomethingUndefined" = "default"):  # noqa: F821
+    async def x(thing: "SomethingUndefined" = "default"):  # noqa: F821  # ty: ignore[unresolved-reference]
         return {"thing": thing}
 
     assert Client(app).get("/x?thing=given").json() == {"thing": "default"}
+
+
+def test_every_method_decorator_takes_exactly_the_arguments_route_does():
+    """The seven decorators are written out, not installed in a loop, so a type checker and
+    an editor can see them (`frontage_api/__init__.py`). This is what guards the duplication:
+    an argument added to `route` and forgotten on the seven fails here instead of being
+    silently dropped."""
+    import inspect
+
+    wanted = list(inspect.signature(App.route).parameters)
+    wanted.remove("method")  # each decorator supplies its own
+    for name in ("get", "post", "put", "patch", "delete", "head", "options"):
+        assert list(inspect.signature(getattr(App, name)).parameters) == wanted, name

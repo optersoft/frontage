@@ -13,7 +13,7 @@ import pytest
 
 from frontage.schema import integer, optional, record, text
 from frontage.schema.jsonschema import from_json_schema
-from frontage_api import App, Response
+from frontage_api import App
 from frontage_api.docs import page
 from frontage_api.openapi import document
 from frontage_api.testing import Client
@@ -24,12 +24,15 @@ Trip = record(("id", integer(ge=0)), ("note", optional(text(max=8)), None))
 def an_app():
     app = App(title="trips", version="2.0.0", description="the fleet's trips")
 
+    # ⚠ The `ty: ignore`s below are not sloppiness: a `frontage.schema` record IS the
+    # annotation here (`API.md` §6.2), and a value used as a type is something no checker
+    # can model. Suppressed where it happens, with the reason, rather than repo-wide.
     @app.get("/trips/{trip_id}", summary="One trip")
-    async def trip(trip_id: int) -> Trip:
+    async def trip(trip_id: int) -> Trip:  # ty: ignore[invalid-type-form]
         return {"id": trip_id, "note": None}
 
     @app.post("/trips")
-    async def create(body: Trip):
+    async def create(body: Trip):  # ty: ignore[invalid-type-form]
         return {"stored": body["id"]}
 
     @app.get("/search")
@@ -38,7 +41,7 @@ def an_app():
 
     @app.post("/upload", body=bytes)
     async def upload(body) -> bytes:
-        return Response(body)
+        return body
 
     @app.get("/healthz", schema=False)
     async def healthz():
@@ -137,8 +140,8 @@ def test_two_handlers_of_the_same_name_get_different_operation_ids():
 
 
 def test_a_docstring_fills_in_the_summary_where_there_is_one():
-    """CPython keeps docstrings and the runtime's compiler does not, so this is what a
-    developer sees under pytest and `summary=` is what a reader sees in production."""
+    """Both runtimes keep docstrings now (`rust/README.md`), so this is what a reader sees
+    in production too — `rust/api/tests/routes.py` asserts the same thing over the binary."""
     app = App()
 
     @app.get("/d")

@@ -204,15 +204,15 @@ def main():
         check("raise_for_status carries the response", got.get("status") == 404,
               f"{status} {body[:80]!r}")
 
-        # §6.3: the document, on the real runtime. Two of its parts only exist here — the
-        # compiler discards docstrings, so `summary=` is the only prose a reader gets, and a
-        # record's *name* comes from an identity scan of the handler's module globals.
+        # §6.3: the document, on the real runtime, where two of its parts are decided —
+        # a record's *name* comes from an identity scan of the handler's module globals, and
+        # a route's prose comes from a docstring the compiler kept.
         status, body, _ = get("/openapi.json")
         doc = json.loads(body) if status == 200 else {}
         check("the routes are a document", doc.get("openapi") == "3.1.0"
               and "/trips/{trip_id}" in doc.get("paths", {}), f"{status} {body[:60]!r}")
         trips = doc.get("paths", {}).get("/trips/{trip_id}", {}).get("get", {})
-        check("a summary survives a runtime with no docstrings", trips.get("summary") == "One trip",
+        check("summary= wins over anything else", trips.get("summary") == "One trip",
               repr(trips.get("summary")))
         check("a named record is a $ref into components",
               trips.get("responses", {}).get("200", {}).get("content", {})
@@ -221,6 +221,14 @@ def main():
               repr(sorted(doc.get("components", {}).get("schemas", {}))))
         check("and the document does not describe itself",
               "/docs" not in doc.get("paths", {}) and "/openapi.json" not in doc.get("paths", {}))
+
+        stamp_op = doc.get("paths", {}).get("/stamp", {}).get("get", {})
+        check("a docstring is the summary, now that the server keeps them",
+              stamp_op.get("summary") == "The environment and the clock, from inside a handler.",
+              repr(stamp_op.get("summary")))
+        check("and its indentation stays in the source",
+              (stamp_op.get("description") or "").startswith("This route has no `summary=`"),
+              repr((stamp_op.get("description") or "")[:40]))
 
         status, body, _ = get("/docs")
         check("the docs page is one self-contained file",

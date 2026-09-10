@@ -81,18 +81,21 @@ checkout.
       two being read and found alike. 21 tests, plus five on the real runtime, where a
       record's name comes from an identity scan of the handler's globals and a docstring
       does not exist at all.
-- [ ] ⚠ **The compiler discards docstrings, so `__doc__` is `None` on the server.** That is
-      why a route's summary is `summary="…"` rather than its docstring: prose that exists
-      under pytest and not in production is the worst way round. Keeping them costs bytes in
-      every page — the framework's own modules are heavily documented — so the fix is
-      probably a compiler flag the *server's* `fpy` invocation sets and a page's does not,
-      not a change to what a page carries.
-- [ ] `mk check`'s `ty` step is red, and mostly for one reason: `App.get`/`post`/… are
-      installed with `setattr` at the bottom of `frontage_api/__init__.py`, so ty sees no
-      such attribute and every route in every test is an error (34 of 40 diagnostics). It
-      also costs an editor its completion on the arguments `/docs` reads — `summary`, `tags`,
-      `schema` — which is the half that actually matters. Seven explicit methods, or a stub,
-      the way `frontage/state.py` has one.
+- [x] **Docstrings, so a route's prose is its docstring.** The compiler discarded them
+      outright, so `__doc__` was `None` on the server and `/docs` had nothing to show. Kept
+      now (`FLAG_DOCSTRING`, a bit in a varint field, so an older `.fbc` still loads), and
+      dropped by `fpy --compile` — a `.fbc` is what a *page* downloads and no page reads
+      `__doc__`, so the page pays nothing. ⚠ The dedent is CPython 3.13's and it measures
+      indentation in **columns with tab stops of eight**, not characters: `"\tb"` under an
+      indent of two is six spaces and a `b`. Counting characters agrees on everything else,
+      which is exactly why the differential case has the tab cases in it.
+- [x] `mk check` is **green** — it had been red, and mostly for one reason: `App.get`/`post`/…
+      were installed with `setattr`, so ty saw no such attribute and every route in every
+      test was an error (34 of 40 diagnostics), while an editor could not offer `summary`,
+      `tags` or `schema`. Written out now, with a test asserting the seven take precisely
+      `route`'s arguments so the duplication cannot drift. The six that were left are
+      inherent — a `frontage.schema` record used *as* an annotation is a value where a type
+      belongs — and are suppressed where they happen, with the reason.
 - [ ] **Deploy `governor` behind the gate** — the reason §5a exists. The two repos are done
       (2026-09-10): `governor/deploy/Dockerfile` compiles `frontage-api` out of this checkout
       as a build context and ships the binary beside the built pages — 163s, an ELF x86-64

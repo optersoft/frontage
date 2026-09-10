@@ -787,7 +787,7 @@ class Record(Type):
             if name in value:
                 out[name] = check(value[name], path + suffix, errors, opts)
             elif default is not _MISSING:
-                out[name] = default() if callable(default) else default  # ty: ignore[call-top-callable]
+                out[name] = default() if callable(default) else default
             else:
                 errors.append((path + suffix, "missing"))
         if self.extra != "ignore":

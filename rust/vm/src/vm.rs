@@ -204,6 +204,16 @@ pub struct Vm {
     /// `true` after `Yield`, `false` after `YieldFrom`. See `Generator::async_yield`.
     pub suspended_by_yield: bool,
     pub compiler: Option<CompileFn>,
+    /// Keep a docstring as `__doc__`, or drop it as the codegen always used to.
+    ///
+    /// **On where a page pays and a server does not.** Every framework module here is
+    /// heavily documented, so keeping the text would put all of it in a page's download for
+    /// something no page reads. A server is the other way round: `frontage_api` reads a
+    /// route handler's docstring to write `/docs`, and prose that exists under pytest and
+    /// not in production is the worst way round. So it is on by default — `__doc__` working
+    /// is Python's norm — and `fpy --compile`, which writes the `.fbc` a page downloads,
+    /// turns it off.
+    pub keep_docstrings: bool,
     pub builtin_modules: HashMap<&'static str, fn(&mut Vm) -> PyResult<Value>>,
     pub depth: u32,
     pub max_depth: u32,
@@ -253,6 +263,7 @@ impl Vm {
             roots: Vec::new(),
             suspended_by_yield: false,
             compiler: None,
+            keep_docstrings: true,
             builtin_modules: HashMap::new(),
             depth: 0,
             max_depth: 600,
@@ -2238,6 +2249,12 @@ impl Vm {
             let path = self.list(vec![dir]);
             self.dict_set_str(dict, "__path__", path);
         }
+        // `new_module` set `__doc__` to None; a module that has one says so in its flags.
+        if code.flags & crate::code::FLAG_DOCSTRING != 0 {
+            if let Some(&doc) = code.consts.first() {
+                self.dict_set_str(dict, "__doc__", doc);
+            }
+        }
         let key = self.intern(name);
         let modules = self.modules;
         self.dict_set(modules, key, module);
@@ -2314,6 +2331,11 @@ impl Vm {
         let dict = self.module_dict(module);
         let f = self.str(filename);
         self.dict_set_str(dict, "__file__", f);
+        if code.flags & crate::code::FLAG_DOCSTRING != 0 {
+            if let Some(&doc) = code.consts.first() {
+                self.dict_set_str(dict, "__doc__", doc);
+            }
+        }
         let key = self.intern("__main__");
         let modules = self.modules;
         self.dict_set(modules, key, module);

@@ -85,6 +85,18 @@ server and `None` in a page instead of failing to import.
 glibc's behaviour and not macOS's. The platforms disagree, so `py/tests/cases/time_calendar.py`
 deliberately asserts nothing about it.
 
+**Docstrings are kept when running and dropped when compiling for a page.** `__doc__` on a
+function, a method and a module works and matches CPython 3.13 — including its compile-time
+dedent, which measures indentation in **columns with tab stops of eight**, so `"\tb"` under an
+indent of two comes back as six spaces and a `b` (`py/tests/cases/docstrings.py`). The
+default is on, because `__doc__` working is Python's norm and `frontage_api` reads a route
+handler's docstring to write `/docs`; **`fpy --compile` turns it off**, because a `.fbc` is
+what a page downloads, every framework module here is heavily documented, and no page reads
+`__doc__`. `--docstrings` forces it back on. A class's own `__doc__` is not written yet.
+⚠ It is not quite free for a page even so: the VM carries the branches that read the flag,
+which measured **+570 bytes brotli** (228,377 → 228,947) on 2026-09-10. A page's `.fbc` never
+sets the flag, so that is the cost of the code being present, not of any docstring.
+
 **`bytes` is a short list of methods, grown by need.** `decode`, `hex`, `find`,
 `startswith`, `endswith`, indexing, slicing and `+` — enough to reassemble a streamed body,
 which is what asked for the last three (`py/tests/cases/bytes_search.py`). `split`, `strip`,

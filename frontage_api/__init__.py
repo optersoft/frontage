@@ -408,10 +408,9 @@ class App:
         """One route. `summary`, `description` and `tags` are what `/docs` shows, and
         `schema=False` keeps the route out of the document altogether.
 
-        ⚠ **A docstring is not a summary here.** The runtime's compiler discards docstrings,
-        so `handler.__doc__` is `None` on the server — the prose exists under pytest and not
-        in production, which is the worst way round for something a reader is meant to see.
-        `summary=` is the spelling that works in both.
+        With neither, the handler's docstring is the prose: its first line is the summary
+        and the rest is the description. `summary=` is for a route whose docstring says
+        something to the next maintainer rather than to a reader of the API.
         """
         method = method.upper()
         if method not in METHODS:
@@ -451,8 +450,122 @@ class App:
 
         return decorate
 
-    # `get`, `post`, `put`, `patch`, `delete`, `head` and `options` are installed at the
-    # bottom of this file, one per method, rather than written out seven times.
+    # -- one decorator per method ---------------------------------------------------------
+    #
+    # Written out rather than installed with `setattr` in a loop, which is what they were
+    # until the arguments started to matter. A dynamic attribute is invisible to a type
+    # checker and to an editor alike: `ty` reported every `@app.get` in every test as an
+    # error — 34 of the repository's 40 diagnostics — and nobody could see that `summary`
+    # and `tags` existed, which is exactly the half of `/docs` that has to be discoverable.
+    #
+    # The duplication is real and it is guarded: `test_api.py` asserts every one of these
+    # takes precisely `route`'s arguments, so adding one to `route` and forgetting these
+    # fails a test rather than silently dropping it on seven decorators.
+
+    def get(
+        self,
+        path,
+        path_types=None,
+        query=None,
+        body=None,
+        needs=None,
+        summary=None,
+        description=None,
+        tags=None,
+        schema=True,
+    ):
+        """`@app.get(path)`. The arguments are `route`'s, and a test says so."""
+        return self.route("GET", path, path_types, query, body, needs, summary, description, tags, schema)
+
+    def post(
+        self,
+        path,
+        path_types=None,
+        query=None,
+        body=None,
+        needs=None,
+        summary=None,
+        description=None,
+        tags=None,
+        schema=True,
+    ):
+        """`@app.post(path)`. The arguments are `route`'s, and a test says so."""
+        return self.route("POST", path, path_types, query, body, needs, summary, description, tags, schema)
+
+    def put(
+        self,
+        path,
+        path_types=None,
+        query=None,
+        body=None,
+        needs=None,
+        summary=None,
+        description=None,
+        tags=None,
+        schema=True,
+    ):
+        """`@app.put(path)`. The arguments are `route`'s, and a test says so."""
+        return self.route("PUT", path, path_types, query, body, needs, summary, description, tags, schema)
+
+    def patch(
+        self,
+        path,
+        path_types=None,
+        query=None,
+        body=None,
+        needs=None,
+        summary=None,
+        description=None,
+        tags=None,
+        schema=True,
+    ):
+        """`@app.patch(path)`. The arguments are `route`'s, and a test says so."""
+        return self.route("PATCH", path, path_types, query, body, needs, summary, description, tags, schema)
+
+    def delete(
+        self,
+        path,
+        path_types=None,
+        query=None,
+        body=None,
+        needs=None,
+        summary=None,
+        description=None,
+        tags=None,
+        schema=True,
+    ):
+        """`@app.delete(path)`. The arguments are `route`'s, and a test says so."""
+        return self.route("DELETE", path, path_types, query, body, needs, summary, description, tags, schema)
+
+    def head(
+        self,
+        path,
+        path_types=None,
+        query=None,
+        body=None,
+        needs=None,
+        summary=None,
+        description=None,
+        tags=None,
+        schema=True,
+    ):
+        """`@app.head(path)`. The arguments are `route`'s, and a test says so."""
+        return self.route("HEAD", path, path_types, query, body, needs, summary, description, tags, schema)
+
+    def options(
+        self,
+        path,
+        path_types=None,
+        query=None,
+        body=None,
+        needs=None,
+        summary=None,
+        description=None,
+        tags=None,
+        schema=True,
+    ):
+        """`@app.options(path)`. The arguments are `route`'s, and a test says so."""
+        return self.route("OPTIONS", path, path_types, query, body, needs, summary, description, tags, schema)
 
     def cors_headers(self, origin):
         """What a *file* response should carry, asked for by the server.
@@ -582,38 +695,3 @@ def _problem(status, detail, headers=None):
 def _warn(message):
     """Something worth saying that must not replace a correct answer."""
     print("frontage-api: " + message)
-
-
-def _method_decorator(method):
-    def decorator(
-        self,
-        path,
-        path_types=None,
-        query=None,
-        body=None,
-        needs=None,
-        summary=None,
-        description=None,
-        tags=None,
-        schema=True,
-    ):
-        return self.route(
-            method,
-            path,
-            path_types=path_types,
-            query=query,
-            body=body,
-            needs=needs,
-            summary=summary,
-            description=description,
-            tags=tags,
-            schema=schema,
-        )
-
-    decorator.__name__ = method.lower()
-    return decorator
-
-
-for _method in METHODS:
-    setattr(App, _method.lower(), _method_decorator(_method))
-del _method

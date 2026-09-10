@@ -472,7 +472,13 @@ impl Vm {
                 return Some(f.qualname);
             }
             if name == n.doc {
-                return Some(f.code.consts.first().copied().filter(|c| self.as_str(*c).is_some() && f.code.flags & crate::code::FLAG_NAMESPACE == 0 && false).unwrap_or(Value::NONE));
+                // `FLAG_DOCSTRING` says consts[0] IS the docstring. The first attempt at
+                // this asked whether consts[0] happened to be a string, which is also true
+                // of `def f(): return "x"` — it was left disabled rather than wrong.
+                if f.code.flags & crate::code::FLAG_DOCSTRING != 0 {
+                    return Some(f.code.consts.first().copied().unwrap_or(Value::NONE));
+                }
+                return Some(Value::NONE);
             }
             if name == n.module {
                 let g = f.globals;

@@ -14,11 +14,11 @@ that describes the body here, so the document cannot drift from what the server 
 is the gate: `tests/test_openapi.py` asserts the emitted schema accepts exactly the values
 the route does.
 
-⚠ **A summary comes from the decorator, not from the docstring.** This runtime's compiler
-discards docstrings — `f.__doc__` is `None` on the server and the prose it would have shown
-does not exist to show — so `@app.get("/x", summary="…")` is the spelling that works in both
-places. `__doc__` is still read where there is one, which is CPython, so the same app
-documents itself under pytest.
+A summary is the handler's docstring, and `summary=` overrides it. That took a compiler
+change: docstrings were discarded outright until 2026-09-10, so `__doc__` was `None` on the
+server and the prose a reader was meant to see existed only under pytest. `fpy --compile`
+still drops them, because a `.fbc` is what a page downloads and no page reads `__doc__`
+(`rust/README.md`) — so the *page* pays nothing for this and the server gets it.
 """
 
 __all__ = ["document"]

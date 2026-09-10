@@ -245,6 +245,11 @@ pub const FLAG_COROUTINE: u32 = 8;
 /// Module and class bodies: names go through the frame's namespace dict.
 pub const FLAG_NAMESPACE: u32 = 16;
 pub const FLAG_ASYNC_GENERATOR: u32 = 32;
+/// `consts[0]` is this code object's docstring. A flag rather than "the first constant is a
+/// string", which is what the disabled first attempt at `__doc__` tried and could not tell
+/// apart from a function that merely opens with a string literal. It is a bit in a varint
+/// field, so a `.fbc` written before it existed still loads.
+pub const FLAG_DOCSTRING: u32 = 64;
 
 #[derive(Debug, Default)]
 pub struct Code {

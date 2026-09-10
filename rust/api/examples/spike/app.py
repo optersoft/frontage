@@ -116,7 +116,12 @@ async def slowfeed():
 
 @app.get("/stamp")
 async def stamp():
-    """The environment and the clock, from inside a handler."""
+    """The environment and the clock, from inside a handler.
+
+    This route has no `summary=`, so `/openapi.json` showing "The environment and the
+    clock, from inside a handler." is the proof that the server keeps docstrings — the
+    compiler dropped them until 2026-09-10 and this text did not exist at runtime.
+    """
     now = datetime.now(timezone.utc)
     return {
         "key": os.getenv("FRONTAGE_API_KEY", "unset"),

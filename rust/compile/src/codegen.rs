@@ -91,10 +91,64 @@ pub fn generate(vm: &mut Vm, module: &ast::ModModule, table: &SymTable, source: 
     let mut g = Gen { vm, table, source, filename: filename.into(), line_starts };
     let mut unit = g.new_unit(0, "<module>", "<module>", Kind::Module, 1);
     unit.flags |= FLAG_NAMESPACE;
+    g.docstring(&mut unit, &module.body);
     g.stmts(&mut unit, &module.body)?;
     g.emit_const(&mut unit, ConstKey::None);
     g.emit(&mut unit, Op::Return, 0);
     g.finish(unit)
+}
+
+/// A docstring with its indentation removed, as CPython 3.13 does at compile time
+/// (`_PyCompile_CleanDoc`) — the source's indentation belongs to the source, and a reader of
+/// `__doc__` should not have to undo it.
+///
+/// The first line loses *all* its leading spaces and tabs, because it starts right after the
+/// quotes and whatever is there is spacing rather than structure. Every line after it loses
+/// the *smallest* leading indentation found across the non-blank ones, so relative
+/// indentation inside the text survives; a line that is nothing but whitespace does not count
+/// towards that minimum but is dedented like any other, which is where the trailing newline
+/// of a `"""…\n    """` comes from.
+///
+/// ⚠ **Indentation is measured in columns with tab stops of eight, not in characters**, and
+/// a partly-consumed tab comes back as the spaces it covered. Counting characters agrees with
+/// CPython until a docstring mixes tabs and spaces, and then it does not: `"\tb"` under an
+/// indent of two is six spaces and a `b`. Found by the differential case, not by reading.
+fn clean_doc(text: &str) -> String {
+    let Some((first, rest)) = text.split_once('\n') else {
+        return text.trim_start_matches([' ', '\t']).to_string();
+    };
+    let lines: Vec<(usize, &str)> = rest.split('\n').map(split_indent).collect();
+    let indent = lines
+        .iter()
+        .filter(|(_, body)| !body.is_empty())
+        .map(|(columns, _)| *columns)
+        .min()
+        .unwrap_or(0);
+    let mut out = String::with_capacity(text.len());
+    out.push_str(first.trim_start_matches([' ', '\t']));
+    for (columns, body) in lines {
+        out.push('\n');
+        for _ in 0..columns.saturating_sub(indent) {
+            out.push(' ');
+        }
+        out.push_str(body);
+    }
+    out
+}
+
+/// A line's leading whitespace as columns, and what follows it.
+fn split_indent(line: &str) -> (usize, &str) {
+    let mut columns = 0;
+    let mut at = 0;
+    for c in line.chars() {
+        match c {
+            ' ' => columns += 1,
+            '\t' => columns += 8 - (columns % 8),
+            _ => break,
+        }
+        at += c.len_utf8();
+    }
+    (columns, &line[at..])
 }
 
 impl<'a> Gen<'a> {
@@ -383,6 +437,24 @@ impl<'a> Gen<'a> {
     }
 
     // -- statements ----------------------------------------------------------------------------
+
+    /// A leading string literal is this unit's docstring: `consts[0]`, plus the flag that
+    /// says so.
+    ///
+    /// Called before anything else in the unit adds a constant, which is what makes the
+    /// index 0 — `attr.rs` reads `consts[0]` directly rather than searching, because a
+    /// scan per `__doc__` is work on a path that has no reason to do any. The statement
+    /// itself is still dropped by `stmt`, so nothing is emitted for it either way.
+    fn docstring<'ast>(&mut self, u: &mut Unit<'ast>, body: &'ast [Stmt]) {
+        if !self.vm.keep_docstrings {
+            return;
+        }
+        let Some(Stmt::Expr(e)) = body.first() else { return };
+        let Expr::StringLiteral(lit) = &*e.value else { return };
+        if self.const_index(u, ConstKey::Str(clean_doc(lit.value.to_str()))) == 0 {
+            u.flags |= FLAG_DOCSTRING;
+        }
+    }
 
     fn stmts<'ast>(&mut self, u: &mut Unit<'ast>, body: &'ast [Stmt]) -> CResult {
         for s in body {
@@ -1079,6 +1151,7 @@ impl<'a> Gen<'a> {
         let child = self.child_scope(u, Kind::Function, name)?;
         let mut cu = self.new_unit(child, name, &qualname, Kind::Function, line);
         Self::param_counts(&mut cu, p);
+        self.docstring(&mut cu, &f.body);
         self.stmts(&mut cu, &f.body)?;
         self.emit_const(&mut cu, ConstKey::None);
         self.emit(&mut cu, Op::Return, 0);

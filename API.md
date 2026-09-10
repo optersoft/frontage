@@ -739,11 +739,12 @@ actually lives:
   the variable it was bound to — so `components/schemas` is filled by an identity scan of the
   handler's module globals, once per document. Anonymous records stay inline, which is
   correct rather than a shortfall.
-- ⚠ **A docstring is not a summary here.** The runtime's compiler discards docstrings, so
-  `handler.__doc__` is `None` on the server: the prose would exist under pytest and not in
-  production, which is the worst way round for something a reader is meant to see.
-  `@app.get("/x", summary="…")` is the spelling that works in both, and `__doc__` fills in
-  where there is one.
+- **A summary is the handler's docstring**, and it took a compiler change to be able to say
+  so. Docstrings were discarded outright, so `__doc__` was `None` on the server and the prose
+  a reader was meant to see existed only under pytest. They are kept now, and `fpy --compile`
+  still drops them — a `.fbc` is what a *page* downloads and no page reads `__doc__` — so the
+  page pays nothing for this. `summary=` overrides, for a route whose docstring is addressed
+  to the next maintainer rather than to a reader of the API.
 - **A route can answer 422 only where something can fail**, so the document promises it only
   where the route has a parameter or a body — a promise nothing can keep is worse than none.
 
