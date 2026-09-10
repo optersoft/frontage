@@ -3,7 +3,10 @@
 Frontage: a fine-grained reactive UI framework for Python in the browser, on its own Python
 runtime compiled to WebAssembly (`rust/`), published to PyPI as `frontage`, Apache 2.0,
 copyright Optersoft. Rewritten clean-room from `SPEC.md` per `DESIGN.md`; `main` is at
-**0.13.7** — islands and static pages (`ISLAND.md` steps A–C), content collections (D),
+**0.14.0** — **`frontage-api`**, the HTTP server, as a second wheel and a binary per platform
+(`API.md`: FastAPI's shape on axum with the handlers on this runtime, `_http`, OpenAPI and
+`/docs`, a Google sign-in gate), plus a runtime that keeps docstrings and knows
+`bytes.find`/`startswith`/`endswith` — and, before it, islands and static pages (`ISLAND.md` steps A–C), content collections (D),
 `frontage site` (E), locales (F) and the chrome (G: `optersoft/brand`, with `web/` and
 **optersoft.com itself** rebuilt on it) — and past milestone **M11** (0.9.0: the WebAssembly boot, the framework as precompiled bytecode, a dev
 server that swaps modules into the running page, C/Rust libraries as plain imports — after
