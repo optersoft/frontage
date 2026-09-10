@@ -61,7 +61,10 @@ path = "frontage/version.py"
 packages = ["frontage"]
 
 [tool.hatch.build.targets.sdist]
-include = ["frontage", "tests", "examples", "editors", "tools/serve.py", "tools/lsp_probe.py", "README.md", "DESIGN.md", "SPEC.md", "LICENSE", "NOTICE"]
+# `frontage_api` and `packaging/` are in here because the server's wheel is built from a
+# directory that reaches out into this tree (`packaging/api/pyproject.toml` says why it has
+# no sdist of its own): this is where its source is distributed.
+include = ["frontage", "frontage_api", "packaging", "tests", "examples", "editors", "tools/serve.py", "tools/lsp_probe.py", "README.md", "DESIGN.md", "SPEC.md", "API.md", "LICENSE", "NOTICE"]
 
 [dependency-groups]
 dev = [

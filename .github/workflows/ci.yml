@@ -10,6 +10,12 @@
 #   workflow    ci.yml
 #   env         pypi   (must match the `environment:` below)
 #
+# ⚠ **TWO of them, one per project: `frontage` and `frontage-api`.** Everything else in the
+# record is identical, and a missing second one is silent until the tag: `git push` works,
+# the wheel builds, and only the upload answers `422 invalid-publisher`. Nothing is burned
+# when it does — the version is never taken, so re-running the job publishes it once the
+# record exists.
+#
 # Release: bump frontage/version.py, commit, then
 # `git tag -a v0.1.0 -m … && git push origin v0.1.0`.
 
@@ -148,8 +154,45 @@ jobs:
         with:
           files: ${{ matrix.asset }}
 
+  # The server, one binary per platform, attached to the release (`API.md` §6.5). Until it
+  # existed, every deploy of a consumer compiled this repository's working tree inside a
+  # Docker build; now a Dockerfile downloads the one for its target and ships it.
+  #
+  # No Windows: the consumers are fleet VMs and this laptop, and a platform nobody runs is a
+  # platform nobody notices breaking.
+  server:
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      matrix:
+        include:
+          - { os: macos-14, asset: frontage-api-macos-arm64 }
+          - { os: macos-14, asset: frontage-api-macos-x64, target: x86_64-apple-darwin }
+          - { os: ubuntu-latest, asset: frontage-api-linux-x64 }
+          - { os: ubuntu-24.04-arm, asset: frontage-api-linux-arm64 }
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target || '' }}
+      # `--profile api` and not `native`: the gate's OAuth flow needs `panic = "unwind"`,
+      # which is what that profile exists for.
+      - run: cargo build --profile api -p frontage-api ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+        working-directory: rust
+      - run: cp rust/target/${{ matrix.target && format('{0}/', matrix.target) || '' }}api/frontage-api ${{ matrix.asset }}
+        shell: bash
+      # A binary that cannot start is worse than no binary: it passes every check a
+      # release does and fails on the VM. `--help` is the cheapest thing that loads it.
+      - run: ./${{ matrix.asset }} --help
+        shell: bash
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}
+
   publish:
-    needs: [test, browser, compiler]
+    needs: [test, browser, compiler, server]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: pypi
@@ -177,4 +220,27 @@ jobs:
           assert (frontage_rt.RUNTIME_DIR / 'frontage.wasm').stat().st_size > 400_000
           "
       - run: uv run --isolated --no-project --with dist/*.tar.gz -- python -c "import frontage; print(frontage.__version__)"
+      # The server's wheel (`API.md` §7 decided two). It is built from `packaging/api`, which
+      # holds no source of its own — the package lives beside `frontage/` where the tests
+      # import it from — so this is a wheel and not an sdist; `packaging/api/pyproject.toml`
+      # says why. Built into a directory of its own, because `uv publish` takes a whole one.
+      - run: uv build --wheel --out-dir ../../api-dist
+        working-directory: packaging/api
+      # Same check as above, and the one that matters more here: the server's package is
+      # pure Python and useless without the binary, so this proves at least that it imports.
+      - run: uv run --isolated --no-project --with api-dist/*.whl -- python -c "import frontage_api; print(frontage_api.App)"
+      # The wheel is half a release: the other half is the asset the `server` job just
+      # uploaded, and `frontage-api` is the script that goes and gets it. Run it against the
+      # binary built right here rather than downloading, because the release this tag makes
+      # is not published until this job finishes.
+      - run: cargo build --profile api -p frontage-api
+        working-directory: rust
+      - run: |
+          FRONTAGE_API_BIN="$PWD/rust/target/api/frontage-api" \
+            uv run --isolated --no-project --with api-dist/*.whl -- frontage-api --help
       - run: uv publish --trusted-publishing always
+      # ⚠ A SECOND trusted publisher, registered on PyPI for the project `frontage-api` with
+      # this same owner/repo/workflow/environment. The failure is silent in the usual way: a
+      # `422 invalid-publisher` on the upload, with the version never taken and the job
+      # re-runnable once the record exists.
+      - run: uv publish --trusted-publishing always api-dist/*

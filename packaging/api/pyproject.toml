@@ -1,0 +1,65 @@
+# The second wheel (`API.md` §7): `frontage_api`, the server surface, published beside
+# `frontage` from this same repository.
+#
+# It is a directory of its own because a `pyproject.toml` describes one project and the
+# repository root already describes `frontage`. The package itself stays at the root beside
+# `frontage/`, where the tests import it from, and arrives here through `force-include` —
+# hatchling's one hook that reaches outside the project root, and the reason this needs no
+# copy, no symlink and no build step.
+[project]
+name = "frontage-api"
+dynamic = ["version", "dependencies"]
+description = "FastAPI's shape on axum, with the handlers on frontage's own Python runtime"
+readme = "README.md"
+license = "Apache-2.0"
+# Symlinks to the repository's own, so there is one copy of each in the tree and both wheels
+# carry them.
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Optersoft, S.L.", email = "david@optersoft.com" }]
+requires-python = ">=3.12"
+keywords = ["asgi", "api", "http", "server", "webassembly", "frontage"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+]
+
+# `frontage-api app.py`: the wheel is pure Python and the server is Rust, so the script
+# finds the release binary for this platform (or a checkout's) and execs it.
+[project.scripts]
+frontage-api = "frontage_api._binary:main"
+
+[project.urls]
+Homepage = "https://github.com/optersoft/frontage"
+Documentation = "https://github.com/optersoft/frontage/blob/main/API.md"
+Repository = "https://github.com/optersoft/frontage"
+Issues = "https://github.com/optersoft/frontage/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# One version for both wheels, from the one file that has it. A server whose version could
+# drift from the runtime its handlers execute on is a support question nobody wants.
+# `frontage`, pinned to exactly this version — `hatch_build.py` says why it has to be `==`
+# and why it is a hook rather than a literal.
+[tool.hatch.metadata.hooks.custom]
+
+[tool.hatch.version]
+path = "../../frontage/version.py"
+
+# ⚠ **A wheel, and no sdist.** `only-include` empties the project directory — nothing in
+# here is the package — and the one path that reaches out of it brings the package in. An
+# sdist cannot do the same thing: a tarball has no `..`, so a wheel built from an unpacked
+# sdist would look for `../../frontage_api` above the tree it was unpacked into and fail.
+# The source is distributed in `frontage`'s own sdist, which carries the whole repository.
+[tool.hatch.build.targets.wheel]
+only-include = ["nothing-here"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"../../frontage_api" = "frontage_api"

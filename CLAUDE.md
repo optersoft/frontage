@@ -70,7 +70,13 @@ anything through: `request(...)` answers an asyncio future a tokio task settles,
 streamed body stays in Rust behind a token, one chunk ahead of its reader — `frontage_api/client.py`
 is the Python over it (`Client`, `Response.json()`, `chunks()`/`lines()`). ⚠ An in-flight
 request must report a poll delay of its own, or `park_value` reads "no deadline anywhere" and
-calls the first `await client.get(...)` a deadlock. `src/auth/` is the **sign-in gate** (`--auth google`, `API.md` §5a): Google OIDC in front of everything the server answers, static files included — a knowing second copy of `axum-oauth`, because this repository is public and cargo resolves every workspace member's manifest, so a path dependency on a private sibling breaks CI. Fix one, fix both. `tests/gate.py` is its 22 assertions, with no network in them. `--serve DIR` is the same server with **no app and no interpreter** — a directory of prerendered pages behind the gate, which is how `governor` deploys; every option is also `FRONTAGE_API_*` in the environment, because a fleet unit's `ExecStart=` carries no arguments, and the process signals `READY=1` for its `Type=notify` unit |
+calls the first `await client.get(...)` a deadlock. `src/auth/` is the **sign-in gate** (`--auth google`, `API.md` §5a): Google OIDC in front of everything the server answers, static files included — a knowing second copy of `axum-oauth`, because this repository is public and cargo resolves every workspace member's manifest, so a path dependency on a private sibling breaks CI. Fix one, fix both. `tests/gate.py` is its 22 assertions, with no network in them. It **ships** (§6.5): `packaging/api/` is a second wheel — a directory with no source in it, one
+`force-include` reaching out to `frontage_api/` beside `frontage/`, a wheel and no sdist
+(a tarball has no `..`) and `frontage` pinned `==` by a metadata hook — and CI uploads a
+binary per platform on a tag, which the `frontage-api` console script fetches on first use.
+⚠ It must never look for its own name on PATH: the script IS `frontage-api`, so `which` would
+find it and exec itself forever. ⚠ The second project needs its **own PyPI trusted
+publisher**. `--serve DIR` is the same server with **no app and no interpreter** — a directory of prerendered pages behind the gate, which is how `governor` deploys; every option is also `FRONTAGE_API_*` in the environment, because a fleet unit's `ExecStart=` carries no arguments, and the process signals `READY=1` for its `Type=notify` unit |
 | `rust/components/` | libraries an *app* calls through `data-fr-js`, not part of the runtime and outside its workspace: `dsp/` today. Built for `wasm32-unknown-unknown` with plain cargo by `mk components.wasm`, which also runs their tests, and the `.wasm` is committed into the component that ships it |
 | `rust/` | **frontage's own Python runtime, the default since 0.10 (decided 2026-09-08, `TODO.md`)**: `vm/` (the VM: `core.rs` is the reactive graph as VM types, `dom.rs` the DOM op stream, `view.rs` the native template path, `fbc.rs` the bytecode format, `lib/` the Python standard modules including `re` over `RegExp`), `compile/` (source → bytecode over ruff's parser), `py/` (`fpy`, the compiler and native runner, and the differential tests against CPython; `--stress` collects at every safe point), `web/` (the wasm crate, `glue.js` with the op executor and event delegation, `boot.js`, `run.mjs` for node). `mk runtime.rs` vendors the three browser files into `frontage/_runtime/rs/`; `cli/frontage_rt.py` is the host side (`.fbc` per module through `fpy`, the import closure through `cli/graph.py`). `rust/README.md` has the build and test lines; `RUNTIME.md` §9 the numbers. `frontage/runtime.py` reports it as `FRONTAGE`; `reactive.py`, `dom.py` and `view.py` switch to `_core`, `_dom` and `_view` when the modules exist and keep their Python for CPython |
 
@@ -145,7 +151,7 @@ calls the first `await client.get(...)` a deadlock. `src/auth/` is the **sign-in
   builds one per platform on a tag). ⚠ **`releases/latest` is not a safe fallback during a
   release**: a release exists from the moment its tag is pushed and its assets arrive minutes
   later, so `latest` is precisely the incomplete one — which is what failed the site deploy on
-  every version-bump push. `_asset_urls` walks the releases list for one that carries the
+  every version-bump push. `asset_urls` walks the releases list for one that carries the
   asset. `mk runtime.build` rebuilds and vendors the runtime
   after a change under `rust/` — both wasms and the two scripts — and the four files are
   committed, ~2.5 MB, shipped in the wheel. Needs Safari 15 / Chrome 90 / Firefox 88 (the

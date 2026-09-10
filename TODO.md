@@ -106,9 +106,23 @@ checkout.
       `/etc/governor` on nbg-2, the env file with the client id and allow-list plus the secret
       as a credential, the redirect URI in the Google console, and the Cloudflare A record.
       ⚠ Until §6.5 ships a binary, every deploy of it compiles this repository's working tree.
-- [ ] §6.5 ship it. **Nothing outside this checkout can use any of this**: there is no
-      `frontage_api` wheel (§7 decided two, and only one exists) and no binary. A wheel, a
-      binary per platform on a tag, `hive-server` as the front door.
+- [x] §6.5, the half that is code: the **`frontage-api` wheel** (`packaging/api/`, built
+      from a directory holding no source — one `force-include` reaches out to the package
+      beside `frontage/`) and the **binary per platform**, uploaded by CI on a tag and
+      fetched on first use by the `frontage-api` console script. `uvx --from frontage-api
+      frontage-api app.py` is the whole install. ⚠ Three things in `API.md` §6.5 that were
+      surprises: `shutil.which("frontage-api")` must not be in the search order or the script
+      execs itself forever; `frontage` is pinned `==` because the binary's runtime executes
+      its modules; and the second project needs its own **PyPI trusted publisher**, which is
+      silent until a tag answers `422 invalid-publisher`.
+- [ ] §6.5, the half that is the fleet: `hive-server` as the front door, `mk server.deploy`
+      like every other fleet app, and `frontage.chat`/`frontage.remote`'s extras changed from
+      `fastapi` + `uvicorn` to this. ⚠ **Nothing has been released yet**, so the download path
+      above has never fetched a real asset — the first tag is what proves it, and the CI job
+      that would catch a mistake runs only then.
+- [ ] Point `governor`'s Dockerfile at the released binary instead of compiling this
+      checkout. It is what §6.5 was for; it needs the first tag to exist first, and it is a
+      change in the other repository.
 - [ ] The floor. Every route pays **8.44 µs** before any user code runs, against 5.55 µs for
       §6.1's hand-rolled dispatch — so the surface is ~2.9 µs of it. Profile it the way
       §6.2b profiled the validator, with `_frontage.profile_start()`, and fix what the

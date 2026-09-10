@@ -812,14 +812,40 @@ beside the requests/s.
 **Gate:** `frontage.remote`'s 22 server tests pass against `_polars`, and its
 `/series/{name}` answer is byte-identical to the FastAPI version's.
 
-### 6.5 Ship
+### 6.5 Ship — the wheel and the binary ✅, the fleet still to come
 
-A binary per platform built by Actions on a tag, the way `fpy` is a release asset, and a
-wheel that finds it — `cli/frontage_rt.py`'s `_asset_urls` is the pattern, ⚠ **including its
-lesson: `releases/latest` is not safe during a release**, because a release exists from the
-moment its tag is pushed and its assets arrive minutes later. `hive-server` as the front
-door, `mk server.deploy` like every other fleet app, and the two consumers' extras changed
-from `fastapi` + `uvicorn` to this.
+Built 2026-09-10. `pip install frontage-api` and `uvx --from frontage-api frontage-api app.py`
+both work off a tag.
+
+**The wheel is half a release and the binary is the other half.** The server is Rust — the VM
+the handlers run on is compiled into it — so the wheel is pure Python and the console script
+goes and gets the asset for this platform, reusing `cli/frontage_rt.py`'s `asset_urls` rather
+than reimplementing it, ⚠ **including its lesson: `releases/latest` is not safe during a
+release**, because a release exists from the moment its tag is pushed and its assets arrive
+minutes later.
+
+Three decisions worth writing down, each of which was a surprise on the way:
+
+- ⚠ **`shutil.which("frontage-api")` must NOT be in the search order.** The wheel installs a
+  console script under exactly that name, so a PATH lookup finds *itself* and execs forever.
+  The order is `FRONTAGE_API_BIN`, then a checkout's `rust/target/<profile>/frontage-api`,
+  then the download. A test asserts the module does not even import `shutil`.
+- **`frontage` is pinned with `==`, not `>=`.** The binary's runtime executes `frontage`'s own
+  modules, so a mismatched pair is a bug report and not a supported combination. It is a
+  hatchling metadata hook because the version lives in one file and there is nothing to
+  interpolate a literal.
+- **A wheel and no sdist**, for the second project. Its directory holds no source: the package
+  stays beside `frontage/` where the tests import it from, and one `force-include` reaches out
+  and brings it in. A tarball has no `..`, so a wheel built from an unpacked sdist would look
+  above the tree it was unpacked into — the source travels in `frontage`'s own sdist instead.
+
+⚠ **A SECOND PyPI trusted publisher is needed**, for the project `frontage-api` with the same
+owner, repository, workflow and environment. It is silent until the tag: everything builds and
+only the upload answers `422 invalid-publisher`, with the version never taken, so re-running
+the job publishes it once the record exists.
+
+**What is left:** `hive-server` as the front door, `mk server.deploy` like every other fleet
+app, and the two consumers' extras changed from `fastapi` + `uvicorn` to this.
 
 **Gate:** one of the two consumers deployed on a fleet VM behind the gateway, with the
 throughput of §6.1 re-measured there.

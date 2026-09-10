@@ -405,7 +405,7 @@ def test_the_compiler_falls_back_to_a_release_that_actually_has_the_asset(monkey
     monkeypatch.setattr(
         frontage_rt.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(json.dumps(releases).encode())
     )
-    urls = list(frontage_rt._asset_urls("fpy-linux-x64", quiet=True))
+    urls = list(frontage_rt.asset_urls("fpy-linux-x64", quiet=True))
     assert urls[0].endswith(f"v{frontage_rt.__version__}/fpy-linux-x64")
     assert urls[1].endswith("releases/latest/download/fpy-linux-x64")
     assert urls[2] == "https://example/v9.9.8/fpy-linux-x64"
@@ -416,7 +416,7 @@ def test_a_github_that_cannot_be_reached_is_not_an_error_by_itself(monkeypatch):
         raise OSError("no network")
 
     monkeypatch.setattr(frontage_rt.urllib.request, "urlopen", refuse)
-    urls = list(frontage_rt._asset_urls("fpy-linux-x64", quiet=True))
+    urls = list(frontage_rt.asset_urls("fpy-linux-x64", quiet=True))
     assert len(urls) == 2  # the two direct guesses; the caller reports the failure
 
 

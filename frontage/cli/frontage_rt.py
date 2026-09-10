@@ -94,7 +94,7 @@ def fpy(quiet=False):
     # at a version whose tag does not exist yet, or whose assets are still uploading, and the
     # compiler reads the same Python and writes the same `.fbc` either way.
     data, last = None, None
-    for url in _asset_urls(name, quiet=quiet):
+    for url in asset_urls(name, quiet=quiet):
         if not quiet:
             print(f"fetching {url}")
         try:
@@ -114,9 +114,10 @@ def fpy(quiet=False):
     return path
 
 
-def _asset_urls(name, quiet=False):
-    """Where to look for the compiler, in order: this version's release, then whichever
-    release actually carries this asset.
+def asset_urls(name, quiet=False):
+    """Where to look for a release asset, in order: this version's release, then whichever
+    release actually carries it. Public because `frontage_api` fetches its server binary the
+    same way, and this paragraph is the reason it must not invent its own.
 
     `releases/latest` is not that second answer, which is what this cost to learn: a release
     exists from the moment its tag is pushed, and its assets arrive minutes later, so during
