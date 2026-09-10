@@ -105,6 +105,17 @@ def wait_for(base, path="/healthz"):
     return False
 
 
+def refuses_a_secret_inside_the_site(binary, tmp):
+    """A secret under the served directory is served, and wiped by the next deploy. Refuse."""
+    www = CRATE / "examples" / "private" / "www"
+    env = dict(auth_env("http://127.0.0.1:1", www / ".auth_secret"), FRONTAGE_API_SERVE=str(www),
+               FRONTAGE_API_ADDR="127.0.0.1:8796", FRONTAGE_API_AUTH="google")
+    done = subprocess.run([str(binary)], capture_output=True, text=True, env=env, timeout=30)
+    check("a secret inside the served tree stops the server before it binds",
+          done.returncode != 0 and "inside the directory being served" in done.stderr,
+          f"{done.returncode} {done.stderr.strip()[:100]}")
+
+
 def files_only(binary, tmp):
     """The shape a private site deploys as: no app, no arguments, and the whole configuration
     out of the environment — which is all a fleet unit's `ExecStart=` can carry (`API.md` §5a).
@@ -139,6 +150,10 @@ def files_only(binary, tmp):
         status, _, body = get("/", cookie=good, base=base)
         check("a signed-in reader gets index.html with no interpreter in the process",
               status == 200 and b"private page" in body, str(status))
+
+        # The secret must not be reachable through the very server it protects.
+        status, _, _ = get("/.auth_secret", cookie=good, base=base)
+        check("the signing secret is not inside the served tree", status == 404, str(status))
     finally:
         proc.terminate()
         proc.wait(timeout=10)
@@ -230,6 +245,7 @@ def main():
             proc.wait(timeout=10)
 
         files_only(binary, tmp)
+        refuses_a_secret_inside_the_site(binary, tmp)
 
     print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all good'}")
     return 1 if failures else 0

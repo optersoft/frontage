@@ -46,5 +46,9 @@ where code should go.
   `notify_ready()`; a `Type=notify` unit that never hears it is killed at `TimeoutStartSec`
   and reads as a crash-loop. And its smoke requires **200**, so `/healthz` and `/version` are
   answered by the server itself in `--serve` mode, where there is no app to own them.
+- **Never let the session secret sit under the served directory.** `ServeDir` would hand it
+  out to anyone signed in, and a deploy's `rsync --delete` would replace it under the running
+  process. `--serve` defaults it one level above the tree and refuses a configured path inside
+  it, before the socket binds.
 - **Clean room, as everywhere here.** Granian's and FastAPI's docs and specifications are fine;
   their source is not opened. The RSGI *shape* is copied from its specification, nothing else.

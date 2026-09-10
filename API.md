@@ -468,11 +468,20 @@ is a directory of prerendered pages, so the server takes the directory and runs 
 interpreter at all** — no app module, no `frontage_api` package tree to ship beside it, no VM
 per worker. `governor` deploys as this binary plus its `www/`, and that is the whole artifact.
 
-**Gate:** `python3 rust/api/tests/gate.py` — 19 assertions against the real binary with no
+⚠ **The signing secret must not live inside the tree being served, and `--serve` is where
+that is easy to get wrong.** Two silent failures, not one: the file server hands the secret to
+anyone with a session, who can then mint one for anybody; and a deploy rsyncs that tree with
+`--delete`, so the secret changes under the running process and everyone is signed out. In
+`--serve` mode the default therefore sits one directory *above* what is served
+(`/home/<app>/.auth_secret` in the fleet's layout, beside the `public/` a deploy replaces),
+and a configured path inside it stops the server before it binds. Found by reading a
+`bootstrap --dry-run`, not by a leak.
+
+**Gate:** `python3 rust/api/tests/gate.py` — 21 assertions against the real binary with no
 network in them, because everything up to the consent screen is ours (the redirect, the PKCE
 challenge, the state cookie) and the authenticated half is minted from the secret the server
 persisted, which is the only honest way to assert that a signed-in visitor gets the page. The
-last four run the server the way a box does: `--serve`, no arguments, everything from env.
+last six run the server the way a box does: `--serve`, no arguments, everything from env.
 
 ## 6. The plan, in order, with its gates
 

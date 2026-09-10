@@ -72,7 +72,9 @@ impl Auth {
     /// **Every failure here is fatal on purpose.** A server that starts without a client
     /// secret, or with an empty allow-list, is a private site that is either unreachable or
     /// unguarded, and both are worse than a process that will not come up.
-    pub fn from_env(label: &str, dir: &Path) -> Result<Self, String> {
+    /// `dir` is where the secret lands by default and, in `--serve` mode, what is being
+    /// served — which is why `served` is passed separately and checked against it.
+    pub fn from_env(label: &str, dir: &Path, served: Option<&Path>) -> Result<Self, String> {
         let client_id = var("GOOGLE_CLIENT_ID").ok_or_else(|| missing("GOOGLE_CLIENT_ID"))?;
         let client_secret = secret_var(label, "GOOGLE_CLIENT_SECRET").ok_or_else(|| missing("GOOGLE_CLIENT_SECRET"))?;
         let base = var("BASE_URL").map(|b| b.trim_end_matches('/').to_string());
@@ -95,6 +97,19 @@ impl Auth {
         }
         let ttl = var("SESSION_TTL_SECS").and_then(|t| t.parse().ok()).unwrap_or(DEFAULT_TTL);
         let secret_file = var("SECRET_FILE").map(PathBuf::from).unwrap_or_else(|| dir.join(".auth_secret"));
+        // ⚠ The signing secret must not live inside the directory being served. Two ways that
+        // ends badly and both are silent: `ServeDir` hands the file to anyone with a session,
+        // who can then mint one for anybody; and a deploy rsyncs that tree with `--delete`, so
+        // the secret changes under the running process and every visitor is signed out.
+        if let Some(served) = served {
+            if secret_file.starts_with(served) {
+                return Err(format!(
+                    "the session secret would live at {}, inside the directory being served. \
+                     Set FRONTAGE_AUTH_SECRET_FILE to a path outside it.",
+                    secret_file.display()
+                ));
+            }
+        }
         let secret = persisted_secret(&secret_file);
         // Secure cookies unless the base URL is explicitly plain http (local dev, where a
         // Secure cookie would never come back and sign-in could not work at all). Unset reads

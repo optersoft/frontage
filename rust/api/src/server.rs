@@ -109,7 +109,14 @@ pub fn serve(config: Config) -> Result<(), String> {
                 config.dir.file_name().and_then(|n| n.to_str()).unwrap_or("frontage").to_string()
             })
         });
-        Some(Arc::new(Auth::from_env(&label, &config.dir)?))
+        // In `--serve` mode the app's directory IS the served tree, so the secret defaults
+        // one level above it — `/home/<app>/.auth_secret` in the fleet's layout, beside the
+        // `public/` a deploy replaces rather than inside it.
+        let (home, served) = match config.module {
+            Some(_) => (config.dir.clone(), None),
+            None => (config.dir.parent().unwrap_or(&config.dir).to_path_buf(), Some(config.dir.as_path())),
+        };
+        Some(Arc::new(Auth::from_env(&label, &home, served)?))
     } else {
         None
     };
