@@ -10,6 +10,58 @@ template strings in M2 with the builder as fallback; pure Python first and a JS 
 where the rows benchmark says so; Solid 1.x synchronous propagation; `Store` in 0.1;
 accessors spelled `count()` with `.value` as alias; widgets as a subpackage.
 
+## frontage-api — the HTTP server (`API.md`), 2026-09-10
+
+Merged in from its own repo the same day; `rust/api/` is the crate, `frontage_api/` the
+package, `API.md` the plan with the measurements.
+
+- [x] §6.1 the spike, and its gate: **5.97× granian + FastAPI** on a body-echo route. Reading
+      the body costs us 5% and costs Granian 48%, which is the one-crossing rule measured.
+- [x] §4.3 the host future hook, thread-per-core, a coroutine driven in Rust rather than by an
+      asyncio `Task`. It needed **no change to the VM** — the embedding surface was already
+      enough for a server, which the spike could not assume.
+- [x] §6.2 the surface: `App`, routing, binding, `frontage.schema` bodies, `HTTPError`,
+      `Depends`, lifespan, CORS, `Stream` with SSE, static files. The gate is met:
+      `frontage.chat`'s server half runs on it, streaming token by token.
+- [x] Runtime changes it needed: **async generators** (`async for` refused an `async def` with
+      a `yield`) and **`__annotations__`** (parsed and discarded, so no contract to read).
+      Both are differential cases; both are in `rust/README.md`.
+- [x] §6.2b the validator compiled once instead of walked per value: **21% off validation**,
+      5.5% off a validated request, no wasm bytes, and the page gets it too.
+
+### Next, and the order is not the plan's
+
+⚠ **A handler cannot reach anything yet, and that outranks OpenAPI.** There is no `os`, no
+`urllib`, no `socket`, no `datetime`, and `time` has no `strftime`. So a handler can serve
+only what is in its own source: it cannot read an API key from the environment, call a model,
+open a file, or stamp a row with a date. `frontage.chat`'s whole purpose — hold the key,
+forward to the model — is impossible today. That is the difference between a demo and a
+server, and §6.4's *small* modules are not "the standard library, later".
+
+- [ ] `_env` and `_datetime` (and `time.strftime`). Hours, not days, and they unblock
+      everything else.
+- [ ] `_http` over `reqwest`: the smallest native module that matters, and the one
+      `frontage.chat` needs to do the thing it exists to do. Streaming response bodies through
+      the same `Chunks` shape `Stream` already uses.
+- [ ] §6.3 OpenAPI and a docs page. Much cheaper now that annotations exist and
+      `schema/jsonschema.py` already emits JSON Schema. Gate: §4.6's shared record produces a
+      document that validates what the form accepts.
+- [ ] §6.5 ship it. **Nothing outside this checkout can use any of this**: there is no
+      `frontage_api` wheel (§7 decided two, and only one exists) and no binary. A wheel, a
+      binary per platform on a tag, `hive-server` as the front door.
+- [ ] The floor. Every route pays **8.44 µs** before any user code runs, against 5.55 µs for
+      §6.1's hand-rolled dispatch — so the surface is ~2.9 µs of it. Profile it the way
+      §6.2b profiled the validator, with `_frontage.profile_start()`, and fix what the
+      numbers name rather than what the argument does.
+- [ ] §6.4 `_polars`, and `frontage.remote` moving off FastAPI. Big, and its consumer is a
+      component rather than the framework, so it can wait behind the four above.
+- [ ] Multipart bodies. Not in `API.md` at all and a real gap: a form that uploads a file has
+      nowhere to go.
+- [ ] A native `_schema`: **not yet, and here is the number to revisit by.** Validation is
+      3.31 µs of a 13.05 µs request, so making it free buys +34% on a validated route —
+      against bytes in every page's download and a second implementation to keep in step.
+      Revisit once the floor above is dealt with and validation is still the top line.
+
 ## M0 (in progress)
 
 - [x] Fork tree removed from `main`.
