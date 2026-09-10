@@ -1,4 +1,4 @@
-"""The spike's routes (`PLAN.md` §6.1), shaped like Granian's benchmark app.
+"""The spike's routes (`API.md` §6.1), shaped like Granian's benchmark app.
 
 `hello` is the 1 KB GET that flatters every Rust server and proves little; `echo` reads the
 request body and gives it back, which is where Granian loses half its throughput

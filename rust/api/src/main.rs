@@ -1,4 +1,4 @@
-//! `frontage-api APP.py [--addr HOST:PORT] [--workers N]` — the spike of `PLAN.md` §6.1.
+//! `frontage-api APP.py [--addr HOST:PORT] [--workers N]` — the spike of `API.md` §6.1.
 //!
 //! The app is a Python module with a `ROUTES` dict of path to handler. Every handler takes
 //! the request body as `bytes` and returns `str` or `bytes`; `async def` is allowed as long

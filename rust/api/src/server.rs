@@ -4,7 +4,7 @@
 //! belongs to the VM it started on, so the task that resumes it must not migrate. Each worker
 //! is an OS thread with a `current_thread` tokio runtime of its own, accepting from a clone of
 //! one listener, and a task on such a runtime never moves. That is also the picture
-//! `PLAN.md` §4.1 draws, and it is the difference from the first spike, which ran on the
+//! `API.md` §4.1 draws, and it is the difference from the first spike, which ran on the
 //! multi-thread runtime and was correct only while nothing suspended.
 //!
 //! **The VM is never borrowed across an `.await`.** Every access goes through `with_app`, a
@@ -171,7 +171,7 @@ fn with_app<T>(f: impl FnOnce(&mut App) -> T) -> Result<T, String> {
 }
 
 /// A traceback is the body while this is a spike: there is no user to protect yet and every
-/// failure here is ours. `PLAN.md` §4.8's problem JSON replaces it.
+/// failure here is ours. `API.md` §4.8's problem JSON replaces it.
 fn fault(text: String) -> Response {
     (StatusCode::INTERNAL_SERVER_ERROR, text).into_response()
 }

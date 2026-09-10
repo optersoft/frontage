@@ -2,7 +2,7 @@
 
 This is the honest like-for-like at spike stage: our server has no framework layer yet
 either, so this separates the *server* from the framework FastAPI puts on top of it.
-`fastapi_app.py` is the gate of `PLAN.md` §6.1.
+`fastapi_app.py` is the gate of `API.md` §6.1.
 """
 
 PAYLOAD = b"x" * 1024

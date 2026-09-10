@@ -1,4 +1,4 @@
-//! `_host`: the seam a Rust event completes a Python future through (`PLAN.md` §4.3).
+//! `_host`: the seam a Rust event completes a Python future through (`API.md` §4.3).
 //!
 //! The browser has this already and it is plain Python: `jsffi._await` makes an asyncio
 //! future, hands the promise two callbacks, and returns it. The server's version is the same

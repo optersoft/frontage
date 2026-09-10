@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""What the spike must do, as assertions (`PLAN.md` §6.1 and §4.3).
+"""What the spike must do, as assertions (`API.md` §6.1 and §4.3).
 
-    python3 tests/routes.py            # after `cargo build --release`
+    cargo build -p frontage-api --profile api      # in rust/
+    python3 rust/api/tests/routes.py               # from the repository root, or anywhere
 
 No dependencies: the standard library starts the binary, hits every route in
-`examples/spike/app.py`, and checks the answers. The four that matter are the last four —
+`rust/api/examples/spike/app.py`, and checks the answers. The four that matter are the last four —
 a coroutine that suspends on a tokio deadline, one that suspends on the event loop's own
 timer, one that does both in a row, and one that awaits something nothing will ever settle
 and must answer 500 promptly rather than hang.
@@ -20,7 +21,8 @@ import time
 import urllib.error
 import urllib.request
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+# rust/api/tests/routes.py -> rust/api
+CRATE = pathlib.Path(__file__).resolve().parent.parent
 PORT = 8791
 BASE = f"http://127.0.0.1:{PORT}"
 failures = []
@@ -43,10 +45,10 @@ def get(path, data=None, timeout=10):
 
 
 def main():
-    binary = ROOT / "target" / "release" / "frontage-api"
+    binary = CRATE.parent / "target" / "api" / "frontage-api"
     if not binary.exists():
-        sys.exit(f"build it first: cargo build --release ({binary} is missing)")
-    app = ROOT / "examples" / "spike" / "app.py"
+        sys.exit(f"build it first: cargo build -p frontage-api --profile api ({binary} is missing)")
+    app = CRATE / "examples" / "spike" / "app.py"
     extra = ["--stress"] if "--stress" in sys.argv else []
     if extra:
         print("  (GC stress: collecting at every safe point)")

@@ -108,36 +108,44 @@ which is worth knowing before promising it.
 axum, on this laptop and on a fleet VM, against Granian plus FastAPI on the same box. The
 gate is in §6.
 
-## 3. Why a new repository, and not `frontage/rust/`
+## 3. Where it lives: `rust/api/`, in this repository
 
-The question asked. Four reasons, in the order they bite.
+**Decided 2026-09-10, against what this section first said.** It argued for a separate
+repository beside `frontage/`, consumed by path the way `hive-server` is; it was built that
+way, and then merged here with its history under `rust/api/`. The four arguments it made are
+worth keeping, because two of them were answered by the move and two were answered by
+configuration.
 
-**The workspace's job is a wasm.** `frontage/rust/` has `default-members = ["vm", "compile",
-"py"]` and a `web` crate built only for `wasm32-unknown-unknown`; its gate is
-`cargo test --profile native` plus `mk runtime.build`, and its release artefact is 2.5 MB of
-committed bytes in a wheel a browser downloads. Adding tokio, hyper, rustls, polars and
-turso to that workspace puts tens of megabytes of dependencies and minutes of compile behind
-every runtime change, for crates the browser can never link.
+**"The workspace's job is a wasm."** Still true, and the reason `api` is a workspace member
+but **not a default member**: `cargo test --profile native` and `mk runtime.build` never
+compile tokio, hyper or axum, because the runtime's gate must not slow down to check a
+bytecode change. `cargo build -p frontage-api --profile api` is the server's own line, and
+`[profile.api]` exists for one word — `panic = "unwind"`, because `[profile.release]` sets
+`abort` for the wasm and under that a panic in one request handler takes the process down
+instead of failing one connection.
 
-**The dependency points the wrong way.** `frontage.remote` and `frontage.chat` declare
-`fastapi` in extras today (`polars = [… "fastapi", "uvicorn"]`). They can only move to this
-server if it is a thing frontage may depend on — or, better, a thing that depends on
-frontage and takes those two server halves over. A server inside `frontage/rust/` cannot be
-either.
+**"The dependency points the wrong way."** This one *reverses*. `frontage.remote` and
+`frontage.chat` declare `fastapi` and `uvicorn` in extras today, and in one repository they
+can simply use the server that is already here. As a sibling repo they could not, unless
+frontage took a dependency on it or it took over both server halves.
 
-**The fleet's convention already answers it.** Shared Rust lives in a sibling repo consumed
-by path: `hive-server`, `axum-oauth`, `turso-share`, `d2`, `ecdysis`. This is
-`frontage-vm = { path = "../frontage/rust/vm" }` and nothing new is invented. The path-dep
-rule's consequence applies in full: **a change in the VM reaches this repo with no manifest
-diff, and an uncommitted edit in `frontage/rust/` ships with a deploy**, so a provider
-commit goes alongside the consumer.
+**"The fleet's convention already answers it."** It did, for a sibling. Inside one repository
+the convention that applies is the *other* one this repo already follows: the runtime is
+`rust/`, the Python package is `frontage/`, and a Rust crate belongs beside the crates it
+links against. `frontage-vm = { path = "../vm" }` is shorter than the sibling form and cannot
+go stale.
 
-**Starlette is not in FastAPI's repository either**, which is the analogy the question was
-built on.
+**"Starlette is not in FastAPI's repository."** An analogy, and analogies do not survive
+contact with a wheel tag — see below.
 
-**And one reason not to overstate:** this repo will hold Python of its own (§4.5), and that
-Python is a package that must reach PyPI. It is not "the Rust half of frontage"; it is a
-project with a wheel, a binary and a version of its own.
+**What does not change is the distribution, and it is the one thing worth holding on to.**
+Frontage builds a single pure-Python `py3-none-any` wheel. A server binary with polars in it
+needs a platform matrix — `manylinux_x86_64`, `macosx_arm64`, and every other target §6.5
+builds. So this is **one repository and two wheels**: merging the repos did not merge the
+distributions, and the browser user who never runs a server must not be handed a platform
+wheel. The Python package of §4.5 is therefore a top-level `frontage_api` with a pyproject of
+its own, not a `frontage.api` subpackage — §7 has the rest of that reasoning, which the merge
+leaves standing.
 
 ## 4. The architecture
 
@@ -547,11 +555,13 @@ throughput of §6.1 re-measured there.
 ## 7. Decisions taken, and the risks that remain
 
 **The name is `frontage-api`, and the objection against it did not survive being written
-out.** The objection was that the name reads as a subpackage of frontage, which §3 argues it
-is not. But §3 argues about repositories and wheels, not about product identity, and those
-are different things: `pytest-cov` is a separate repository with its own version and its own
-release path, is genuinely an extension of pytest, and is correctly named for it. **This is
-family by its own pitch.** §4.6 only pays off with a frontage page in front of it, validation
+out — twice.** The objection was that the name reads as a subpackage of frontage, which §3
+then argued it was not. Two things have happened since. §3 was decided the other way and this
+now lives in frontage's own repository, so the family reading is not merely defensible, it is
+the literal truth. And the objection was already weak before that: repository layout and
+wheels are not product identity, and `pytest-cov` is a separate repository with its own
+version and its own release path that is genuinely an extension of pytest and correctly named
+for it. **This is family by its own pitch.** §4.6 only pays off with a frontage page in front of it, validation
 is `frontage.schema`, background work is `frontage.reactive`'s `spawn`, the language subset
 is documented in frontage's own `rust/README.md`, and §5 says outright that this is not for
 existing FastAPI applications. Someone who finds the server first is not the target reader;

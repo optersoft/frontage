@@ -1,23 +1,22 @@
-# frontage-api: FastAPI's shape on axum, handlers on frontage's own Python runtime.
-# `PLAN.md` is the design; §6.1 is the spike this workspace currently is.
-#
-#   server/   frontage-api   the binary: axum, a Vm per worker thread, the protocol seam
-#
-# The runtime comes from the sibling checkout by PATH, per the fleet convention — so a change
-# in `frontage/rust/` reaches here with no manifest diff, and an uncommitted edit there ships
-# with a deploy. Commit the provider alongside the consumer.
-[workspace]
-resolver = "2"
-members = ["server"]
+# The HTTP server: FastAPI's shape on axum, with the handlers on this repository's own Python
+# runtime. `API.md` is the design and the measurements; `../Cargo.toml` says why this crate is
+# a workspace member but not a default one.
+[package]
+name = "frontage-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "FastAPI's shape on axum, with the handlers on frontage's Python runtime"
 
-[workspace.package]
-version = "0.0.1"
-edition = "2021"
-license = "Apache-2.0"
+[[bin]]
+name = "frontage-api"
+path = "src/main.rs"
 
-# The server wants speed and symbols: a profile to measure, not to shrink.
-[profile.release]
-opt-level = 3
-lto = "thin"
-codegen-units = 1
-debug = 1
+[dependencies]
+# ⚠ `axum` follows the fleet pin: `hive-server` is "0.8" and `axum-oauth` is "=0.8.9",
+# because that is what dioxus 0.7 re-exports. A split minor breaks type unification at
+# compile time, not at link time. `API.md` §4.8.
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal"] }
+frontage-vm = { path = "../vm" }
+frontage-compile = { path = "../compile" }

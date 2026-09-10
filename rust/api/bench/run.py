@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The spike's measurement (`PLAN.md` §6.1): us against Granian, same box, same load.
+"""The spike's measurement (`API.md` §6.1): us against Granian, same box, same load.
 
     uv run --no-sync python run.py [--duration 10] [--connections 128] [--workers 1]
 
@@ -21,7 +21,7 @@ import urllib.error
 import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
-ROOT = HERE.parent
+CRATE = HERE.parent
 PORT = 8411
 BODY = HERE / "payload.txt"
 
@@ -107,12 +107,12 @@ def main():
     args = ap.parse_args()
 
     BODY.write_bytes(b"x" * 1024)
-    binary = ROOT / "target" / "release" / "frontage-api"
+    binary = CRATE.parent / "target" / "api" / "frontage-api"
     if not binary.exists():
-        sys.exit(f"build it first: cargo build --release ({binary} is missing)")
+        sys.exit(f"build it first: cargo build -p frontage-api --profile api ({binary} is missing)")
     w = str(args.workers)
     subjects = [
-        ("frontage-api", [str(binary), str(ROOT / "examples" / "spike" / "app.py"),
+        ("frontage-api", [str(binary), str(CRATE / "examples" / "spike" / "app.py"),
                           "--addr", f"127.0.0.1:{PORT}", "--workers", w]),
         ("granian + bare ASGI", ["uv", "run", "--no-sync", "granian", "--interface", "asgi",
                                  "--host", "127.0.0.1", "--port", str(PORT), "--workers", w,

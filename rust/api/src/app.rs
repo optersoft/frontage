@@ -1,7 +1,7 @@
 //! The VM side: load a Python module, hold its routes, run one handler to completion.
 //!
 //! One `App` is one `Vm`, and a `Vm` is not `Send` — the design, not a limitation
-//! (`PLAN.md` §4.1). Every worker thread owns one, they share nothing, and no lock exists
+//! (`API.md` §4.1). Every worker thread owns one, they share nothing, and no lock exists
 //! anywhere because there is nothing to lock.
 //!
 //! **Values held in Rust between calls must be rooted.** The collector is precise and traces
@@ -27,7 +27,7 @@ use std::path::PathBuf;
 pub struct App {
     vm: Vm,
     /// Path to handler, in declaration order. Two routes at the spike, so a linear scan is
-    /// the whole router; a real one arrives with the surface in `PLAN.md` §6.2.
+    /// the whole router; a real one arrives with the surface in `API.md` §6.2.
     routes: Vec<(String, Value)>,
     /// `asyncio.get_event_loop().run_once`, bound once.
     run_once: Value,
@@ -280,7 +280,7 @@ impl App {
     }
 
     /// `str` and `bytes` only, deliberately: the spike measures the transport, and a richer
-    /// return type is the surface of `PLAN.md` §6.2.
+    /// return type is the surface of `API.md` §6.2.
     fn answer(&mut self, value: Value) -> Result<Answer, String> {
         match self.vm.heap.get(value) {
             Obj::Bytes(b) => Ok(Answer { body: b.clone(), content_type: "application/octet-stream" }),

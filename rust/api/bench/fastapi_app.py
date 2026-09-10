@@ -1,4 +1,4 @@
-"""The same two routes on FastAPI: the comparison `PLAN.md` §6.1 sets its gate against."""
+"""The same two routes on FastAPI: the comparison `API.md` §6.1 sets its gate against."""
 
 from fastapi import Request
 from fastapi.responses import Response

@@ -3,13 +3,17 @@
 #   vm/        frontage-vm       the runtime: values, the collector, objects, the bytecode loop, builtins
 #   compile/   frontage-compile  Python source → bytecode, over ruff's parser
 #   py/        fpy               a native runner over both, and the differential tests against CPython
+#   api/       frontage-api      the HTTP server: axum over the VM, one interpreter per worker thread
 [workspace]
 resolver = "2"
-members = ["vm", "compile", "py", "web"]
+members = ["vm", "compile", "py", "web", "api"]
 # Libraries an *app* calls through `data-fr-js`, not part of the runtime: built for
 # `wasm32-unknown-unknown` on their own, with their own profiles (`components/README.md`).
 exclude = ["components"]
 # `web` links only against a browser host: build it with `--target wasm32-unknown-unknown`.
+# `api` is a member but NOT a default member on purpose: it pulls tokio, hyper and axum, and
+# the runtime's own gate (`cargo test --profile native`) must not start compiling a web server
+# to check a bytecode change. Build it by name: `cargo build -p frontage-api --profile api`.
 default-members = ["vm", "compile", "py"]
 
 [workspace.package]
@@ -45,4 +49,15 @@ opt-level = "s"
 
 [profile.wasmn]
 inherits = "wasms"
+strip = false
+
+# The HTTP server (`API.md`). Speed and symbols, and **`panic = "unwind"`, which is the point**:
+# `release` here sets `panic = "abort"` for the wasm, and under that a panic in one request
+# handler takes the whole process down instead of failing one connection.
+[profile.api]
+inherits = "release"
+opt-level = 3
+lto = "thin"
+panic = "unwind"
+debug = 1
 strip = false
