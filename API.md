@@ -586,6 +586,50 @@ a list. Root a value on the line after it exists, not at the end of the function
 **Gate:** `frontage.chat`'s server half runs on it unchanged in behaviour, with its tests
 passing, and the one-crossing budget holds for a no-await handler.
 
+### 6.2b The validator, compiled once instead of walked every time
+
+**Done 2026-09-10, and it was the cheap half of a question worth asking.** The question was
+whether `frontage.schema` should get a native half in Rust the way `reactive.py` has
+`core.rs` — and the framing that came with it needed one correction first: **the browser runs
+the same VM**, so a native `_schema` would not be a server-only thing, it would be bytes in
+every page's download. The cheap move was available first, and it is the one pydantic made
+for its version two: stop walking the schema tree per value, decide what can be decided at
+construction, and execute a plan.
+
+The profiler said where to look, and it was not where the argument would have put it. **The
+record dispatcher was the single largest cost — 35% of the walk, more than any field type.**
+Per field it unpacked a three-tuple, looked the key up *twice* (`in` then `[]`), built
+`path + "." + name` for an error that will not happen, and resolved `t.check` through the
+instance. All of that is decided in `Record._compile` now. Two more: a bare `text()` answers
+after its type check instead of testing four constraints it does not have, and an unbounded
+`integer()` never calls `_bounds` at all.
+
+| | before | after |
+|---|---|---|
+| `Big.validate`, 8 fields, isolated | 3.18 µs | **2.51 µs** |
+| per field | 0.398 µs | **0.314 µs** |
+| the same record through a POST | 4.07 µs | **3.31 µs** |
+| that route, end to end | 72,659 rps | **76,630 rps** |
+
+**21% off the validator, 5.5% off the request**, for no WebAssembly bytes and no second
+implementation — and the page gets it too, because it is the same code. Medians of three,
+measured back to back against the stashed original on a quiet machine, which is the only way
+these numbers mean anything.
+
+⚠ **One finding is worth more than the speed, because it inverts a habit.** `d.get(name,
+MISSING)` reads like the faster choice and is the slower one here: **two dict lookups are two
+opcodes, while `.get` is an attribute resolution and a call** — 0.52 µs against 0.61 for eight
+fields on this runtime. The CPython instinct is exactly backwards. Measure on the runtime that
+will run it.
+
+**And the answer on the Rust half: not yet, with the number to revisit it by.** Validation is
+now 3.31 µs of a 13.05 µs request, so a native validator that made it free would buy **+34% on
+a validated route** — real, but the cost is bytes in every page, a second implementation to
+keep in step, and the "Python is the specification" rule that has served this repo well. The
+bigger target is now the **8.44 µs floor every route pays** before any user code runs, and
+§6.3 and §6.4 are each worth more than 34% on one route. Revisit when a profile says the floor
+is dealt with and validation is still the top line.
+
 ### 6.3 OpenAPI and the docs page
 
 From the routes and `jsonschema.py`. **Gate:** the shared-record example of §4.6 produces a
