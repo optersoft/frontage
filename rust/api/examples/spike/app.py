@@ -18,7 +18,7 @@ import asyncio
 
 import _host
 from frontage.schema import integer, optional, record, text
-from frontage_api import App, HTTPError, Response
+from frontage_api import SSE_DONE, App, HTTPError, Response, Stream, sse
 
 app = App(title="the spike")
 
@@ -79,3 +79,28 @@ async def both():
 async def stuck():
     await asyncio.get_event_loop().create_future()
     return "unreachable"
+
+
+@app.get("/feed")
+async def feed():
+    """A sync generator: the shape that works on this runtime today."""
+
+    def frames():
+        for i in range(5):
+            yield sse({"n": i})
+        yield SSE_DONE
+
+    return Stream(frames(), media_type="text/event-stream")
+
+
+@app.get("/slowfeed")
+async def slowfeed():
+    """A producer that awaits between pieces, which a plain generator cannot do here."""
+
+    async def produce(send):
+        for i in range(3):
+            await _host.sleep(0.02)
+            await send(sse({"n": i}))
+        await send(SSE_DONE)
+
+    return Stream(produce, media_type="text/event-stream")

@@ -82,9 +82,14 @@ fn h_sleep(vm: &mut Vm, args: &[Value], _kwargs: &[(Value, Value)]) -> PyResult 
     Ok(fut)
 }
 
-/// Settle every future whose deadline has passed, and say how long until the next one.
-/// Called by the pump, before the loop's own turn.
-pub fn expire(vm: &mut Vm) -> PyResult<Option<f64>> {
+/// Settle every future whose deadline has passed. Called by the pump, before the loop's turn.
+///
+/// ⚠ **This does not report the next deadline, and that separation is the fix for a real
+/// bug.** A turn of the event loop can *create* host timers — a task that first runs during
+/// `run_once` and immediately awaits `_host.sleep` is exactly that — so a delay measured
+/// before the turn misses them and the pump reports "nothing scheduled". Ask `next_delay`
+/// after the turn instead.
+pub fn expire(vm: &mut Vm) -> PyResult<()> {
     let at = now(vm);
     let due: Vec<u64> = TIMERS.with(|t| {
         let mut timers = t.borrow_mut();
@@ -110,6 +115,17 @@ pub fn expire(vm: &mut Vm) -> PyResult<Option<f64>> {
             }
         }
     }
+    Ok(())
+}
+
+/// How long until the earliest host timer that has not fired, or `None` if there is none.
+/// Read *after* the loop's turn; see the warning on `expire`.
+pub fn next_delay(vm: &Vm) -> Option<f64> {
+    let at = now(vm);
     let next = TIMERS.with(|t| t.borrow().iter().map(|(d, _)| *d).fold(f64::INFINITY, f64::min));
-    Ok(if next.is_finite() { Some((next - at).max(0.0)) } else { None })
+    if next.is_finite() {
+        Some((next - at).max(0.0))
+    } else {
+        None
+    }
 }

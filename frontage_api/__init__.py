@@ -38,14 +38,18 @@ from . import depends as _depends
 from .cors import Cors
 from .depends import Depends
 from .routing import Route, Router
+from .streaming import SSE_DONE, Stream, sse
 
 __all__ = [
+    "SSE_DONE",
     "App",
     "Cors",
     "Depends",
     "HTTPError",
     "Response",
+    "Stream",
     "json_response",
+    "sse",
     "text_response",
 ]
 
@@ -374,6 +378,11 @@ def _body(scope, kind, errors):
 
 
 def _respond(result):
+    if isinstance(result, Stream):
+        # The third element is not bytes, and that is the signal: the server pulls from it
+        # instead of writing it. `API.md` §6.2.
+        status, headers = result.parts()
+        return status, headers, result.chunks()
     if isinstance(result, Response):
         return result.parts()
     if result is None:

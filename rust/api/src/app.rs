@@ -27,6 +27,7 @@ use frontage_vm::host::StdHost;
 use frontage_vm::object::Obj;
 use frontage_vm::value::Value;
 use frontage_vm::vm::Vm;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 pub struct App {
@@ -41,6 +42,13 @@ pub struct App {
     /// rather than Rust maps, because a `Value` in a Rust map is invisible to the collector.
     coros: Value,
     waits: Value,
+    /// token to a `frontage_api.Chunks` still being pulled from.
+    streams: Value,
+    /// Set by `drive_chunk` when a chunk coroutine suspended, consumed by the caller that
+    /// registers it. One at a time, because a chunk is pulled and parked before the next.
+    pending_wait: Option<Value>,
+    /// What each in-flight token is. Plain data, no `Value`s, so no rooting to think about.
+    kinds: HashMap<u32, Kind>,
     /// ⚠ **`u32`, and that is load-bearing.** `vm.int` keeps an `i32` in the value itself and
     /// puts anything larger on the heap, and a heap `Value` held across a call that runs
     /// Python can be collected under it. A token is used as a dict key on both sides of
@@ -50,17 +58,33 @@ pub struct App {
     n_done: Value,
 }
 
-/// What the app answered.
+/// What the app answered: a whole body, or a source to pull pieces from.
 pub struct Answer {
     pub status: u16,
     pub headers: Vec<(String, String)>,
-    pub body: Vec<u8>,
+    pub body: Body,
+}
+
+pub enum Body {
+    Whole(Vec<u8>),
+    /// A `frontage_api.Chunks`, registered under this token. The server pulls with
+    /// `chunk_next` until it answers `None`, then calls `forget_stream`.
+    Stream(u32),
 }
 
 /// A handler either finished inside the one call, or suspended and needs the loop pumped.
 pub enum Started {
     Done(Answer),
     Running(u32),
+}
+
+/// A token is either a request being finished or a chunk being fetched, and `poll` has to
+/// know which because the two read their result differently: a request answers a 3-tuple, a
+/// chunk answers bytes or `None`.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Kind {
+    Request,
+    Chunk,
 }
 
 /// What one `poll` did. **`Advanced` is not a detail:** it says the coroutine was resumed and
@@ -131,8 +155,10 @@ impl App {
         vm.roots.push(coros);
         let waits = vm.dict(PyDict::new());
         vm.roots.push(waits);
+        let streams = vm.dict(PyDict::new());
+        vm.roots.push(streams);
         let n_done = vm.intern("done");
-        Ok(App { vm, handle, routes, run_once, coros, waits, next_token: 1, n_done })
+        Ok(App { vm, handle, routes, run_once, coros, waits, streams, pending_wait: None, kinds: HashMap::new(), next_token: 1, n_done })
     }
 
     /// `["GET /trips/{id}", ...]` for the banner. Best effort: a failure here is cosmetic.
@@ -214,7 +240,7 @@ impl App {
         if !is_coroutine {
             return self.answer(value).map(Started::Done);
         }
-        match self.drive(value)? {
+        match self.drive_kind(value, Kind::Request)? {
             // The common case, and the one §4.4 budgets: an `async def` that never suspends
             // costs one resume, no token, no dict and no loop turn.
             Progress::Done(a) => Ok(Started::Done(a)),
@@ -227,6 +253,7 @@ impl App {
                 let key = self.vm.int(token as i64);
                 self.vm.dict_set(self.coros, key, value);
                 self.vm.dict_set(self.waits, key, fut);
+                self.kinds.insert(token, Kind::Request);
                 Ok(Started::Running(token))
             }
         }
@@ -235,13 +262,16 @@ impl App {
     /// One resume of a coroutine. The value is rooted for the duration: `gen_resume` runs
     /// Python, Python can collect, and a coroutine reachable only from a Rust local is not
     /// reachable at all.
-    fn drive(&mut self, coro: Value) -> Result<Progress, String> {
+    fn drive_kind(&mut self, coro: Value, kind: Kind) -> Result<Progress, String> {
         let mark = self.vm.roots.len();
         self.vm.roots.push(coro);
         let mut returned = Value::NONE;
         let stepped = self.vm.gen_resume(coro, Value::NONE, None, &mut returned);
         let out = match stepped {
-            Ok(None) => self.answer(returned).map(Progress::Done),
+            Ok(None) => match kind {
+                Kind::Request => self.answer(returned).map(Progress::Done),
+                Kind::Chunk => self.chunk(returned).map(Progress::Done),
+            },
             Ok(Some(yielded)) => Ok(Progress::Waiting(yielded)),
             Err(exc) => Err(fault(&mut self.vm, exc)),
         };
@@ -272,7 +302,8 @@ impl App {
             Some(c) => c,
             None => return Err("no such request in flight".into()),
         };
-        match self.drive(coro) {
+        let kind = self.kinds.get(&token).copied().unwrap_or(Kind::Request);
+        match self.drive_kind(coro, kind) {
             Ok(Progress::Done(a)) => {
                 self.forget(token);
                 Ok(Poll::Done(a))
@@ -300,6 +331,7 @@ impl App {
         let key = self.vm.int(token as i64);
         self.vm.dict_remove(self.coros, key);
         self.vm.dict_remove(self.waits, key);
+        self.kinds.remove(&token);
     }
 
     /// One turn of the loop: settle any `_host` future whose deadline passed, then run the
@@ -307,16 +339,19 @@ impl App {
     /// thing is due, or `None` when nothing at all is scheduled — which, with a request
     /// still in flight, means it awaited something nobody will ever complete.
     pub fn pump(&mut self) -> Result<Option<f64>, String> {
-        let host_delay = match hostmod::expire(&mut self.vm) {
-            Ok(d) => d,
-            Err(exc) => return Err(fault(&mut self.vm, exc)),
-        };
+        if let Err(exc) = hostmod::expire(&mut self.vm) {
+            return Err(fault(&mut self.vm, exc));
+        }
         let turned = self.vm.call(self.run_once, &[], &[]);
         let loop_delay = match turned {
             Ok(v) if v.is_none() => None,
             Ok(v) => self.vm.as_f64(v),
             Err(exc) => return Err(fault(&mut self.vm, exc)),
         };
+        // ⚠ After the turn, not before: `run_once` can start a task that immediately awaits
+        // `_host.sleep`, and a deadline read beforehand would miss it and call the request
+        // deadlocked. That is what it did.
+        let host_delay = hostmod::next_delay(&self.vm);
         Ok(match (loop_delay, host_delay) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
@@ -325,6 +360,11 @@ impl App {
 
     /// `App.handle` answers `(status, headers, body)`. Anything else is the app's bug, and
     /// saying so precisely is worth more than a generic 500.
+    ///
+    /// A body that is neither `bytes` nor `str` is a chunk source (`frontage_api.Stream`):
+    /// it is registered under a token and the server pulls from it. That is the only signal
+    /// — there is no flag — because a `Chunks` is the one thing a handler can put there that
+    /// is not a body.
     fn answer(&mut self, value: Value) -> Result<Answer, String> {
         let items: Vec<Value> = match self.vm.heap.get(value) {
             Obj::Tuple(items) | Obj::List(items) => items.clone(),
@@ -355,13 +395,103 @@ impl App {
             }
         }
         let body = match self.vm.heap.get(items[2]) {
-            Obj::Bytes(b) => b.clone(),
+            Obj::Bytes(b) => Body::Whole(b.clone()),
             _ => match self.vm.as_str(items[2]) {
-                Some(s) => s.as_bytes().to_vec(),
-                None => return Err("App.handle: the body is not bytes or str".into()),
+                Some(s) => Body::Whole(s.as_bytes().to_vec()),
+                None => Body::Stream(self.register_stream(items[2])),
             },
         };
         Ok(Answer { status, headers, body })
+    }
+
+    /// Keep a chunk source alive under a token. Rooted in a Python dict, like everything else
+    /// here that outlives one call.
+    fn register_stream(&mut self, source: Value) -> u32 {
+        let token = self.next_token;
+        self.next_token = self.next_token.wrapping_add(1).max(1);
+        let key = self.vm.int(token as i64);
+        self.vm.dict_set(self.streams, key, source);
+        token
+    }
+
+    /// Ask a registered source for its next chunk. `Started::Done` with an empty answer and
+    /// status 0 means the stream is finished.
+    pub fn chunk_next(&mut self, stream: u32) -> Result<Started, String> {
+        let key = self.vm.int(stream as i64);
+        let source = match self.vm.dict_get(self.streams, key) {
+            Some(s) => s,
+            None => return Err("no such stream".into()),
+        };
+        let mark = self.vm.roots.len();
+        self.vm.roots.push(source);
+        let next = {
+            let name = self.vm.intern("next");
+            match self.vm.get_attr(source, name) {
+                Ok(f) => self.vm.call(f, &[], &[]),
+                Err(exc) => Err(exc),
+            }
+        };
+        let out = match next {
+            Ok(v) => self.after_call_chunk(v),
+            Err(exc) => Err(fault(&mut self.vm, exc)),
+        };
+        self.vm.roots.truncate(mark);
+        out
+    }
+
+    fn after_call_chunk(&mut self, value: Value) -> Result<Started, String> {
+        let is_coroutine = match self.vm.heap.get(value) {
+            Obj::Generator(g) => g.is_coroutine,
+            _ => false,
+        };
+        if !is_coroutine {
+            return self.chunk(value).map(Started::Done);
+        }
+        match self.drive_chunk(value)? {
+            Some(answer) => Ok(Started::Done(answer)),
+            None => {
+                let token = self.next_token;
+                self.next_token = self.next_token.wrapping_add(1).max(1);
+                let key = self.vm.int(token as i64);
+                self.vm.dict_set(self.coros, key, value);
+                if let Some(fut) = self.pending_wait.take() {
+                    self.vm.dict_set(self.waits, key, fut);
+                }
+                self.kinds.insert(token, Kind::Chunk);
+                Ok(Started::Running(token))
+            }
+        }
+    }
+
+    /// One resume of a chunk coroutine: `Some` when it finished, `None` when it suspended.
+    fn drive_chunk(&mut self, coro: Value) -> Result<Option<Answer>, String> {
+        match self.drive_kind(coro, Kind::Chunk)? {
+            Progress::Done(answer) => Ok(Some(answer)),
+            Progress::Waiting(fut) => {
+                self.pending_wait = Some(fut);
+                Ok(None)
+            }
+        }
+    }
+
+    /// `None` from the source ends the stream, and is spelled here as status 0.
+    fn chunk(&mut self, value: Value) -> Result<Answer, String> {
+        if value.is_none() {
+            return Ok(Answer { status: 0, headers: Vec::new(), body: Body::Whole(Vec::new()) });
+        }
+        let body = match self.vm.heap.get(value) {
+            Obj::Bytes(b) => b.clone(),
+            _ => match self.vm.as_str(value) {
+                Some(s) => s.as_bytes().to_vec(),
+                None => return Err("a stream chunk must be bytes or str".into()),
+            },
+        };
+        Ok(Answer { status: 200, headers: Vec::new(), body: Body::Whole(body) })
+    }
+
+    pub fn forget_stream(&mut self, stream: u32) {
+        let key = self.vm.int(stream as i64);
+        self.vm.dict_remove(self.streams, key);
     }
 
     /// Let the collector run between requests rather than inside one.

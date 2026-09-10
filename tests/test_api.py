@@ -1,9 +1,11 @@
 """The server's surface (`API.md` §6.2), through the client that has no server under it."""
 
+import asyncio
+
 import pytest
 
 from frontage.schema import integer, optional, record, text
-from frontage_api import App, Cors, Depends, HTTPError, text_response
+from frontage_api import App, Cors, Depends, HTTPError, Stream, sse, text_response
 from frontage_api.routing import Route, Router, compile_path
 from frontage_api.testing import Client
 
@@ -314,3 +316,86 @@ def test_lifespan_runs_per_worker_in_order():
     asyncio.run(app.startup())
     asyncio.run(app.shutdown())
     assert order == ["up", "down"]
+
+
+# --- streaming (API.md §6.2) ----------------------------------------------------------------
+
+
+def _drain(chunks):
+    import asyncio
+
+    async def go():
+        out = []
+        while True:
+            piece = await chunks.next()
+            if piece is None:
+                return out
+            out.append(piece)
+
+    return asyncio.run(go())
+
+
+def test_a_stream_over_a_generator_yields_each_piece():
+    from frontage_api.streaming import Chunks
+
+    def frames():
+        yield "a"
+        yield b"b"
+        yield {"c": 1}
+
+    assert _drain(Chunks(frames())) == [b"a", b"b", b'{"c": 1}']
+
+
+def test_a_stream_over_a_producer_hands_pieces_out_one_at_a_time():
+    from frontage_api.streaming import Chunks
+
+    async def produce(send):
+        for i in range(3):
+            await send("n%d" % i)
+
+    assert _drain(Chunks(produce)) == [b"n0", b"n1", b"n2"]
+
+
+def test_a_producer_that_raises_ends_the_stream_with_its_error():
+    from frontage_api.streaming import Chunks
+
+    async def produce(send):
+        await send("first")
+        raise ValueError("halfway")
+
+    import asyncio
+
+    async def go():
+        chunks = Chunks(produce)
+        assert await chunks.next() == b"first"
+        try:
+            await chunks.next()
+        except ValueError as exc:
+            return str(exc)
+        return "no error"
+
+    assert asyncio.run(go()) == "halfway"
+
+
+def test_sse_frames_survive_a_newline():
+    from frontage_api import sse
+
+    assert sse("a\nb") == 'data: "a\\nb"\n\n'
+
+
+def test_an_event_stream_gets_the_headers_a_proxy_needs():
+    app = App()
+
+    @app.get("/events")
+    async def events():
+        def frames():
+            yield sse({"n": 1})
+
+        return Stream(frames(), media_type="text/event-stream")
+
+    status, headers, body = asyncio.run(app.handle({"method": "GET", "path": "/events"}))
+    names = {name: value for name, value in headers}
+    assert names["content-type"] == "text/event-stream"
+    assert names["cache-control"] == "no-cache"
+    assert names["x-accel-buffering"] == "no", "a proxy would otherwise buffer the whole stream"
+    assert _drain(body) == [b'data: {"n": 1}\n\n'], "the body is a source, not bytes"

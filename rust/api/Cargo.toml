@@ -17,6 +17,8 @@ path = "src/main.rs"
 # because that is what dioxus 0.7 re-exports. A split minor breaks type unification at
 # compile time, not at link time. `API.md` §4.8.
 axum = "0.8"
-tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal", "sync", "time"] }
+# A streamed body is an mpsc receiver turned into a Stream; nothing else needs this.
+tokio-stream = "0.1"
 frontage-vm = { path = "../vm" }
 frontage-compile = { path = "../compile" }

@@ -134,6 +134,28 @@ def main():
         check("an unsettleable await is 500", status == 500, str(status))
         check("and it does not hang", took < 1.0, f"{took:.3f}s")
 
+        # Streaming (§6.2): the pieces must arrive as they are made, not in one lump at the
+        # end. A test that only checks *what* arrives passes either way — the first
+        # implementation buffered a producer to completion and delivered four frames
+        # together at 71 ms — so this one checks *when*.
+        status, body, _ = get("/feed")
+        frames = [line for line in body.decode().split("\n\n") if line]
+        check("a generator stream sends every frame", len(frames) == 6, str(len(frames)))
+
+        arrivals = []
+        started = time.time()
+        with urllib.request.urlopen(BASE + "/slowfeed", timeout=10) as response:
+            while True:
+                line = response.readline()
+                if not line:
+                    break
+                if line.strip():
+                    arrivals.append((time.time() - started, line.decode().strip()))
+        check("an awaiting producer streams too", len(arrivals) == 4, str(len(arrivals)))
+        spread = arrivals[-1][0] - arrivals[0][0] if len(arrivals) > 1 else 0
+        check("and its pieces arrive apart, not together", spread > 0.02,
+              f"first to last {spread * 1000:.0f}ms, three 20ms sleeps")
+
         # One worker, many suspended requests: they must interleave, not queue.
         with subprocess.Popen([str(binary), str(app), "--addr", f"127.0.0.1:{PORT + 1}",
                                "--workers", "1", *extra], stdout=subprocess.DEVNULL,

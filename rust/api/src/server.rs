@@ -16,7 +16,7 @@
 //! the body arrives whole, Python is entered once, and the response leaves in one piece. A
 //! handler that does not suspend never touches the event loop at all.
 
-use crate::app::{Answer, App, Poll, Started};
+use crate::app::{Answer, App, Body, Poll, Started};
 use axum::extract::Request;
 use axum::http::{HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -25,6 +25,9 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::Duration;
+use axum::body::Bytes;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 /// Where the app module lives, for the workers that have not built their VM yet.
 static SOURCE: OnceLock<(PathBuf, String, Vec<PathBuf>, bool)> = OnceLock::new();
@@ -126,40 +129,21 @@ async fn handle(request: Request) -> Response {
 /// Pump this thread's loop until the request's coroutine finishes, yielding to tokio in
 /// between so the worker keeps answering other connections.
 async fn park(token: u32) -> Response {
-    loop {
-        // ⚠ Pump, *then* poll, and never the other way round. A turn of the loop settles the
-        // future and reports "nothing scheduled" in the same breath — the timer it was
-        // waiting for is the last one — so polling before the pump and reading `None` as a
-        // deadlock declares every awaiting handler stuck. It did, until this order.
-        let delay = match with_app(|app| app.pump()) {
-            Ok(Ok(d)) => d,
-            Ok(Err(text)) => return fault(text),
-            Err(e) => return fault(e),
-        };
-        match with_app(|app| app.poll(token)) {
-            Ok(Ok(Poll::Done(answer))) => return respond(answer),
-            // The coroutine moved: it may have awaited something new, so `delay` is stale.
-            // Go round and measure again rather than judge the request on an old answer.
-            Ok(Ok(Poll::Advanced)) => continue,
-            Ok(Ok(Poll::Blocked)) => {}
-            Ok(Err(text)) => return fault(text),
-            Err(e) => return fault(e),
-        }
-        match delay {
-            // Nothing is scheduled, and the poll above did not finish this request: it
-            // awaited something no timer and no host future will ever settle. Say so rather
-            // than hang.
-            None => return fault("this handler is waiting on something nothing will complete".into()),
-            Some(seconds) if seconds > 0.0 => {
-                tokio::time::sleep(Duration::from_secs_f64(seconds).min(MAX_PARK)).await;
-            }
-            Some(_) => tokio::task::yield_now().await,
-        }
+    // ⚠ The pump-then-poll order inside `park_value` is not a style choice. A turn of the
+    // loop settles the last future and reports "nothing scheduled" in the same breath, so
+    // polling first and reading `None` as a deadlock declares every awaiting handler stuck.
+    match park_value(token).await {
+        Ok(answer) => respond(answer),
+        Err(text) => fault(text),
     }
 }
 
 fn respond(answer: Answer) -> Response {
-    let mut response = Response::new(axum::body::Body::from(answer.body));
+    let body = match answer.body {
+        Body::Whole(bytes) => axum::body::Body::from(bytes),
+        Body::Stream(token) => stream_body(token),
+    };
+    let mut response = Response::new(body);
     *response.status_mut() = StatusCode::from_u16(answer.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     let out = response.headers_mut();
     for (name, value) in answer.headers {
@@ -173,6 +157,76 @@ fn respond(answer: Answer) -> Response {
         }
     }
     response
+}
+
+/// A chunk source, pulled one piece at a time and written as it comes.
+///
+/// **The VM never crosses an `.await` here either.** The pulling task holds a token and a
+/// sender, both `Send`, and every touch of the interpreter is inside a synchronous closure —
+/// which is what lets `tokio::spawn` take it. It stays on this thread because the runtime is
+/// `current_thread`, and it must, because the source belongs to this thread's `Vm`.
+///
+/// A channel of one: the producer is not allowed to run ahead of the reader, so a slow client
+/// slows the handler instead of filling memory with chunks nobody has read.
+fn stream_body(token: u32) -> axum::body::Body {
+    let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(1);
+    tokio::spawn(async move {
+        loop {
+            let started = match with_app(|app| app.chunk_next(token)) {
+                Ok(Ok(s)) => s,
+                Ok(Err(text)) | Err(text) => {
+                    // A stream that fails after its headers went out cannot change status,
+                    // so the only honest thing is to abort the body and say why on the way.
+                    eprintln!("frontage-api: stream {token} failed: {text}");
+                    let _ = tx.send(Err(std::io::Error::other(text))).await;
+                    break;
+                }
+            };
+            let answer = match started {
+                Started::Done(answer) => answer,
+                Started::Running(inner) => match park_value(inner).await {
+                    Ok(answer) => answer,
+                    Err(text) => {
+                        eprintln!("frontage-api: stream {token} failed while parked: {text}");
+                        let _ = tx.send(Err(std::io::Error::other(text))).await;
+                        break;
+                    }
+                },
+            };
+            // Status 0 is how the source says it is finished; see `App::chunk`.
+            if answer.status == 0 {
+                break;
+            }
+            let bytes = match answer.body {
+                Body::Whole(bytes) => bytes,
+                Body::Stream(_) => break,
+            };
+            if tx.send(Ok(Bytes::from(bytes))).await.is_err() {
+                break; // the client went away
+            }
+        }
+        let _ = with_app(|app| app.forget_stream(token));
+    });
+    axum::body::Body::from_stream(ReceiverStream::new(rx))
+}
+
+/// `park`, but answering the value rather than a `Response`: a chunk needs the same pump.
+async fn park_value(token: u32) -> Result<Answer, String> {
+    loop {
+        let delay = with_app(|app| app.pump())??;
+        match with_app(|app| app.poll(token))?? {
+            Poll::Done(answer) => return Ok(answer),
+            Poll::Advanced => continue,
+            Poll::Blocked => {}
+        }
+        match delay {
+            None => return Err("this handler is waiting on something nothing will complete".into()),
+            Some(seconds) if seconds > 0.0 => {
+                tokio::time::sleep(Duration::from_secs_f64(seconds).min(MAX_PARK)).await;
+            }
+            Some(_) => tokio::task::yield_now().await,
+        }
+    }
 }
 
 /// This thread's VM, built on first use.
