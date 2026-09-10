@@ -28,9 +28,13 @@ use std::time::Duration;
 use axum::body::Bytes;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use tower_http::services::ServeDir;
 
 /// Where the app module lives, for the workers that have not built their VM yet.
 static SOURCE: OnceLock<(PathBuf, String, Vec<PathBuf>, bool)> = OnceLock::new();
+
+/// `App(static=…)`, resolved once at startup. Read by every worker, written by none.
+static STATIC_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
 
 /// A request body past this is refused rather than buffered.
 const MAX_BODY: usize = 8 * 1024 * 1024;
@@ -61,7 +65,17 @@ pub struct Config {
 /// every worker.
 pub fn serve(config: Config) -> Result<(), String> {
     let _ = SOURCE.set((config.dir.clone(), config.module.clone(), config.search.clone(), config.stress));
-    let paths = App::load(config.dir.clone(), &config.module, &config.search, config.stress)?.paths();
+    let probe = App::load(config.dir.clone(), &config.module, &config.search, config.stress)?;
+    let paths = probe.paths();
+    // Relative to the app's own directory, which is where an author means it.
+    let statics = probe.statics.as_ref().map(|d| config.dir.join(d));
+    if let Some(dir) = &statics {
+        if !dir.is_dir() {
+            return Err(format!("static={}: not a directory", dir.display()));
+        }
+    }
+    let _ = STATIC_DIR.set(statics);
+    drop(probe);
 
     let listener = std::net::TcpListener::bind(&config.addr).map_err(|e| format!("{}: {e}", config.addr))?;
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
@@ -70,6 +84,9 @@ pub fn serve(config: Config) -> Result<(), String> {
              if config.stress { ", GC stress" } else { "" });
     for p in &paths {
         println!("  {p}");
+    }
+    if let Some(Some(dir)) = STATIC_DIR.get() {
+        println!("  files from {}", dir.display());
     }
 
     let mut threads = Vec::with_capacity(config.workers);
@@ -106,6 +123,11 @@ async fn handle(request: Request) -> Response {
     let method = request.method().as_str().to_owned();
     let path = request.uri().path().to_owned();
     let query = request.uri().query().unwrap_or("").to_owned();
+    // Kept in case the app claims no route and a file has to answer instead.
+    let (parts, request) = {
+        let (parts, body) = request.into_parts();
+        (parts.clone(), Request::from_parts(parts, body))
+    };
     // The body is read before Python is entered, so the VM is never borrowed across an await
     // and the handler holds nothing but `Send` values over one.
     let body = match axum::body::to_bytes(request.into_body(), MAX_BODY).await {
@@ -116,11 +138,32 @@ async fn handle(request: Request) -> Response {
         Ok(r) => r,
         Err(e) => return fault(e),
     };
-    let response = match started {
+    let mut response = match started {
         Ok(Started::Done(answer)) => respond(answer),
         Ok(Started::Running(token)) => park(token).await,
         Err(text) => fault(text),
     };
+    // **The app is asked first and files answer second**, which is the order that matters:
+    // `ServeDir` handles only GET and HEAD, so files-first would answer 405 to every POST
+    // instead of falling through to the route that wanted it.
+    if response.status() == StatusCode::NOT_FOUND {
+        if let Some(Some(dir)) = STATIC_DIR.get() {
+            let origin = parts.headers.get("origin").and_then(|v| v.to_str().ok()).map(|s| s.to_owned());
+            if let Some(mut file) = serve_file(dir, parts).await {
+                if let Some(origin) = origin {
+                    if let Ok(extra) = with_app(|app| app.cors_headers(&origin)) {
+                        let out = file.headers_mut();
+                        for (name, value) in extra {
+                            if let (Ok(n), Ok(v)) = (HeaderName::from_bytes(name.as_bytes()), HeaderValue::from_str(&value)) {
+                                out.append(n, v);
+                            }
+                        }
+                    }
+                }
+                response = file;
+            }
+        }
+    }
     // Collect between requests rather than inside one.
     let _ = with_app(|app| app.settle_heap());
     response
@@ -157,6 +200,18 @@ fn respond(answer: Answer) -> Response {
         }
     }
     response
+}
+
+/// The file a request names, if there is one. A directory answers its `index.html`, which is
+/// what `frontage build` writes and what a page at `/` means.
+async fn serve_file(dir: &PathBuf, parts: axum::http::request::Parts) -> Option<Response> {
+    use tower::util::ServiceExt;
+    let request = Request::from_parts(parts, axum::body::Body::empty());
+    let service = ServeDir::new(dir).append_index_html_on_directories(true);
+    match service.oneshot(request).await {
+        Ok(response) if response.status() != StatusCode::NOT_FOUND => Some(response.map(axum::body::Body::new)),
+        _ => None,
+    }
 }
 
 /// A chunk source, pulled one piece at a time and written as it comes.

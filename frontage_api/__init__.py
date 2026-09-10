@@ -290,6 +290,19 @@ class App:
     # `get`, `post`, `put`, `patch`, `delete`, `head` and `options` are installed at the
     # bottom of this file, one per method, rather than written out seven times.
 
+    def cors_headers(self, origin):
+        """What a *file* response should carry, asked for by the server.
+
+        A file is served by Rust and never reaches `handle`, so it would otherwise answer a
+        cross-origin `fetch` with no headers at all — which matters here, because the docs'
+        sandboxed runner sits in an opaque origin and frontage's own `_headers` file exists
+        for exactly this. Asked only when the request carried an `Origin`, so a same-origin
+        page pays nothing.
+        """
+        if self.cors is None:
+            return []
+        return self.cors.headers_for(origin)
+
     async def handle(self, scope):
         """One request in, `(status, headers, body)` out. The only thing the server calls."""
         headers = Headers(scope.get("headers"))

@@ -32,10 +32,14 @@ use std::path::PathBuf;
 
 pub struct App {
     vm: Vm,
-    /// `app.handle`, bound once: the single entry per request.
+    /// The `frontage_api.App` itself, and `app.handle` bound once: the single entry per
+    /// request. Both rooted for the life of the process.
+    app: Value,
     handle: Value,
     /// What the app declares it serves, for the startup banner only.
     routes: Vec<String>,
+    /// `App(static=…)`: a directory the server serves for paths no route claims.
+    pub statics: Option<String>,
     /// `asyncio.get_event_loop().run_once`, bound once.
     run_once: Value,
     /// token to the suspended coroutine, and token to the future it waits on. Python dicts
@@ -143,8 +147,13 @@ impl App {
         // `--stress`, where it showed as `TypeError: 'list' object is not callable` — the
         // slot reused by something else. Permanent roots, at the bottom of the stack: every
         // per-call `truncate` marks above them, so they are never popped.
+        vm.roots.push(app);
         vm.roots.push(handle);
         let routes = Self::describe(&mut vm, app);
+        let statics = {
+            let k = vm.intern("static");
+            vm.get_attr(app, k).ok().and_then(|v| vm.as_str(v).map(|s| s.to_owned()))
+        };
 
         let run_once = match Self::bind_run_once(&mut vm) {
             Ok(v) => v,
@@ -158,7 +167,7 @@ impl App {
         let streams = vm.dict(PyDict::new());
         vm.roots.push(streams);
         let n_done = vm.intern("done");
-        Ok(App { vm, handle, routes, run_once, coros, waits, streams, pending_wait: None, kinds: HashMap::new(), next_token: 1, n_done })
+        Ok(App { vm, app, handle, routes, statics, run_once, coros, waits, streams, pending_wait: None, kinds: HashMap::new(), next_token: 1, n_done })
     }
 
     /// `["GET /trips/{id}", ...]` for the banner. Best effort: a failure here is cosmetic.
@@ -487,6 +496,41 @@ impl App {
             },
         };
         Ok(Answer { status: 200, headers: Vec::new(), body: Body::Whole(body) })
+    }
+
+    /// The CORS headers a file response should carry, from the app's own policy rather than
+    /// a copy of it kept here — two policies drift, and this one is asked only when the
+    /// request carried an `Origin`.
+    pub fn cors_headers(&mut self, origin: &str) -> Vec<(String, String)> {
+        let mark = self.vm.roots.len();
+        let value = self.vm.str(origin);
+        self.vm.roots.push(value);
+        let out = (|| {
+            let name = self.vm.intern("cors_headers");
+            let f = self.vm.get_attr(self.app, name).ok()?;
+            let result = self.vm.call(f, &[value], &[]).ok()?;
+            let pairs: Vec<Value> = match self.vm.heap.get(result) {
+                Obj::List(v) | Obj::Tuple(v) => v.clone(),
+                _ => return None,
+            };
+            let mut headers = Vec::new();
+            for pair in pairs {
+                let parts: Vec<Value> = match self.vm.heap.get(pair) {
+                    Obj::Tuple(v) | Obj::List(v) if v.len() == 2 => v.clone(),
+                    _ => continue,
+                };
+                if let (Some(n), Some(v)) = (
+                    self.vm.as_str(parts[0]).map(|s| s.to_owned()),
+                    self.vm.as_str(parts[1]).map(|s| s.to_owned()),
+                ) {
+                    headers.push((n, v));
+                }
+            }
+            Some(headers)
+        })()
+        .unwrap_or_default();
+        self.vm.roots.truncate(mark);
+        out
     }
 
     pub fn forget_stream(&mut self, stream: u32) {

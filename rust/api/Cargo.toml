@@ -20,5 +20,9 @@ axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal", "sync", "time"] }
 # A streamed body is an mpsc receiver turned into a Stream; nothing else needs this.
 tokio-stream = "0.1"
+# Static files are served by Rust, not by walking a directory through an interpreter:
+# ranges, etags and sendfile come with it. Same major as `hive-server`'s.
+tower-http = { version = "0.6", features = ["fs"] }
+tower = { version = "0.5", features = ["util"] }
 frontage-vm = { path = "../vm" }
 frontage-compile = { path = "../compile" }
