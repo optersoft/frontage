@@ -1,0 +1,5 @@
+[project]
+name = "frontage-api-bench"
+version = "0"
+requires-python = ">=3.13"
+dependencies = ["granian>=2.8", "fastapi>=0.115", "uvicorn>=0.34"]

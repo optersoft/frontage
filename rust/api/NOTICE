@@ -1,0 +1,11 @@
+frontage-api
+Copyright 2026 Optersoft, S.L.
+
+"Frontage" is a trademark of Optersoft, S.L. The Apache License grants no
+trademark rights (section 6); a derivative work must use a different name.
+
+frontage-api's request interface follows the shape of the RSGI specification
+(Granian, BSD-3-Clause) and its route surface follows the shape of FastAPI
+(MIT). Neither project's code is included, and none of it was read while
+writing this: their specifications and documentation are the sources, per the
+clean-room rule this project inherits from frontage.
