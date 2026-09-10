@@ -282,11 +282,10 @@ idea, and the conversion is `frontage.schema` with `coerce=True` — which is wh
 was written for: *"a query parameter is always a string"*. A schema failure is a 422 whose
 body is the `(path, message)` pairs `validate` already returns.
 
-**Where the package lives is a decision, not an implementation detail** (§7): `frontage.api`
-as a subpackage of the frontage wheel, so one `pip install` gets both halves and a record
-shared between page and server is one import — or `frontage_api`, its own wheel, so a server
-does not carry the browser's 2.5 MB of runtime. The second is probably right and §7 records
-why the question is open.
+**The package is `frontage_api`, its own wheel** (§7 has the reasoning): a top-level import
+name, not a `frontage.api` subpackage, so a shared record is a two-package install and a
+server never carries the browser's runtime. `from frontage.schema import record` still reads
+the same on both sides, which is all §4.6 needs.
 
 ### 4.6 Validation is `frontage.schema`, and it is the strongest single argument
 
@@ -431,7 +430,7 @@ One crate each, behind cargo features so a server pays only for what it imports:
 | module | crate | first consumer |
 |---|---|---|
 | `_http` | `reqwest` | `frontage.chat` — hold the key, stream the answer |
-| `_polars` | `polars` (lazy, parquet, csv) | `frontage.remote` — **§7's correction: polars is Rust** |
+| `_polars` | `polars` (lazy, parquet, csv) | `frontage.remote` — **polars is Rust, so it is no exception** |
 | `_turso` | `turso` | the fleet's own data story |
 | `_datetime`, `_env`, `_log`, `_fs` | `chrono`, `std`, `tracing`, `tokio::fs` | everything |
 
@@ -464,19 +463,47 @@ from `fastapi` + `uvicorn` to this.
 **Gate:** one of the two consumers deployed on a fleet VM behind the gateway, with the
 throughput of §6.1 re-measured there.
 
-## 7. Risks, and the decisions to take
+## 7. Decisions taken, and the risks that remain
 
-**The name.** This file assumes `frontage-api`, which is the session's name for the work and
-reads honestly (FastAPI's shape, frontage's runtime). It has one flaw: it suggests a
-subpackage of frontage, which §3 argues it is not. The alternative is a name of its own,
-which costs a paragraph of explanation and buys the freedom to be a server people use without
-having written a frontage page. **Open; nothing below depends on it.**
+**The name is `frontage-api`, and the objection against it did not survive being written
+out.** The objection was that the name reads as a subpackage of frontage, which §3 argues it
+is not. But §3 argues about repositories and wheels, not about product identity, and those
+are different things: `pytest-cov` is a separate repository with its own version and its own
+release path, is genuinely an extension of pytest, and is correctly named for it. **This is
+family by its own pitch.** §4.6 only pays off with a frontage page in front of it, validation
+is `frontage.schema`, background work is `frontage.reactive`'s `spawn`, the language subset
+is documented in frontage's own `rust/README.md`, and §5 says outright that this is not for
+existing FastAPI applications. Someone who finds the server first is not the target reader;
+someone who arrives from frontage wanting a server is, and the prefix is what that person
+searches for. So the prefix earns its place.
 
-**One wheel or two** (§4.5). `frontage.api` inside the frontage wheel makes a shared record
-one import and drags the browser runtime's 2.5 MB onto every server. A separate `frontage-api`
-wheel depending on `frontage` keeps them apart and makes the shared-record story a
-two-package install, which is normal. **Leaning to two**, decided at §6.2 when the layer
-exists.
+**What is genuinely weak is the suffix, and the alternatives are worse.** "The frontage API"
+already means something in this project's vocabulary — `Signal`, `Memo`, `mount`, the names
+`_exports.py` tabulates — so `frontage-api` collides with a phrase in use, and it names the
+wrong half: the artifact is a server, and what it serves is not only an API. The fleet
+convention (`hive-server`, `staff-store`) would say **`frontage-server`**, which is worse:
+**`frontage serve` is already the dev server command**, so the production server and the
+static dev server would differ by one character. **`frontage-http`** is the clean option, no
+collision anywhere, slightly colder to read. `frontage-api` is kept because a reader arriving
+from FastAPI understands it instantly, and that beats a mild clash with an internal phrase.
+**Decided, and reversible for the cost of a rename until §6.5 puts a wheel on PyPI.**
+
+**Two wheels, decided, and not for the reason first given.** The first draft of this section
+said a single wheel would drag the browser runtime's 2.5 MB onto every server, which is a weak
+argument: 2.5 MB is nothing by server standards. **The real reason is the wheel tag.** Frontage
+builds one pure-Python `py3-none-any` wheel from hatchling. A server binary with polars in it
+needs a platform matrix — `manylinux_x86_64`, `macosx_arm64`, and every other target §6.5
+builds. Merging them would turn every browser user's install into a platform wheel for a
+server they are not running.
+
+**And the import is a top-level `frontage_api`, not `frontage.api`.** A second wheel writing
+into frontage's package directory would technically resolve — `frontage/__init__.py`'s
+`__getattr__` falls through to a submodule import, deliberately, for `from . import reactive`
+— but it is an overlapping install with an uninstall hazard, hatchling's
+`packages = ["frontage"]` claims that directory, and the generated `__init__.pyi` static view
+would not know the subpackage exists, so an editor and `ty` would disagree with the runtime.
+A separate top-level name is also a different spelling from a real subpackage, which is what
+makes the name in the paragraph above mislead less than it appears to.
 
 **The ecosystem is the whole risk, and it is not mitigable.** Every argument above is true and
 none of it matters to someone whose handler needs SQLAlchemy. The mitigation is honesty in the
