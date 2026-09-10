@@ -6,6 +6,11 @@ the one-crossing rule of §4.4 has to pay. Both now go through `frontage_api.App
 binding and the response rules included — so the benchmark measures the surface people would
 actually write, not a hand-rolled dispatch.
 
+`stamp` is the smaller point and the one that took longest to be true: a handler that reaches
+*outside* its own source, to the environment and to the clock. Until `os` and `datetime`
+existed it could not read an API key or date a row, which is the difference between a demo
+and a server.
+
 The rest exercise §4.3, the host future hook. `sleeps` awaits a tokio deadline settling a
 Python future, which is the shape every native module in §6.4 will use; `loops` awaits the
 event loop's own timer; `both` mixes them. `stuck` awaits a future nobody will ever settle,
@@ -15,6 +20,8 @@ and must answer 500 rather than hang.
 """
 
 import asyncio
+import os
+from datetime import datetime, timezone
 
 import _host
 from frontage.schema import integer, optional, record, text
@@ -104,3 +111,15 @@ async def slowfeed():
         await send(SSE_DONE)
 
     return Stream(produce, media_type="text/event-stream")
+
+
+@app.get("/stamp")
+async def stamp():
+    """The environment and the clock, from inside a handler."""
+    now = datetime.now(timezone.utc)
+    return {
+        "key": os.getenv("FRONTAGE_API_KEY", "unset"),
+        "at": now.isoformat(),
+        "day": now.strftime("%A"),
+        "year": now.year,
+    }

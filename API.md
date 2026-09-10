@@ -191,8 +191,8 @@ RSGI's real contribution is not speed, it is the *shape*: a connection-level `sc
 the right internal seam here, for a reason specific to this repo rather than to performance.
 
 ```python
-async def app(scope, protocol):        # the seam, not the user's surface
-    body = await protocol()            # the whole body, one crossing
+async def app(scope, protocol):  # the seam, not the user's surface
+    body = await protocol()  # the whole body, one crossing
     protocol.response_str(200, [("content-type", "application/json")], out)
 ```
 
@@ -291,7 +291,7 @@ async def trip(trip_id: int, verbose: bool = False):
 
 
 @app.post("/trips")
-async def create(body: Trip):        # validated by the schema, coerced, errors as 422
+async def create(body: Trip):  # validated by the schema, coerced, errors as 422
     return {"id": await db.insert(body)}
 ```
 

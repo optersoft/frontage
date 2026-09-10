@@ -31,15 +31,23 @@ package, `API.md` the plan with the measurements.
 
 ### Next, and the order is not the plan's
 
-⚠ **A handler cannot reach anything yet, and that outranks OpenAPI.** There is no `os`, no
-`urllib`, no `socket`, no `datetime`, and `time` has no `strftime`. So a handler can serve
-only what is in its own source: it cannot read an API key from the environment, call a model,
-open a file, or stamp a row with a date. `frontage.chat`'s whole purpose — hold the key,
-forward to the model — is impossible today. That is the difference between a demo and a
-server, and §6.4's *small* modules are not "the standard library, later".
+⚠ **A handler could not reach anything, and that outranked OpenAPI.** `os` and `datetime`
+landed on 2026-09-10, so a handler can now hold a key and date a row. What it still cannot do
+is **talk to anything**: no `urllib`, no `socket`, no `_http`. `frontage.chat`'s whole purpose
+— hold the key, forward to the model — is still impossible, which is why `_http` is next and
+§6.4's *small* modules are not "the standard library, later".
 
-- [ ] `_env` and `_datetime` (and `time.strftime`). Hours, not days, and they unblock
-      everything else.
+- [x] `_env` and `_datetime` (and `time.strftime`): `os` (environ, getenv — there is no file
+      system to wrap), `datetime` (date/time/datetime/timedelta/timezone, CPython byte for
+      byte down to the `ValueError` messages), `time.gmtime`/`strftime`. Three differential
+      cases; `/stamp` in the spike app is the gate — a handler reading a key out of the
+      environment and dating a row. ⚠ Local time **is** UTC: no zone database (`rust/README.md`).
+- [ ] The runtime's stdlib is embedded in the wasm, so **every page pays for `datetime`**:
+      +13.3 KB brotli (214.8 → 228.1 KB), of which 7.2 KB is the module and 6.1 KB the
+      calendar in Rust. Measured 2026-09-10. The fix is to ship such a module as a **chunk**
+      the host compiles, the way every framework module already travels — `cli/graph.py`
+      resolving `import datetime` to a stdlib source in the wheel. Until then it is embedded,
+      because an `ImportError` in a page for a module the server has is worse than 7 KB.
 - [ ] `_http` over `reqwest`: the smallest native module that matters, and the one
       `frontage.chat` needs to do the thing it exists to do. Streaming response bodies through
       the same `Chunks` shape `Stream` already uses.

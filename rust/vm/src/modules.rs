@@ -1,5 +1,6 @@
-//! The standard modules the runtime carries: `sys`, `math`, `time`, `json`, `random` in Rust;
-//! `io`, `traceback`, `functools`, `collections`, `typing`, `string.templatelib` as Python
+//! The standard modules the runtime carries: `sys`, `math`, `time`, `json`, `random`, `_env`
+//! in Rust; `io`, `traceback`, `functools`, `collections`, `typing`, `os`, `datetime`,
+//! `string.templatelib` as Python
 //! source compiled on first import (precompiled into the framework archive in the browser).
 
 use crate::builtins::{arg, kwarg, opt};
@@ -20,6 +21,7 @@ pub fn install(vm: &mut Vm) {
     vm.builtin_modules.insert("_frontage", mod_frontage);
     vm.builtin_modules.insert("gc", mod_gc);
     vm.builtin_modules.insert("binascii", mod_binascii);
+    vm.builtin_modules.insert("_env", mod_env);
     for (name, _) in PY_MODULES {
         vm.builtin_modules.insert(name, mod_python);
     }
@@ -411,11 +413,202 @@ fn t_ticks_diff(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult 
 fn t_sleep(_vm: &mut Vm, _args: &[Value], _k: &[(Value, Value)]) -> PyResult {
     Ok(Value::NONE)
 }
+
+// The calendar, once, here: `datetime.py` reads the forward direction out of `gmtime` and
+// carries only the inverse. Howard Hinnant's civil-from-days, which is exact for every year
+// the runtime can hold and needs no table.
+pub fn civil_from_days(z: i64) -> (i64, i64, i64) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+fn is_leap(y: i64) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
+/// The nine fields of a `struct_time`, UTC. There is no time zone database in the runtime,
+/// so this is what `localtime` would be too — see `rust/README.md`.
+fn breakdown(secs: f64) -> [i64; 9] {
+    let whole = secs.floor() as i64;
+    let days = whole.div_euclid(86_400);
+    let rem = whole.rem_euclid(86_400);
+    let (y, m, d) = civil_from_days(days);
+    // 1970-01-01 was a Thursday, and Python counts Monday as 0.
+    let wday = (days + 3).rem_euclid(7);
+    const CUM: [i64; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    let yday = CUM[(m - 1) as usize] + d + i64::from(m > 2 && is_leap(y));
+    [y, m, d, rem / 3600, (rem / 60) % 60, rem % 60, wday, yday, 0]
+}
+
+const WDAY: [(&str, &str); 7] = [("Mon", "Monday"), ("Tue", "Tuesday"), ("Wed", "Wednesday"), ("Thu", "Thursday"), ("Fri", "Friday"), ("Sat", "Saturday"), ("Sun", "Sunday")];
+const MONTH: [(&str, &str); 12] = [("Jan", "January"), ("Feb", "February"), ("Mar", "March"), ("Apr", "April"), ("May", "May"), ("Jun", "June"), ("Jul", "July"), ("Aug", "August"), ("Sep", "September"), ("Oct", "October"), ("Nov", "November"), ("Dec", "December")];
+
+/// `strftime` over a nine-field breakdown. The C locale, and only the directives a server or
+/// a page actually writes. ⚠ An unknown directive is left **as it was typed** (`%q` stays
+/// `%q`), which is glibc's behaviour and not macOS's — the platforms disagree, so this is one
+/// of the few places the differential suite deliberately asserts nothing.
+///
+/// The digits are written by hand rather than through `format!`: the padded formatter costs
+/// 6 KB brotli of a runtime every page downloads, which is more than this whole module.
+fn digits(out: &mut String, n: i64, width: usize) {
+    let neg = n < 0;
+    let mut n = n.unsigned_abs();
+    let mut buf = [0u8; 20];
+    let mut i = buf.len();
+    loop {
+        i -= 1;
+        buf[i] = b'0' + (n % 10) as u8;
+        n /= 10;
+        if n == 0 {
+            break;
+        }
+    }
+    if neg {
+        out.push('-');
+    }
+    for _ in (buf.len() - i)..width {
+        out.push('0');
+    }
+    out.push_str(core::str::from_utf8(&buf[i..]).unwrap_or("0"));
+}
+
+pub fn strftime(fmt: &str, t: &[i64; 9]) -> String {
+    let mut out = String::with_capacity(fmt.len() + 16);
+    let mut it = fmt.chars();
+    while let Some(c) = it.next() {
+        if c != '%' {
+            out.push(c);
+            continue;
+        }
+        let Some(spec) = it.next() else {
+            out.push('%');
+            break;
+        };
+        let wday = t[6].rem_euclid(7) as usize;
+        let mon = (t[1].clamp(1, 12) - 1) as usize;
+        match spec {
+            'Y' => digits(&mut out, t[0], 1),
+            'y' => digits(&mut out, t[0].rem_euclid(100), 2),
+            'm' => digits(&mut out, t[1], 2),
+            'd' => digits(&mut out, t[2], 2),
+            'H' => digits(&mut out, t[3], 2),
+            'I' => digits(&mut out, if t[3] % 12 == 0 { 12 } else { t[3] % 12 }, 2),
+            'M' => digits(&mut out, t[4], 2),
+            'S' => digits(&mut out, t[5], 2),
+            'j' => digits(&mut out, t[7], 3),
+            'p' => out.push_str(if t[3] < 12 { "AM" } else { "PM" }),
+            'a' => out.push_str(WDAY[wday].0),
+            'A' => out.push_str(WDAY[wday].1),
+            'b' | 'h' => out.push_str(MONTH[mon].0),
+            'B' => out.push_str(MONTH[mon].1),
+            'Z' => out.push_str("UTC"),
+            'z' => out.push_str("+0000"),
+            'D' => {
+                digits(&mut out, t[1], 2);
+                out.push('/');
+                digits(&mut out, t[2], 2);
+                out.push('/');
+                digits(&mut out, t[0].rem_euclid(100), 2);
+            }
+            'F' => {
+                digits(&mut out, t[0], 4);
+                out.push('-');
+                digits(&mut out, t[1], 2);
+                out.push('-');
+                digits(&mut out, t[2], 2);
+            }
+            'T' => {
+                digits(&mut out, t[3], 2);
+                out.push(':');
+                digits(&mut out, t[4], 2);
+                out.push(':');
+                digits(&mut out, t[5], 2);
+            }
+            'n' => out.push('\n'),
+            't' => out.push('\t'),
+            '%' => out.push('%'),
+            other => {
+                out.push('%');
+                out.push(other);
+            }
+        }
+    }
+    out
+}
+
+fn t_gmtime(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    let secs = match opt(args, 0) {
+        Some(v) if v != Value::NONE => vm.as_f64(v).ok_or_else(|| vm.type_error("gmtime(seconds)"))?,
+        _ => vm.host.time_s(),
+    };
+    let t = breakdown(secs);
+    let items: Vec<Value> = t.iter().map(|n| vm.int(*n)).collect();
+    Ok(vm.tuple(items))
+}
+
+fn t_strftime(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    let fmt = arg(vm, args, 0, "strftime")?;
+    let fmt = vm.expect_str(fmt, "format")?;
+    let mut t = breakdown(vm.host.time_s());
+    if let Some(v) = opt(args, 1) {
+        if v != Value::NONE {
+            let items = vm.collect_iter(v)?;
+            if items.len() != 9 {
+                return Err(vm.type_error("function takes exactly 9 arguments"));
+            }
+            for (slot, item) in t.iter_mut().zip(items) {
+                *slot = vm.expect_int(item, "field")?;
+            }
+        }
+    }
+    let s = strftime(&fmt, &t);
+    Ok(vm.string(s))
+}
+
 fn mod_time(vm: &mut Vm) -> PyResult {
     let (m, d) = module_with(vm, "time");
-    for (name, f) in [("time", t_time as NativeFn), ("monotonic", t_monotonic), ("perf_counter", t_monotonic), ("ticks_ms", t_ticks_ms), ("ticks_us", t_ticks_us), ("ticks_diff", t_ticks_diff), ("sleep", t_sleep)] {
+    for (name, f) in [("time", t_time as NativeFn), ("monotonic", t_monotonic), ("perf_counter", t_monotonic), ("ticks_ms", t_ticks_ms), ("ticks_us", t_ticks_us), ("ticks_diff", t_ticks_diff), ("sleep", t_sleep), ("gmtime", t_gmtime), ("strftime", t_strftime)] {
         add_fn(vm, d, name, f);
     }
+    Ok(m)
+}
+
+// -- _env ----------------------------------------------------------------------------------------
+
+/// The process environment, through the host. `os.py` is the Python half; the browser's host
+/// answers nothing, so `os.environ` is empty there rather than absent.
+fn e_get(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    let name = arg(vm, args, 0, "get")?;
+    let name = vm.expect_str(name, "name")?;
+    match vm.host.env(&name) {
+        Some(v) => Ok(vm.string(v)),
+        None => Ok(Value::NONE),
+    }
+}
+
+fn e_all(vm: &mut Vm, _args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    let pairs = vm.host.env_all();
+    let mut items = Vec::with_capacity(pairs.len());
+    for (k, v) in pairs {
+        let k = vm.string(k);
+        let v = vm.string(v);
+        items.push(vm.tuple(vec![k, v]));
+    }
+    Ok(vm.list(items))
+}
+
+fn mod_env(vm: &mut Vm) -> PyResult {
+    let (m, d) = module_with(vm, "_env");
+    add_fn(vm, d, "get", e_get);
+    add_fn(vm, d, "all", e_all);
     Ok(m)
 }
 
@@ -1140,6 +1333,8 @@ pub const PY_MODULES: &[(&str, &str)] = &[
     ("html", include_str!("lib/html.py")),
     ("html.parser", include_str!("lib/html_parser.py")),
     ("re", include_str!("lib/re.py")),
+    ("os", include_str!("lib/os.py")),
+    ("datetime", include_str!("lib/datetime.py")),
     (
         "io",
         r##"

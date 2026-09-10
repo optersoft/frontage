@@ -21,6 +21,15 @@ pub trait Host {
     /// Python source for a module, by dotted name, or `None`.
     fn find_module(&mut self, name: &str) -> Option<ModuleSource>;
     fn random_u64(&mut self) -> u64;
+    /// One environment variable, or `None`. The browser has no environment and says so by
+    /// answering `None` to everything, which is why `os.environ` there is simply empty.
+    fn env(&mut self, _name: &str) -> Option<String> {
+        None
+    }
+    /// Every environment variable, in no particular order.
+    fn env_all(&mut self) -> Vec<(String, String)> {
+        Vec::new()
+    }
     /// Block for `ms` (the native runner); the browser's host does nothing here.
     fn sleep_ms(&mut self, ms: f64) {
         let _ = ms;
@@ -99,6 +108,17 @@ impl Host for StdHost {
         if ms > 0.0 {
             std::thread::sleep(std::time::Duration::from_micros((ms * 1000.0) as u64));
         }
+    }
+    // ⚠ `std::env` behind a `cfg`: linking it into the wasm costs 25 KB raw / 5 KB brotli of
+    // a runtime every page downloads, for an environment the browser does not have. The
+    // trait's defaults (nothing, everywhere) are exactly right there.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn env(&mut self, name: &str) -> Option<String> {
+        std::env::var(name).ok()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    fn env_all(&mut self) -> Vec<(String, String)> {
+        std::env::vars().collect()
     }
     fn random_u64(&mut self) -> u64 {
         // xorshift64*: enough for `random.random()` in a test.

@@ -68,11 +68,30 @@ not surprised; a *string* annotation keeps its quotes, because that is what the 
 The keys and their order match CPython, which is what `py/tests/cases/annotations.py`
 asserts. `frontage_api` is the first consumer: a route's contract is read from it.
 
+**There is no time zone database, so local time *is* UTC.** `datetime.now()` with no `tz`
+gives the UTC wall clock where CPython gives the machine's zone, and `timestamp()` reads a
+naive datetime as UTC for the same reason; `time.localtime` is simply absent rather than
+lying. Everything else in `datetime` matches CPython byte for byte — `repr`, `isoformat`,
+`strftime` and the `ValueError` messages included — which is what
+`py/tests/cases/datetime_mod.py` asserts. Carrying a zone database would cost more bytes in
+every page than the whole reactive core.
+
+**`os` is the environment and nothing else.** There is no file system to wrap, so the module
+is `environ`, `getenv`, `name`, `sep`, `linesep`. In the browser the host answers nothing and
+`os.environ` is *empty* rather than missing, so the same handler code reads a key on the
+server and `None` in a page instead of failing to import.
+
+**`time.strftime` leaves an unknown directive as it was typed** (`%q` stays `%q`), which is
+glibc's behaviour and not macOS's. The platforms disagree, so `py/tests/cases/time_calendar.py`
+deliberately asserts nothing about it.
+
 ## What it is not, yet
 
 `__slots__` is accepted but not enforced (an instance keeps a dict); `eval` is not written
 (`exec` and `compile` are, in the compiler build); a class statement's `**kwargs` is
 rejected; `re` covers what `RegExp` does (no conditional groups, no `\N{…}`). `match`
 statements, metaclasses, class keywords and a generator's `finally` on collection are in
-since 2026-09-08, each with a differential case. Every gap found is a case in
+since 2026-09-08, each with a differential case. `time.localtime`, `time.mktime` and
+`time.strptime` are not written (no zone database, and `datetime.fromisoformat` is the
+parsing that was actually wanted); `datetime.strptime` is not either. Every gap found is a case in
 `py/tests/cases/` first.

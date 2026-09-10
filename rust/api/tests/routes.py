@@ -55,9 +55,11 @@ def main():
     extra = ["--path", str(root)] + (["--stress"] if "--stress" in sys.argv else [])
     if "--stress" in sys.argv:
         print("  (GC stress: collecting at every safe point)")
+    # `/stamp` reads this back out of `os.environ`, which is the whole point of that route.
+    env = dict(os.environ, FRONTAGE_API_KEY="sekret")
     proc = subprocess.Popen([str(binary), str(app), "--addr", f"127.0.0.1:{PORT}", "--workers", "2", *extra],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                            start_new_session=True)
+                            start_new_session=True, env=env)
     try:
         deadline = time.time() + 20
         while time.time() < deadline:
@@ -127,6 +129,13 @@ def main():
         status, body, took = get("/both")
         check("two awaits in a row resume", body == b"both", repr(body[:40]))
         check("and both waits happened", took >= 0.008, f"{took:.3f}s")
+
+        status, body, _ = get("/stamp")
+        stamp = json.loads(body) if status == 200 else {}
+        check("a handler reads the environment", stamp.get("key") == "sekret", str(stamp.get("key")))
+        check("and the clock", stamp.get("year", 0) >= 2026 and stamp.get("at", "").endswith("+00:00"), str(stamp.get("at")))
+        check("and formats a date", stamp.get("day") in
+              ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"), str(stamp.get("day")))
 
         # A stale delay measured before a poll used to declare this one stuck between its
         # two awaits, which is why the case above exists at all.
