@@ -229,9 +229,19 @@ is involved. Granian's mechanism is the reference for the *shape* — a native a
 and it is worth noting how much of Granian's version is GIL bookkeeping we simply do not
 have: no `call_soon_threadsafe`, no context copy across a lock, no `Python` token.
 
-This hook is **a commit in `frontage/rust/`**, made alongside the consumer per the path-dep
-rule, and it is the first item of milestone 1 because nothing else can be measured without
-it.
+⚠ **Written 2026-09-10, and it needed no change to the runtime at all** — this paragraph
+used to say the hook was "a commit in `frontage/rust/`, made alongside the consumer per the
+path-dep rule". It is not: `_host` is a native module registered from *this* repository
+through `vm.builtin_modules`, and it builds its future by calling
+`asyncio.get_event_loop().create_future()` and settles it by calling `set_result`, all
+through the VM's public surface. The provider's working tree is untouched.
+
+That is worth more than the commit it saved. **The VM's embedding surface was already
+sufficient for a server**, which is not something the spike could assume: `roots` for
+temporary native roots, `builtin_modules` for a native module, `gen_resume` for the coroutine
+protocol, and an `asyncio` whose loop already expects to be driven from outside because the
+browser drives it from `setTimeout`. The one thing the server does differently from the
+browser is *what* it waits on, and that was never the VM's business.
 
 ### 4.4 One crossing per request
 
@@ -422,24 +432,38 @@ a turn of the loop settles the last future and reports "nothing scheduled" in th
 And a delay measured before a poll is stale the moment that poll advances the coroutine into
 a *new* await, which declared a two-await handler stuck between its two sleeps.
 
-M4 MacBook, 10 cores, macOS 25.6, one worker, 64 connections, 6 s, 1 KB bodies both ways,
-`oha` as the client. Two runs differ by under 1%; the second is shown.
+M4 MacBook, 10 cores, macOS 25.6, one worker, 64 connections, 1 KB bodies both ways, `oha`
+as the client. Medians of three; every row reproduces within about 2% across runs, and these
+figures are **after** the coroutine driver of §4.3, not before it.
 
 | server | GET rps | ECHO rps | ECHO p99 |
 |---|---|---|---|
-| **frontage-api** | **177,031** | **169,293** | 0.73 ms |
-| granian 2.8.2 + bare ASGI | 125,864 | 65,428 | 1.25 ms |
-| granian 2.8.2 + FastAPI 0.141 | 55,406 | 29,432 | 4.15 ms |
-| uvicorn + FastAPI | 13,460 | 12,067 | 6.07 ms |
+| **frontage-api** | **180,276** | **171,252** | 0.74 ms |
+| granian 2.8.2 + bare ASGI | 119,141 | 62,515 | 1.56 ms |
+| granian 2.8.2 + FastAPI 0.141 | 55,077 | 28,676 | 4.33 ms |
+| uvicorn + FastAPI | 13,451 | 11,928 | 5.53 ms |
 
-**5.75× Granian + FastAPI on echo, against a gate of 2×.** The like-for-like is the bare ASGI
-row, since neither side has a framework layer yet, and that is **2.59×**.
+**5.97× Granian + FastAPI on echo, against a gate of 2×.** The like-for-like is the bare ASGI
+row, since neither side has a framework layer yet, and that is **2.74×**.
+
+**Awaiting costs nothing when nobody awaits.** The figures above are within 2% of the ones
+measured before the driver existed (177,031 and 169,293), which is the point of driving a
+coroutine in Rust: an `async def` that returns without suspending takes one `gen_resume` and
+never reaches the event loop, so the route that *can* await is not slower for the requests
+that do not.
 
 **The prediction of §4.4 is the finding, and it is the part worth keeping.** Reading the
 request body costs us **4.4%** (177,031 → 169,293) and costs Granian **48%** (125,864 →
 65,428), on the same box against the same client. That is the whole argument for one crossing
 per request, measured rather than asserted: the body is already in a buffer in Rust, and
 Granian's cost is the trips through the Python event loop to fetch it, not the parsing.
+
+⚠ **Measure a warm binary, or measure Gatekeeper.** The first execution of a
+freshly built binary on macOS is scanned by `syspolicyd`, and that scan lands on whichever
+route runs first: one run read 151,512 on GET while ECHO, measured moments later in the same
+process, read a normal 167,417. Nothing in the server explains a GET slower than an ECHO.
+Run the binary once before believing anything it reports, and treat a figure that contradicts
+the route ordering as a machine artefact rather than a finding.
 
 ⚠ **Our figures are floors, and Granian's are not.** This laptop's loopback tops out near
 **193,000 requests/s**: an 8-worker server answers 190,415 / 192,645 / 193,132 at 64 / 128 /

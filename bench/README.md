@@ -19,6 +19,13 @@ Granian on `asgi_app.py`, a bare ASGI app with the same two routes, which is the
 like-for-like while neither side has a framework layer; Granian on `fastapi_app.py`, which is
 what §6.1 sets its gate against; and uvicorn on the same FastAPI app for scale.
 
+⚠ **Warm the binary first, or you measure macOS.** `syspolicyd` scans a freshly built
+binary the first time it runs, and the scan lands on whichever route is measured first. It
+showed up once as a GET slower than the ECHO measured moments later in the same process,
+which the server cannot explain. `run.py` warms each subject for two seconds, but the *first*
+subject after a rebuild can still carry it: run the binary once by hand after `cargo build`
+before trusting a number.
+
 ⚠ **Check the ceiling before believing a large number.** This laptop's loopback saturates
 near 193,000 requests/s whatever the server does, so a subject at that figure is measuring
 the client. The check is two lines: run one server with plenty of workers, and see whether
