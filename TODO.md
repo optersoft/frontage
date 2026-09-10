@@ -61,14 +61,16 @@ is **talk to anything**: no `urllib`, no `socket`, no `_http`. `frontage.chat`'s
 - [ ] §6.3 OpenAPI and a docs page. Much cheaper now that annotations exist and
       `schema/jsonschema.py` already emits JSON Schema. Gate: §4.6's shared record produces a
       document that validates what the form accepts.
-- [ ] **Deploy `governor` behind the gate** — the reason §5a exists, and none of what is
-      left is in this repository. It needs, in order: a Google OAuth client whose *Authorized
-      redirect URI* is `https://governor.optersoft.com/auth/google/callback` (console, by
-      hand); an `app.py` + Docker pipeline in `governor/` serving its built `www/` through
-      this binary, which today means **building `frontage-api` in that image** because §6.5
-      has not shipped one; uncommenting `[apps.governor]` in `hive-deploy/fleet.toml`; and the
-      gateway tenant + DNS. The fleet.toml block's smoke already asserts the gate rather than
-      the pages — an anonymous `GET /` answering `200` is the failure.
+- [ ] **Deploy `governor` behind the gate** — the reason §5a exists. The two repos are done
+      (2026-09-10): `governor/deploy/Dockerfile` compiles `frontage-api` out of this checkout
+      as a build context and ships the binary beside the built pages — 163s, an ELF x86-64
+      binary and 25 pages — `mk server.build`/`server.deploy`/`gate.check` are its tasks, and
+      `[apps.governor]` in `hive-deploy/fleet.toml` is a live row (`activation = "restart"`,
+      liveness on `/healthz`, because hive's smoke requires a **200** and the gate answers a
+      stranger 303). What is left is **by hand and off this laptop**: the `governor` user and
+      `/etc/governor` on nbg-2, the env file with the client id and allow-list plus the secret
+      as a credential, the redirect URI in the Google console, and the Cloudflare A record.
+      ⚠ Until §6.5 ships a binary, every deploy of it compiles this repository's working tree.
 - [ ] §6.5 ship it. **Nothing outside this checkout can use any of this**: there is no
       `frontage_api` wheel (§7 decided two, and only one exists) and no binary. A wheel, a
       binary per platform on a tag, `hive-server` as the front door.

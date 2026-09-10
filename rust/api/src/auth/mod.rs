@@ -74,7 +74,7 @@ impl Auth {
     /// unguarded, and both are worse than a process that will not come up.
     pub fn from_env(label: &str, dir: &Path) -> Result<Self, String> {
         let client_id = var("GOOGLE_CLIENT_ID").ok_or_else(|| missing("GOOGLE_CLIENT_ID"))?;
-        let client_secret = secret_var("GOOGLE_CLIENT_SECRET").ok_or_else(|| missing("GOOGLE_CLIENT_SECRET"))?;
+        let client_secret = secret_var(label, "GOOGLE_CLIENT_SECRET").ok_or_else(|| missing("GOOGLE_CLIENT_SECRET"))?;
         let base = var("BASE_URL").map(|b| b.trim_end_matches('/').to_string());
         let redirect_uri = match (var("GOOGLE_REDIRECT_URI"), &base) {
             (Some(explicit), _) => explicit,
@@ -265,19 +265,26 @@ fn var(suffix: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
-/// Like [`var`], but a systemd credential (`$CREDENTIALS_DIRECTORY/<key lowercased>`, a 0400
-/// tmpfs file placed by `LoadCredential=`) beats the environment — where a secret is readable
+/// Like [`var`], but a systemd credential beats the environment — where a secret is readable
 /// through `/proc/<pid>/environ` and inherited by every child. Per namespace, not per
 /// mechanism: the canonical name wins outright, however it is supplied.
-fn secret_var(suffix: &str) -> Option<String> {
+///
+/// ⚠ **Two spellings, because the fleet has two.** A unit written with explicit
+/// `LoadCredential=` lines names the credential for the variable (`axum_oauth_…`, lower case,
+/// which is what the deployed apps carry); a unit on `ImportCredential=<app>.*` — what
+/// `hive-deploy` renders for an isolated app — presents it as `<app>.<KEY>`, keeping its case.
+/// Reading only one of them is a secret that is definitely there and definitely not found.
+fn secret_var(label: &str, suffix: &str) -> Option<String> {
     ["FRONTAGE_AUTH", "AXUM_OAUTH"].into_iter().find_map(|prefix| {
         let key = format!("{prefix}_{suffix}");
         if let Some(dir) = std::env::var_os("CREDENTIALS_DIRECTORY") {
-            let path = Path::new(&dir).join(key.to_ascii_lowercase());
-            if let Ok(s) = std::fs::read_to_string(path) {
-                let s = s.trim_end_matches(['\n', '\r']).to_string();
-                if !s.is_empty() {
-                    return Some(s);
+            let dir = Path::new(&dir);
+            for name in [key.to_ascii_lowercase(), format!("{label}.{key}")] {
+                if let Ok(s) = std::fs::read_to_string(dir.join(name)) {
+                    let s = s.trim_end_matches(['\n', '\r']).to_string();
+                    if !s.is_empty() {
+                        return Some(s);
+                    }
                 }
             }
         }
