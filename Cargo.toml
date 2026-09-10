@@ -1,0 +1,23 @@
+# frontage-api: FastAPI's shape on axum, handlers on frontage's own Python runtime.
+# `PLAN.md` is the design; §6.1 is the spike this workspace currently is.
+#
+#   server/   frontage-api   the binary: axum, a Vm per worker thread, the protocol seam
+#
+# The runtime comes from the sibling checkout by PATH, per the fleet convention — so a change
+# in `frontage/rust/` reaches here with no manifest diff, and an uncommitted edit there ships
+# with a deploy. Commit the provider alongside the consumer.
+[workspace]
+resolver = "2"
+members = ["server"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "Apache-2.0"
+
+# The server wants speed and symbols: a profile to measure, not to shrink.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = 1

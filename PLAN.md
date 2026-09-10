@@ -399,6 +399,47 @@ decorators.
 FastAPI on the same box, at the same concurrency**, reporting requests/s and p99 for both
 routes.
 
+**Status: the gate is met, on this laptop, 2026-09-10.** What exists is `server/` and
+`examples/spike/app.py`: axum 0.8.9, a `Vm` per worker thread in a thread-local, the app's
+`ROUTES` dict read once at load, the body handed to the handler whole as `bytes`, and `str`
+or `bytes` back. `async def` works as long as the coroutine does not suspend, which costs one
+`gen_resume` and no loop turn. **The host future hook of §4.3 is not written yet** and is the
+next commit; the runtime becomes thread-per-core with it, for the reason in `server.rs`.
+
+M4 MacBook, 10 cores, macOS 25.6, one worker, 64 connections, 6 s, 1 KB bodies both ways,
+`oha` as the client. Two runs differ by under 1%; the second is shown.
+
+| server | GET rps | ECHO rps | ECHO p99 |
+|---|---|---|---|
+| **frontage-api** | **177,031** | **169,293** | 0.73 ms |
+| granian 2.8.2 + bare ASGI | 125,864 | 65,428 | 1.25 ms |
+| granian 2.8.2 + FastAPI 0.141 | 55,406 | 29,432 | 4.15 ms |
+| uvicorn + FastAPI | 13,460 | 12,067 | 6.07 ms |
+
+**5.75× Granian + FastAPI on echo, against a gate of 2×.** The like-for-like is the bare ASGI
+row, since neither side has a framework layer yet, and that is **2.59×**.
+
+**The prediction of §4.4 is the finding, and it is the part worth keeping.** Reading the
+request body costs us **4.4%** (177,031 → 169,293) and costs Granian **48%** (125,864 →
+65,428), on the same box against the same client. That is the whole argument for one crossing
+per request, measured rather than asserted: the body is already in a buffer in Rust, and
+Granian's cost is the trips through the Python event loop to fetch it, not the parsing.
+
+⚠ **Our figures are floors, and Granian's are not.** This laptop's loopback tops out near
+**193,000 requests/s**: an 8-worker server answers 190,415 / 192,645 / 193,132 at 64 / 128 /
+256 connections, and two `oha` processes at once split it (95,394 + 95,581 = 190,974). So the
+frontage-api rows are pressed against the harness and the true number is higher, while the
+Granian rows sit well below it and are real. **The ratios above are lower bounds**, and the
+4-worker run says the same thing more loudly: 193,123 against 59,415, which is 3.25× and is
+our ceiling divided by their genuine number. Measuring our own limit needs a client off this
+machine, which is the fleet-VM half of this milestone and is not done.
+
+⚠ **What is not yet in the number.** No routing table (two paths, a linear scan), no schema
+validation, no dependency resolution, no OpenAPI — §6.2 and §6.3 add all of it and each costs
+something. And this is macOS on Apple Silicon with four performance cores and six efficiency
+ones, not the Linux box Granian's own published figures come from; nothing here should be
+compared against those numbers, only against the rows measured beside it.
+
 **The gate: ≥ 2× Granian + FastAPI on the echo route.** The echo is the honest one, because
 it is where Granian loses half its throughput and where the one-crossing rule should pay.
 A static GET flatters any Rust server and proves little. **If the gate is missed and the
