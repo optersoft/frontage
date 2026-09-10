@@ -45,8 +45,8 @@ async def echo(body):
     return body
 
 
-@app.get("/trips/{trip_id}")
-async def trip(trip_id: int):
+@app.get("/trips/{trip_id}", summary="One trip", tags=["trips"])
+async def trip(trip_id: int) -> Trip:
     row = TRIPS.get(trip_id)
     if row is None:
         raise HTTPError(404, "no such trip")

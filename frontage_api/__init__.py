@@ -181,13 +181,16 @@ def _annotations_of(handler, namespace):
 
 
 def _resolve(value, namespace):
-    """One annotation to a converter, whichever runtime wrote it.
+    """One annotation to a converter, whichever runtime wrote it. `None` in, `None` out: a
+    handler with no return annotation is the ordinary case, not a missing one.
 
     ⚠ **Both shapes have to work.** On frontage's runtime an annotation is its *source text*
     (`rust/README.md`), so `int` arrives as `"int"`; on CPython it is the object itself,
     because this package is written and tested there. Handling only strings would crash every
     annotated handler under pytest, which is exactly where they are first written.
     """
+    if value is None:
+        return None
     if not isinstance(value, str):
         return value if (callable(value) or hasattr(value, "parse")) else None
     text = value.strip()
@@ -304,8 +307,19 @@ def _unquote(s):
 class App:
     """The routes, and the one entry the server calls."""
 
-    def __init__(self, title="frontage-api", cors=None, static=None):
+    def __init__(
+        self,
+        title="frontage-api",
+        cors=None,
+        static=None,
+        version="0.1.0",
+        description=None,
+        docs="/docs",
+        openapi_url="/openapi.json",
+    ):
         self.title = title
+        self.version = version
+        self.description = description
         self.router = Router()
         self.cors = cors if isinstance(cors, Cors) or cors is None else Cors(cors)
         # Read by the server at load: files are served by Rust, not by walking a directory
@@ -314,6 +328,46 @@ class App:
         self.static = static
         self._startup = []
         self._shutdown = []
+        self._document = None
+        self.docs_url = docs
+        self.openapi_url = openapi_url
+        if openapi_url:
+            self._serve_docs()
+
+    def openapi(self):
+        """The document (`API.md` §6.3), built once and kept.
+
+        Once, because it is derived from routes that cannot change after startup — and
+        because building it walks every schema, which is not work to repeat per request.
+        """
+        if self._document is None:
+            from .openapi import document
+
+            self._document = document(self, version=self.version, description=self.description)
+        return self._document
+
+    def _serve_docs(self):
+        """`/openapi.json` and `/docs`.
+
+        ⚠ These are declared **first**, and routes match in declaration order, so a route of
+        your own at either path would never run. `App(docs=None, openapi_url=None)` gives the
+        paths back; that is a clearer rule than quietly stepping aside, and it is the one
+        FastAPI has.
+        """
+        spec = self.openapi_url
+
+        @self.route("GET", spec, schema=False)
+        async def openapi_json():
+            return json_response(self.openapi())
+
+        if self.docs_url:
+            from .docs import page
+
+            html = page(spec, self.title)
+
+            @self.route("GET", self.docs_url, schema=False)
+            async def docs_page():
+                return Response(html, media_type="text/html; charset=utf-8")
 
     def on_startup(self, fn):
         """Run once per **worker**, which is the part to hold on to: there is one interpreter
@@ -338,14 +392,35 @@ class App:
             if _awaitable(result):
                 await result
 
-    def route(self, method, path, path_types=None, query=None, body=None, needs=None):
+    def route(
+        self,
+        method,
+        path,
+        path_types=None,
+        query=None,
+        body=None,
+        needs=None,
+        summary=None,
+        description=None,
+        tags=None,
+        schema=True,
+    ):
+        """One route. `summary`, `description` and `tags` are what `/docs` shows, and
+        `schema=False` keeps the route out of the document altogether.
+
+        ⚠ **A docstring is not a summary here.** The runtime's compiler discards docstrings,
+        so `handler.__doc__` is `None` on the server — the prose exists under pytest and not
+        in production, which is the worst way round for something a reader is meant to see.
+        `summary=` is the spelling that works in both.
+        """
         method = method.upper()
         if method not in METHODS:
             raise ValueError("not a method: " + repr(method))
 
         def decorate(handler):
             params = _params_of(handler)
-            declared = _annotations_of(handler, _namespace_of(handler))
+            namespace = _namespace_of(handler)
+            declared = _annotations_of(handler, namespace)
             # The decorator wins where both speak, so a route can always override what a
             # signature says without editing the signature.
             names = _path_names(path)
@@ -355,6 +430,11 @@ class App:
                 "body": body,
                 "needs": needs or {},
                 "params": params,
+                "summary": summary,
+                "description": description,
+                "tags": tags,
+                "schema": schema,
+                "returns": _resolve(getattr(handler, "__annotations__", {}).get("return"), namespace),
             }
             for name, kind in declared.items():
                 if name in names or name in spec["needs"] or name in RESERVED:
@@ -505,8 +585,30 @@ def _warn(message):
 
 
 def _method_decorator(method):
-    def decorator(self, path, path_types=None, query=None, body=None, needs=None):
-        return self.route(method, path, path_types=path_types, query=query, body=body, needs=needs)
+    def decorator(
+        self,
+        path,
+        path_types=None,
+        query=None,
+        body=None,
+        needs=None,
+        summary=None,
+        description=None,
+        tags=None,
+        schema=True,
+    ):
+        return self.route(
+            method,
+            path,
+            path_types=path_types,
+            query=query,
+            body=body,
+            needs=needs,
+            summary=summary,
+            description=description,
+            tags=tags,
+            schema=schema,
+        )
 
     decorator.__name__ = method.lower()
     return decorator

@@ -204,6 +204,29 @@ def main():
         check("raise_for_status carries the response", got.get("status") == 404,
               f"{status} {body[:80]!r}")
 
+        # §6.3: the document, on the real runtime. Two of its parts only exist here — the
+        # compiler discards docstrings, so `summary=` is the only prose a reader gets, and a
+        # record's *name* comes from an identity scan of the handler's module globals.
+        status, body, _ = get("/openapi.json")
+        doc = json.loads(body) if status == 200 else {}
+        check("the routes are a document", doc.get("openapi") == "3.1.0"
+              and "/trips/{trip_id}" in doc.get("paths", {}), f"{status} {body[:60]!r}")
+        trips = doc.get("paths", {}).get("/trips/{trip_id}", {}).get("get", {})
+        check("a summary survives a runtime with no docstrings", trips.get("summary") == "One trip",
+              repr(trips.get("summary")))
+        check("a named record is a $ref into components",
+              trips.get("responses", {}).get("200", {}).get("content", {})
+              .get("application/json", {}).get("schema") == {"$ref": "#/components/schemas/Trip"}
+              and "Trip" in doc.get("components", {}).get("schemas", {}),
+              repr(sorted(doc.get("components", {}).get("schemas", {}))))
+        check("and the document does not describe itself",
+              "/docs" not in doc.get("paths", {}) and "/openapi.json" not in doc.get("paths", {}))
+
+        status, body, _ = get("/docs")
+        check("the docs page is one self-contained file",
+              status == 200 and b"<script src" not in body and b"/openapi.json" in body,
+              f"{status} {len(body)} bytes")
+
         # One worker, many suspended requests: they must interleave, not queue.
         with subprocess.Popen([str(binary), str(app), "--addr", f"127.0.0.1:{PORT + 1}",
                                "--workers", "1", *extra], stdout=subprocess.DEVNULL,

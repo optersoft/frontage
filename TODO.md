@@ -74,9 +74,25 @@ checkout.
 - [ ] `bytes` is `decode`, `hex`, `find`, `startswith`, `endswith` and nothing else. The
       three new ones came from the SSE reader; `split`, `strip` and `replace` will come from
       the next thing that parses a body, one differential case each.
-- [ ] §6.3 OpenAPI and a docs page. Much cheaper now that annotations exist and
-      `schema/jsonschema.py` already emits JSON Schema. Gate: §4.6's shared record produces a
-      document that validates what the form accepts.
+- [x] §6.3 OpenAPI and a docs page: `frontage_api/openapi.py` derives the document,
+      `App` serves it at `/openapi.json` and a dependency-free page at `/docs`. The gate is
+      met the hard way — seven payloads through `from_json_schema` on the *published*
+      fragment and through the live route, asserted to agree case by case, rather than the
+      two being read and found alike. 21 tests, plus five on the real runtime, where a
+      record's name comes from an identity scan of the handler's globals and a docstring
+      does not exist at all.
+- [ ] ⚠ **The compiler discards docstrings, so `__doc__` is `None` on the server.** That is
+      why a route's summary is `summary="…"` rather than its docstring: prose that exists
+      under pytest and not in production is the worst way round. Keeping them costs bytes in
+      every page — the framework's own modules are heavily documented — so the fix is
+      probably a compiler flag the *server's* `fpy` invocation sets and a page's does not,
+      not a change to what a page carries.
+- [ ] `mk check`'s `ty` step is red, and mostly for one reason: `App.get`/`post`/… are
+      installed with `setattr` at the bottom of `frontage_api/__init__.py`, so ty sees no
+      such attribute and every route in every test is an error (34 of 40 diagnostics). It
+      also costs an editor its completion on the arguments `/docs` reads — `summary`, `tags`,
+      `schema` — which is the half that actually matters. Seven explicit methods, or a stub,
+      the way `frontage/state.py` has one.
 - [ ] **Deploy `governor` behind the gate** — the reason §5a exists. The two repos are done
       (2026-09-10): `governor/deploy/Dockerfile` compiles `frontage-api` out of this checkout
       as a build context and ships the binary beside the built pages — 163s, an ELF x86-64

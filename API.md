@@ -716,11 +716,44 @@ bigger target is now the **8.44 µs floor every route pays** before any user cod
 §6.3 and §6.4 are each worth more than 34% on one route. Revisit when a profile says the floor
 is dealt with and validation is still the top line.
 
-### 6.3 OpenAPI and the docs page
+### 6.3 OpenAPI and the docs page ✅
 
-From the routes and `jsonschema.py`. **Gate:** the shared-record example of §4.6 produces a
-schema that validates the same values the form accepts, asserted as a test rather than by
-eye.
+Built 2026-09-10. `frontage_api/openapi.py` derives the document; `App` serves it at
+`/openapi.json` and a page that reads it at `/docs`, and `App(docs=None, openapi_url=None)`
+gives both paths back.
+
+**Nothing in the document is declared twice.** A path's parameters come from the path, their
+types from the same converters `_bind` uses, and a body's schema from `frontage.schema`'s own
+`json_schema()` — so the document cannot drift from what the server accepts, which is §4.6
+restated as a build step rather than a promise.
+
+**Gate, and it is met:** `tests/test_openapi.py` runs seven payloads through
+`from_json_schema` on the *published* fragment and through the live route, and asserts the
+two agree case by case. Reading the schema and the route and finding them alike is what that
+replaces.
+
+Three things the implementation turned on, all of them about where a name or a sentence
+actually lives:
+
+- **A record has no name of its own.** `record(…)` makes an anonymous object, and the name is
+  the variable it was bound to — so `components/schemas` is filled by an identity scan of the
+  handler's module globals, once per document. Anonymous records stay inline, which is
+  correct rather than a shortfall.
+- ⚠ **A docstring is not a summary here.** The runtime's compiler discards docstrings, so
+  `handler.__doc__` is `None` on the server: the prose would exist under pytest and not in
+  production, which is the worst way round for something a reader is meant to see.
+  `@app.get("/x", summary="…")` is the spelling that works in both, and `__doc__` fills in
+  where there is one.
+- **A route can answer 422 only where something can fail**, so the document promises it only
+  where the route has a parameter or a body — a promise nothing can keep is worse than none.
+
+The page is one file with no CDN and no dependency. Swagger UI is 1.4 MB of JavaScript from
+someone else's host, which is a strange thing to put in front of a server arguing that a page
+should not have to download a runtime to be useful, and it is exactly the third-party request
+a private deployment behind the §5a gate must not make. What it does **not** do is "try it
+out": a form that posts a request from the docs page belongs in a frontage page with
+`frontage.schema` driving the inputs from the same record, which is §4.6's whole point and
+worth building properly rather than approximating in a `<script>`.
 
 ### 6.4 The standard library, as native modules
 
