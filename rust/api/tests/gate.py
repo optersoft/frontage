@@ -116,6 +116,19 @@ def refuses_a_secret_inside_the_site(binary, tmp):
           f"{done.returncode} {done.stderr.strip()[:100]}")
 
 
+def refuses_an_empty_site(binary, tmp):
+    """An empty --serve directory is invisible from outside: the gate redirects a stranger
+    whether or not there is anything behind it, so only a signed-in reader ever sees the 404."""
+    empty = pathlib.Path(tmp) / "empty"
+    empty.mkdir()
+    env = dict(auth_env("http://127.0.0.1:1", pathlib.Path(tmp) / "s3"), FRONTAGE_API_SERVE=str(empty),
+               FRONTAGE_API_ADDR="127.0.0.1:8797", FRONTAGE_API_AUTH="google")
+    done = subprocess.run([str(binary)], capture_output=True, text=True, env=env, timeout=30)
+    check("an empty site stops the server before it binds",
+          done.returncode != 0 and "the directory is empty" in done.stderr,
+          f"{done.returncode} {done.stderr.strip()[:100]}")
+
+
 def files_only(binary, tmp):
     """The shape a private site deploys as: no app, no arguments, and the whole configuration
     out of the environment — which is all a fleet unit's `ExecStart=` can carry (`API.md` §5a).
@@ -246,6 +259,7 @@ def main():
 
         files_only(binary, tmp)
         refuses_a_secret_inside_the_site(binary, tmp)
+        refuses_an_empty_site(binary, tmp)
 
     print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all good'}")
     return 1 if failures else 0

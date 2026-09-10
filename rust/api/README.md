@@ -22,7 +22,7 @@ cd rust && cargo build -p frontage-api --profile api
 rust/target/api/frontage-api rust/api/examples/spike/app.py     # from the repository root
 python3 rust/api/tests/routes.py                                # 13 assertions
 python3 rust/api/tests/routes.py --stress                       # the same, collecting at every safe point
-python3 rust/api/tests/gate.py                                  # 21 assertions about the sign-in gate
+python3 rust/api/tests/gate.py                                  # 22 assertions about the sign-in gate
 ```
 
 ## A private site

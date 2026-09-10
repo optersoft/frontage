@@ -50,5 +50,8 @@ where code should go.
   out to anyone signed in, and a deploy's `rsync --delete` would replace it under the running
   process. `--serve` defaults it one level above the tree and refuses a configured path inside
   it, before the socket binds.
+- **A gate hides a misconfiguration from every check that does not sign in.** An anonymous
+  probe gets the same 303 whether the site is there or not, so `--serve` refuses an empty
+  directory at startup rather than letting it become a 404 for whoever signs in.
 - **Clean room, as everywhere here.** Granian's and FastAPI's docs and specifications are fine;
   their source is not opened. The RSGI *shape* is copied from its specification, nothing else.

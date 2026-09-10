@@ -94,6 +94,19 @@ pub fn serve(config: Config) -> Result<(), String> {
         if !dir.is_dir() {
             return Err(format!("static={}: not a directory", dir.display()));
         }
+        // ⚠ An EMPTY directory is a misconfiguration, not a site with no pages, and in
+        // `--serve` mode it is invisible from outside: the gate answers every anonymous
+        // request with a redirect whether or not there is anything behind it, so a smoke
+        // test passes, `/healthz` passes, and only a reader who has signed in ever sees the
+        // 404. governor spent its first deploy pointed at the workdir's `public/` while its
+        // pages were in the release root — nothing said so until someone signed in.
+        if config.module.is_none() && dir.read_dir().map(|mut d| d.next().is_none()).unwrap_or(false) {
+            return Err(format!(
+                "--serve {}: the directory is empty, so every page would be a 404 to whoever \
+                 signs in. Point it at the built site.",
+                dir.display()
+            ));
+        }
     }
     let _ = STATIC_DIR.set(statics);
 

@@ -477,7 +477,14 @@ anyone with a session, who can then mint one for anybody; and a deploy rsyncs th
 and a configured path inside it stops the server before it binds. Found by reading a
 `bootstrap --dry-run`, not by a leak.
 
-**Gate:** `python3 rust/api/tests/gate.py` — 21 assertions against the real binary with no
+⚠ **An empty `--serve` directory is refused too, and for a reason the gate creates.** A
+gated site answers every anonymous request with a redirect *whether or not there is anything
+behind it*: the fleet smoke passes, `/healthz` passes, `mk gate.check` passes, and the first
+person to see the truth is a reader who has signed in and got a 404. `governor` spent its
+first deploy exactly there — pointed at the workdir's `public/` while a **packaged** app's
+assets install into the release root — so an empty tree now stops the server at startup.
+
+**Gate:** `python3 rust/api/tests/gate.py` — 22 assertions against the real binary with no
 network in them, because everything up to the consent screen is ours (the redirect, the PKCE
 challenge, the state cookie) and the authenticated half is minted from the secret the server
 persisted, which is the only honest way to assert that a signed-in visitor gets the page. The
