@@ -503,6 +503,61 @@ body from annotations through `frontage.schema`, `HTTPError` and a problem-JSON 
 CPython throughout, and the `RecordingHost` crossing budget of §4.4 with a test per request
 shape.
 
+**Status: partly built, 2026-09-10.** `frontage_api/` is the package: `App` with the seven
+method decorators, a router, arguments built from a route's spec, `HTTPError`, the response
+rules, and `frontage_api.testing.Client` — a client with no server under it, because
+`App.handle` is the whole of what the server calls, so a test calls the same thing and a test
+run has no socket in it. 21 tests on CPython, and `rust/api/tests/routes.py` runs the same
+surface on the real runtime, 20 assertions, all of them also under `--stress`.
+
+**Still to build here:** `Depends`, lifespan, `StreamingResponse` and SSE, static files and
+CORS — which together are what the gate below needs, so the gate is not met yet.
+
+⚠ **A route declares its types in the decorator, and that is a runtime constraint.** This
+runtime parses annotations and *discards* them: `def f(x: Undefined)` does not raise, there is
+no `__annotations__` on a function, and `inspect` does not exist. So the spec comes from
+`@app.get("/trips/{trip_id}", path_types={"trip_id": int})` rather than from the signature,
+and §4.5's example is aspirational until the compiler stores annotations. **The next provider
+commit is that change**, and the shape it should take is annotations *as source strings*: the
+runtime already never evaluates them, `co_varnames` and `__defaults__` are already there, and
+storing the text changes no existing semantics while making the contract readable. When it
+lands it fills in exactly the spec this code already takes, so nothing above changes shape.
+
+**What the surface costs, measured.** Same box and client as §6.1, one worker, 64 connections.
+`GET` is the 1 KB constant, `ECHO` reads a 1 KB body, `PATH PARAM` converts an integer out of
+the path and looks a row up, `VALIDATED` posts JSON through a schema. The bare-ASGI column
+hand-writes all four, because that is what "no framework" has to mean if the columns compare.
+
+| server | GET | ECHO | PATH PARAM | VALIDATED |
+|---|---|---|---|---|
+| **frontage-api** | **135,852** | **128,717** | **118,612** | **100,161** |
+| granian + bare ASGI, hand-written | 124,034 | 61,762 | 117,998 | 56,113 |
+| granian + FastAPI + pydantic | 55,687 | 28,902 | 33,941 | 21,452 |
+| uvicorn + FastAPI + pydantic | 13,024 | 12,090 | 11,009 | 9,916 |
+
+**The surface costs 25%**, against §6.1's hand-rolled dispatch on the same two routes
+(180,276 and 171,252). That is the price of matching, binding, conversion, validation and the
+response rules, and it is worth naming rather than hiding: everything below is measured *with*
+it paid.
+
+**The number to keep is the last column: 100,161 against 21,452, or 4.7×.** Pydantic's
+validator is compiled Rust and `frontage.schema` is pure Python interpreted on our own VM, so
+that axis favours FastAPI and this is still not close — because **the validator is not what
+costs**, the server around it is. The same reading in the other direction: on `PATH PARAM` we
+are within half a percent of hand-written ASGI with no framework at all (118,612 against
+117,998), so the framework is costing about what having no framework costs.
+
+⚠ **Two things this cost, and both are the kind that only appear when code runs.**
+`frontage.schema` imported `re` at module scope, and this runtime's `re` is implemented over
+the browser's `RegExp` and *raises on import* off the browser — so the one module §4.6 needs
+on both sides was unimportable on a server. It uses a regex for exactly one thing,
+`text(pattern=…)`; every other format there is hand-written string code. The import is now
+inside that branch, and `ast.walk` in `cli/graph.py` still finds it, so a page still packs it.
+And `--stress` earned its keep: the first version of the loader left a freshly bound
+`App.handle` in a Rust local across two further calls into Python, which collected it and
+reused the slot — `TypeError: 'list' object is not callable`, from a `handle` that had become
+a list. Root a value on the line after it exists, not at the end of the function.
+
 **Gate:** `frontage.chat`'s server half runs on it unchanged in behaviour, with its tests
 passing, and the one-crossing budget holds for a no-await handler.
 

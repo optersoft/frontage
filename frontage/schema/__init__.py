@@ -28,7 +28,6 @@ patterns: MicroPython's `re` has no counted repeats, so `\\d{4}` silently never 
 """
 
 import math
-import re
 
 __all__ = [
     "SchemaError",
@@ -119,7 +118,17 @@ class Text(Type):
         self.max = max
         self.pattern = pattern
         self.strip = strip
-        self._re = re.compile(pattern) if pattern is not None else None
+        if pattern is None:
+            self._re = None
+        else:
+            # Imported here, not at the top of the module. `re` runs on the browser's
+            # `RegExp` and raises on import off the browser, which would make this whole
+            # module — the one thing §4.6 of `API.md` needs on *both* sides — unimportable on
+            # a server. Nothing else here needs a regex: every format below is string code.
+            # `ast.walk` in `cli/graph.py` finds a nested import, so a page still packs it.
+            import re
+
+            self._re = re.compile(pattern)
 
     def _format(self, value):
         return True

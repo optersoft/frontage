@@ -1,4 +1,4 @@
-//! The VM side: load a Python module, hold its routes, run one handler to completion.
+//! The VM side: load the app module, and run one request to completion.
 //!
 //! One `App` is one `Vm`, and a `Vm` is not `Send` — the design, not a limitation
 //! (`API.md` §4.1). Every worker thread owns one, they share nothing, and no lock exists
@@ -9,6 +9,11 @@
 //! reachable from none of those. Anything held across a call into Python is pushed onto
 //! `vm.roots` and truncated back after, or kept in a Python dict that is itself rooted —
 //! which is what `coros` and `waits` are.
+//!
+//! **The app is `frontage_api.App`, and this file calls exactly one thing on it.** `App.handle`
+//! takes a scope and answers `(status, headers, body)`; matching, conversion, validation and
+//! the response rules are all Python on the far side of that single call, which is what
+//! §4.4's budget means in practice. What Rust owns is the socket, the parse and the body.
 //!
 //! **A coroutine is driven here rather than by an asyncio `Task`.** The protocol is the one
 //! `Task._step` implements: `send(None)`, a `StopIteration` means the answer, a yielded
@@ -26,9 +31,10 @@ use std::path::PathBuf;
 
 pub struct App {
     vm: Vm,
-    /// Path to handler, in declaration order. Two routes at the spike, so a linear scan is
-    /// the whole router; a real one arrives with the surface in `API.md` §6.2.
-    routes: Vec<(String, Value)>,
+    /// `app.handle`, bound once: the single entry per request.
+    handle: Value,
+    /// What the app declares it serves, for the startup banner only.
+    routes: Vec<String>,
     /// `asyncio.get_event_loop().run_once`, bound once.
     run_once: Value,
     /// token to the suspended coroutine, and token to the future it waits on. Python dicts
@@ -44,10 +50,11 @@ pub struct App {
     n_done: Value,
 }
 
-/// What a handler answered: bytes and the content type to send them with.
+/// What the app answered.
 pub struct Answer {
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
-    pub content_type: &'static str,
 }
 
 /// A handler either finished inside the one call, or suspended and needs the loop pumped.
@@ -77,14 +84,16 @@ fn fault(vm: &mut Vm, exc: Value) -> String {
 }
 
 impl App {
-    /// Import `module` from `dir` and read its `ROUTES` table.
+    /// Import `module` from `dir` and bind the `App` it defines.
     ///
     /// `stress` collects at every safe point, the way `fpy --stress` does. It is how the
     /// rooting in this file is actually tested rather than reasoned about: a `Value` held in
     /// a Rust local across a call into Python is invisible to the collector, and under
     /// stress that mistake fails immediately instead of once a month in production.
-    pub fn load(dir: PathBuf, module: &str, stress: bool) -> Result<App, String> {
-        let mut vm = Vm::new(Box::new(StdHost::new(vec![dir])));
+    pub fn load(dir: PathBuf, module: &str, search: &[PathBuf], stress: bool) -> Result<App, String> {
+        let mut path = vec![dir];
+        path.extend(search.iter().cloned());
+        let mut vm = Vm::new(Box::new(StdHost::new(path)));
         vm.heap.stress = stress;
         frontage_compile::install(&mut vm);
         hostmod::install(&mut vm);
@@ -92,41 +101,74 @@ impl App {
             Ok(m) => m,
             Err(exc) => return Err(fault(&mut vm, exc)),
         };
-        // The module sits in `vm.modules`, so it and every handler it names stay reachable:
-        // the values below need no root of their own.
-        let key = vm.intern("ROUTES");
-        let table = match vm.get_attr(m, key) {
-            Ok(t) => t,
-            Err(exc) => return Err(fault(&mut vm, exc)),
+        // The module sits in `vm.modules`, so it and the `App` it names stay reachable.
+        let key = vm.intern("app");
+        let app = match vm.get_attr(m, key) {
+            Ok(a) => a,
+            Err(_) => return Err(format!("{module} defines no `app`: it must be a frontage_api.App")),
         };
-        let pairs = match vm.take_dict_snapshot(table) {
-            Ok(p) => p,
-            Err(exc) => return Err(fault(&mut vm, exc)),
+        let key = vm.intern("handle");
+        let handle = match vm.get_attr(app, key) {
+            Ok(h) => h,
+            Err(_) => return Err(format!("{module}.app has no `handle`: it must be a frontage_api.App")),
         };
-        let mut routes = Vec::with_capacity(pairs.len());
-        for (k, v) in pairs {
-            match vm.as_str(k) {
-                Some(s) => routes.push((s.to_owned(), v)),
-                None => return Err("ROUTES: every key must be a string".into()),
-            }
-        }
-        if routes.is_empty() {
-            return Err(format!("{module}.ROUTES is empty"));
-        }
+        // ⚠ **Rooted here, on the line after it exists, and not one call later.** A bound
+        // method is freshly allocated and reachable from nothing but this local; `describe`
+        // and `bind_run_once` below both run Python, and Python collects. Pushing these four
+        // at the end instead of as they appear is a use-after-free that only shows under
+        // `--stress`, where it showed as `TypeError: 'list' object is not callable` — the
+        // slot reused by something else. Permanent roots, at the bottom of the stack: every
+        // per-call `truncate` marks above them, so they are never popped.
+        vm.roots.push(handle);
+        let routes = Self::describe(&mut vm, app);
 
         let run_once = match Self::bind_run_once(&mut vm) {
             Ok(v) => v,
             Err(exc) => return Err(fault(&mut vm, exc)),
         };
-        let coros = vm.dict(PyDict::new());
-        let waits = vm.dict(PyDict::new());
-        // Permanent roots, at the bottom of the stack: every per-call `truncate` marks above
-        // these, so they are never popped.
         vm.roots.push(run_once);
+        let coros = vm.dict(PyDict::new());
         vm.roots.push(coros);
+        let waits = vm.dict(PyDict::new());
         vm.roots.push(waits);
         let n_done = vm.intern("done");
-        Ok(App { vm, routes, run_once, coros, waits, next_token: 1, n_done })
+        Ok(App { vm, handle, routes, run_once, coros, waits, next_token: 1, n_done })
+    }
+
+    /// `["GET /trips/{id}", ...]` for the banner. Best effort: a failure here is cosmetic.
+    fn describe(vm: &mut Vm, app: Value) -> Vec<String> {
+        let mut out = Vec::new();
+        let router = match vm.intern("router") {
+            k => match vm.get_attr(app, k) {
+                Ok(r) => r,
+                Err(_) => return out,
+            },
+        };
+        let routes = {
+            let k = vm.intern("routes");
+            match vm.get_attr(router, k) {
+                Ok(r) => r,
+                Err(_) => return out,
+            }
+        };
+        let items: Vec<Value> = match vm.heap.get(routes) {
+            Obj::List(items) => items.clone(),
+            _ => return out,
+        };
+        for route in items {
+            let method = {
+                let k = vm.intern("method");
+                vm.get_attr(route, k).ok().and_then(|v| vm.as_str(v).map(|s| s.to_owned()))
+            };
+            let path = {
+                let k = vm.intern("path");
+                vm.get_attr(route, k).ok().and_then(|v| vm.as_str(v).map(|s| s.to_owned()))
+            };
+            if let (Some(m), Some(p)) = (method, path) {
+                out.push(format!("{m} {p}"));
+            }
+        }
+        out
     }
 
     fn bind_run_once(vm: &mut Vm) -> Result<Value, Value> {
@@ -139,21 +181,23 @@ impl App {
     }
 
     pub fn paths(&self) -> Vec<String> {
-        self.routes.iter().map(|(p, _)| p.clone()).collect()
+        self.routes.clone()
     }
 
-    /// Call the handler for `path` with the request body. `None` when nothing matches, which
-    /// the caller turns into a 404.
-    pub fn start(&mut self, path: &str, body: &[u8]) -> Option<Result<Started, String>> {
-        let handler = self.routes.iter().find(|(p, _)| p == path).map(|(_, h)| *h)?;
-        Some(self.begin(handler, body))
-    }
-
-    fn begin(&mut self, handler: Value, body: &[u8]) -> Result<Started, String> {
+    /// One request: build the scope, and enter Python once.
+    pub fn start(&mut self, method: &str, path: &str, query: &str, body: &[u8]) -> Result<Started, String> {
         let mark = self.vm.roots.len();
-        let arg = self.vm.heap.alloc(Obj::Bytes(body.to_vec()));
-        self.vm.roots.push(arg);
-        let called = self.vm.call(handler, &[arg], &[]);
+        let scope = self.vm.dict(PyDict::new());
+        self.vm.roots.push(scope);
+        let m = self.vm.str(method);
+        self.vm.dict_set_str(scope, "method", m);
+        let p = self.vm.str(path);
+        self.vm.dict_set_str(scope, "path", p);
+        let q = self.vm.str(query);
+        self.vm.dict_set_str(scope, "query_string", q);
+        let b = self.vm.heap.alloc(Obj::Bytes(body.to_vec()));
+        self.vm.dict_set_str(scope, "body", b);
+        let called = self.vm.call(self.handle, &[scope], &[]);
         let out = match called {
             Ok(v) => self.after_call(v),
             Err(exc) => Err(fault(&mut self.vm, exc)),
@@ -279,16 +323,45 @@ impl App {
         })
     }
 
-    /// `str` and `bytes` only, deliberately: the spike measures the transport, and a richer
-    /// return type is the surface of `API.md` §6.2.
+    /// `App.handle` answers `(status, headers, body)`. Anything else is the app's bug, and
+    /// saying so precisely is worth more than a generic 500.
     fn answer(&mut self, value: Value) -> Result<Answer, String> {
-        match self.vm.heap.get(value) {
-            Obj::Bytes(b) => Ok(Answer { body: b.clone(), content_type: "application/octet-stream" }),
-            _ => match self.vm.as_str(value) {
-                Some(s) => Ok(Answer { body: s.as_bytes().to_vec(), content_type: "text/plain; charset=utf-8" }),
-                None => Err("a handler must return str or bytes".into()),
-            },
+        let items: Vec<Value> = match self.vm.heap.get(value) {
+            Obj::Tuple(items) | Obj::List(items) => items.clone(),
+            other => return Err(format!("App.handle must answer a 3-tuple, got {}", other.kind())),
+        };
+        if items.len() != 3 {
+            return Err(format!("App.handle must answer (status, headers, body), got {} items", items.len()));
         }
+        let status = match self.vm.as_i64(items[0]) {
+            Some(n) if (100..=599).contains(&n) => n as u16,
+            _ => return Err("App.handle: the status is not an HTTP status".into()),
+        };
+        let mut headers = Vec::new();
+        let pairs: Vec<Value> = match self.vm.heap.get(items[1]) {
+            Obj::List(v) | Obj::Tuple(v) => v.clone(),
+            _ => return Err("App.handle: the headers are not a list".into()),
+        };
+        for pair in pairs {
+            let parts: Vec<Value> = match self.vm.heap.get(pair) {
+                Obj::Tuple(v) | Obj::List(v) if v.len() == 2 => v.clone(),
+                _ => return Err("App.handle: a header is not a (name, value) pair".into()),
+            };
+            let name = self.vm.as_str(parts[0]).map(|s| s.to_owned());
+            let value = self.vm.as_str(parts[1]).map(|s| s.to_owned());
+            match (name, value) {
+                (Some(n), Some(v)) => headers.push((n, v)),
+                _ => return Err("App.handle: a header name or value is not a string".into()),
+            }
+        }
+        let body = match self.vm.heap.get(items[2]) {
+            Obj::Bytes(b) => b.clone(),
+            _ => match self.vm.as_str(items[2]) {
+                Some(s) => s.as_bytes().to_vec(),
+                None => return Err("App.handle: the body is not bytes or str".into()),
+            },
+        };
+        Ok(Answer { status, headers, body })
     }
 
     /// Let the collector run between requests rather than inside one.

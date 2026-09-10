@@ -18,7 +18,7 @@
 
 use crate::app::{Answer, App, Poll, Started};
 use axum::extract::Request;
-use axum::http::{header, StatusCode};
+use axum::http::{HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Router;
 use std::cell::RefCell;
@@ -27,7 +27,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 /// Where the app module lives, for the workers that have not built their VM yet.
-static SOURCE: OnceLock<(PathBuf, String, bool)> = OnceLock::new();
+static SOURCE: OnceLock<(PathBuf, String, Vec<PathBuf>, bool)> = OnceLock::new();
 
 /// A request body past this is refused rather than buffered.
 const MAX_BODY: usize = 8 * 1024 * 1024;
@@ -47,6 +47,9 @@ pub struct Config {
     pub module: String,
     pub addr: String,
     pub workers: usize,
+    /// Extra module search directories, after the app's own. `frontage_api` and
+    /// `frontage.schema` live wherever they are installed, and the runtime has no site-packages.
+    pub search: Vec<PathBuf>,
     /// Collect at every safe point. Slow on purpose; it is what proves the rooting.
     pub stress: bool,
 }
@@ -54,8 +57,8 @@ pub struct Config {
 /// Load the app once here to fail loudly at startup, then hand a clone of the listener to
 /// every worker.
 pub fn serve(config: Config) -> Result<(), String> {
-    let _ = SOURCE.set((config.dir.clone(), config.module.clone(), config.stress));
-    let paths = App::load(config.dir.clone(), &config.module, config.stress)?.paths();
+    let _ = SOURCE.set((config.dir.clone(), config.module.clone(), config.search.clone(), config.stress));
+    let paths = App::load(config.dir.clone(), &config.module, &config.search, config.stress)?.paths();
 
     let listener = std::net::TcpListener::bind(&config.addr).map_err(|e| format!("{}: {e}", config.addr))?;
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
@@ -97,16 +100,17 @@ fn worker(socket: std::net::TcpListener) -> Result<(), String> {
 }
 
 async fn handle(request: Request) -> Response {
+    let method = request.method().as_str().to_owned();
     let path = request.uri().path().to_owned();
+    let query = request.uri().query().unwrap_or("").to_owned();
     // The body is read before Python is entered, so the VM is never borrowed across an await
     // and the handler holds nothing but `Send` values over one.
     let body = match axum::body::to_bytes(request.into_body(), MAX_BODY).await {
         Ok(b) => b,
         Err(_) => return (StatusCode::PAYLOAD_TOO_LARGE, "body too large").into_response(),
     };
-    let started = match with_app(|app| app.start(&path, &body)) {
-        Ok(Some(r)) => r,
-        Ok(None) => return (StatusCode::NOT_FOUND, "no route").into_response(),
+    let started = match with_app(|app| app.start(&method, &path, &query, &body)) {
+        Ok(r) => r,
         Err(e) => return fault(e),
     };
     let response = match started {
@@ -155,7 +159,20 @@ async fn park(token: u32) -> Response {
 }
 
 fn respond(answer: Answer) -> Response {
-    ([(header::CONTENT_TYPE, answer.content_type)], answer.body).into_response()
+    let mut response = Response::new(axum::body::Body::from(answer.body));
+    *response.status_mut() = StatusCode::from_u16(answer.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let out = response.headers_mut();
+    for (name, value) in answer.headers {
+        match (HeaderName::from_bytes(name.as_bytes()), HeaderValue::from_str(&value)) {
+            (Ok(n), Ok(v)) => {
+                out.append(n, v);
+            }
+            // A header the app invented that HTTP cannot carry is the app's bug, but dropping
+            // one silently is worse than answering without it; say so on the way past.
+            _ => eprintln!("frontage-api: dropped an invalid header {name}: {value}"),
+        }
+    }
+    response
 }
 
 /// This thread's VM, built on first use.
@@ -163,8 +180,8 @@ fn with_app<T>(f: impl FnOnce(&mut App) -> T) -> Result<T, String> {
     APP.with(|cell| {
         let mut slot = cell.borrow_mut();
         if slot.is_none() {
-            let (dir, module, stress) = SOURCE.get().ok_or("serve() was not called")?;
-            *slot = Some(App::load(dir.clone(), module, *stress)?);
+            let (dir, module, search, stress) = SOURCE.get().ok_or("serve() was not called")?;
+            *slot = Some(App::load(dir.clone(), module, search, *stress)?);
         }
         Ok(f(slot.as_mut().expect("just loaded")))
     })

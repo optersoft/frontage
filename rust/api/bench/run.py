@@ -24,6 +24,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 CRATE = HERE.parent
 PORT = 8411
 BODY = HERE / "payload.txt"
+TRIP = HERE / "trip.json"
 
 
 def wait_until_up(url, deadline=20.0):
@@ -37,11 +38,13 @@ def wait_until_up(url, deadline=20.0):
     return False
 
 
-def oha(url, connections, duration, post=False):
+def oha(url, connections, duration, post=False, body=None):
     cmd = ["oha", "--no-tui", "-c", str(connections), "-z", f"{duration}s",
            "--output-format", "json"]
     if post:
-        cmd += ["-m", "POST", "-D", str(BODY)]
+        cmd += ["-m", "POST", "-D", str(body or BODY)]
+        if body is TRIP:
+            cmd += ["-H", "content-type: application/json"]
     cmd.append(url)
     out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
     d = json.loads(out)
@@ -81,7 +84,10 @@ def measure(name, argv, connections, duration, env=None):
         oha(f"http://127.0.0.1:{PORT}/hello", connections, 2)  # warm
         get = oha(f"http://127.0.0.1:{PORT}/hello", connections, duration)
         echo = oha(f"http://127.0.0.1:{PORT}/echo", connections, duration, post=True)
-        return {"name": name, "get": get, "echo": echo}
+        path = oha(f"http://127.0.0.1:{PORT}/trips/1", connections, duration)
+        valid = oha(f"http://127.0.0.1:{PORT}/trips", connections, duration, post=True,
+                    body=TRIP)
+        return {"name": name, "get": get, "echo": echo, "path": path, "valid": valid}
     finally:
         # Granian's own shutdown can outlast a benchmark step, and `uv run` sits in front of
         # it, so the group gets a term and then a kill rather than a wait that never ends.
@@ -107,13 +113,17 @@ def main():
     args = ap.parse_args()
 
     BODY.write_bytes(b"x" * 1024)
+    TRIP.write_bytes(b'{"id": 5, "note": "north"}')
     binary = CRATE.parent / "target" / "api" / "frontage-api"
     if not binary.exists():
         sys.exit(f"build it first: cargo build -p frontage-api --profile api ({binary} is missing)")
     w = str(args.workers)
     subjects = [
         ("frontage-api", [str(binary), str(CRATE / "examples" / "spike" / "app.py"),
-                          "--addr", f"127.0.0.1:{PORT}", "--workers", w]),
+                          "--addr", f"127.0.0.1:{PORT}", "--workers", w,
+                          # The runtime has no site-packages: point it at the checkout that
+                          # holds `frontage_api` and `frontage.schema`.
+                          "--path", str(CRATE.parent.parent)]),
         ("granian + bare ASGI", ["uv", "run", "--no-sync", "granian", "--interface", "asgi",
                                  "--host", "127.0.0.1", "--port", str(PORT), "--workers", w,
                                  "--runtime-threads", "1", "asgi_app:app"]),
@@ -127,12 +137,12 @@ def main():
 
     print(f"\n{args.connections} connections, {args.duration}s, {args.workers} worker(s), "
           f"1 KB bodies both ways\n")
-    print(f"{'server':<22} {'GET rps':>10} {'GET p99':>9} {'ECHO rps':>10} {'ECHO p99':>9}")
-    print("-" * 64)
+    print(f"{'server':<22} {'GET':>10} {'ECHO':>10} {'PATH PARAM':>11} {'VALIDATED':>10}")
+    print("-" * 66)
     for r in results:
-        print(f"{r['name']:<22} {r['get']['rps']:>10,.0f} {r['get']['p99_ms']:>8.2f}ms "
-              f"{r['echo']['rps']:>10,.0f} {r['echo']['p99_ms']:>8.2f}ms")
-    bad = [(r["name"], k) for r in results for k in ("get", "echo") if r[k]["other"]]
+        print(f"{r['name']:<22} {r['get']['rps']:>10,.0f} {r['echo']['rps']:>10,.0f} "
+              f"{r['path']['rps']:>11,.0f} {r['valid']['rps']:>10,.0f}")
+    bad = [(r["name"], k) for r in results for k in ("get", "echo", "path", "valid") if r[k]["other"]]
     if bad:
         print("\nnon-200 responses:", bad)
     base = next(r for r in results if r["name"] == "granian + FastAPI")

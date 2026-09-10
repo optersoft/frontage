@@ -12,6 +12,7 @@ and must answer 500 promptly rather than hang.
 """
 
 import concurrent.futures
+import json
 import os
 import pathlib
 import signal
@@ -49,8 +50,10 @@ def main():
     if not binary.exists():
         sys.exit(f"build it first: cargo build -p frontage-api --profile api ({binary} is missing)")
     app = CRATE / "examples" / "spike" / "app.py"
-    extra = ["--stress"] if "--stress" in sys.argv else []
-    if extra:
+    # The runtime has no site-packages: point it at the checkout holding `frontage_api`.
+    root = CRATE.parent.parent
+    extra = ["--path", str(root)] + (["--stress"] if "--stress" in sys.argv else [])
+    if "--stress" in sys.argv:
         print("  (GC stress: collecting at every safe point)")
     proc = subprocess.Popen([str(binary), str(app), "--addr", f"127.0.0.1:{PORT}", "--workers", "2", *extra],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -78,6 +81,40 @@ def main():
 
         status, _, _ = get("/nope")
         check("an unknown path is 404", status == 404, str(status))
+
+        # §6.2, the surface: routing, conversion, validation and the error shapes, on the
+        # real runtime rather than through the CPython test client.
+        status, body, _ = get("/trips/1")
+        check("a path parameter is converted", json.loads(body)["note"] == "north", repr(body[:50]))
+
+        status, body, _ = get("/trips/99")
+        check("HTTPError carries its status", status == 404 and json.loads(body)["detail"] == "no such trip",
+              f"{status} {body[:40]!r}")
+
+        status, body, _ = get("/trips/abc")
+        check("a parameter that will not convert is 422",
+              status == 422 and json.loads(body)["detail"][0]["loc"] == "path.trip_id",
+              f"{status} {body[:60]!r}")
+
+        status, body, _ = get("/trips", b'{"id": 5, "note": "x"}')
+        check("a body passes the schema", status == 200 and json.loads(body) == {"stored": 5},
+              f"{status} {body[:40]!r}")
+
+        status, body, _ = get("/trips", b'{"id": -1}')
+        check("a body that fails the schema is 422 with the field",
+              status == 422 and json.loads(body)["detail"][0]["loc"].startswith("body"),
+              f"{status} {body[:60]!r}")
+
+        status, body, _ = get("/search?q=hi+there&n=3")
+        check("query parameters convert", json.loads(body) == {"q": "hi there", "n": 3}, repr(body[:50]))
+
+        request = urllib.request.Request(BASE + "/hello", method="DELETE")
+        try:
+            urllib.request.urlopen(request, timeout=5)
+            status = 200
+        except urllib.error.HTTPError as e:
+            status = e.code
+        check("a wrong method is 405", status == 405, str(status))
 
         # §4.3: a Rust deadline settling a Python future.
         status, body, took = get("/sleeps")
@@ -115,7 +152,7 @@ def main():
                     bodies = list(pool.map(lambda _: urllib.request.urlopen(one, timeout=10).read(),
                                            range(40)))
                 took = time.time() - started
-                budget = 2.0 if extra else 0.20
+                budget = 2.0 if "--stress" in sys.argv else 0.20
                 check("40 suspended requests interleave on one worker", took < budget,
                       f"{took:.3f}s, serialized would be ~0.40s")
                 check("and every one of them is right",

@@ -24,3 +24,6 @@ node_modules/
 /web/dist/
 /web/.astro/
 /web/src/data/
+rust/api/bench/payload.txt
+rust/api/bench/trip.json
+rust/api/bench/.venv/

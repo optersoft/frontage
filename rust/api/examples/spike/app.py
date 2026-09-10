@@ -1,59 +1,81 @@
-"""The spike's routes (`API.md` §6.1), shaped like Granian's benchmark app.
+"""The example app: `API.md` §6.2's surface, and §6.1's two benchmark routes.
 
 `hello` is the 1 KB GET that flatters every Rust server and proves little; `echo` reads the
-request body and gives it back, which is where Granian loses half its throughput
-(125,539 to 63,181 requests/s) and where the one-crossing rule of §4.4 has to pay.
+request body and gives it back, which is where Granian loses half its throughput and where
+the one-crossing rule of §4.4 has to pay. Both now go through `frontage_api.App` — matching,
+binding and the response rules included — so the benchmark measures the surface people would
+actually write, not a hand-rolled dispatch.
 
 The rest exercise §4.3, the host future hook. `sleeps` awaits a tokio deadline settling a
 Python future, which is the shape every native module in §6.4 will use; `loops` awaits the
 event loop's own timer; `both` mixes them. `stuck` awaits a future nobody will ever settle,
 and must answer 500 rather than hang.
 
-Every handler takes the body as `bytes` and returns `str` or `bytes`. `echo` is `async def`
-on purpose: a coroutine that never suspends must cost one resume and no loop turn.
+    frontage-api rust/api/examples/spike/app.py --path .     # from the repository root
 """
 
 import asyncio
 
 import _host
+from frontage.schema import integer, optional, record, text
+from frontage_api import App, HTTPError, Response
+
+app = App(title="the spike")
 
 PAYLOAD = "x" * 1024
+Trip = record(("id", integer(ge=0)), ("note", optional(text()), None))
+TRIPS = {1: {"id": 1, "note": "north"}, 2: {"id": 2, "note": None}}
 
 
-def hello(body):
-    return PAYLOAD
+@app.get("/hello")
+async def hello():
+    return Response(PAYLOAD, media_type="text/plain; charset=utf-8")
 
 
+@app.post("/echo", body=bytes)
 async def echo(body):
     return body
 
 
-async def sleeps(body):
+@app.get("/trips/{trip_id}", path_types={"trip_id": int})
+async def trip(trip_id):
+    row = TRIPS.get(trip_id)
+    if row is None:
+        raise HTTPError(404, "no such trip")
+    return row
+
+
+@app.post("/trips", body=Trip)
+async def create(body):
+    TRIPS[body["id"]] = body
+    return {"stored": body["id"]}
+
+
+@app.get("/search", query={"q": str, "n": int})
+async def search(q="", n=10):
+    return {"q": q, "n": n}
+
+
+@app.get("/sleeps")
+async def sleeps():
     await _host.sleep(0.01)
-    return b"slept on a tokio deadline"
+    return "slept on a tokio deadline"
 
 
-async def loops(body):
+@app.get("/loops")
+async def loops():
     await asyncio.sleep(0.01)
-    return b"slept on the event loop"
+    return "slept on the event loop"
 
 
-async def both(body):
+@app.get("/both")
+async def both():
     await asyncio.sleep(0.005)
     await _host.sleep(0.005)
-    return b"both"
+    return "both"
 
 
-async def stuck(body):
+@app.get("/stuck")
+async def stuck():
     await asyncio.get_event_loop().create_future()
-    return b"unreachable"
-
-
-ROUTES = {
-    "/hello": hello,
-    "/echo": echo,
-    "/sleeps": sleeps,
-    "/loops": loops,
-    "/both": both,
-    "/stuck": stuck,
-}
+    return "unreachable"

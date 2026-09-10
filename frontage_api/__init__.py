@@ -1,0 +1,306 @@
+"""frontage-api: FastAPI's shape, on axum, on frontage's own Python runtime.
+
+`API.md` at the repository root is the design. This is §6.2, the surface: an `App`, method
+decorators, arguments built from a route's spec, `HTTPError`, and the response rules.
+
+    from frontage_api import App, HTTPError
+    from frontage.schema import record, text, integer
+
+    app = App()
+    Trip = record(("id", integer(ge=0)), ("note", text()))
+
+    @app.get("/trips/{trip_id}", path={"trip_id": int})
+    async def trip(trip_id):
+        row = TRIPS.get(trip_id)
+        if row is None:
+            raise HTTPError(404, "no such trip")
+        return row                      # a dict answers as JSON
+
+    @app.post("/trips", body=Trip)
+    async def create(body):             # validated, coerced, 422 with the field errors
+        return {"id": store(body)}
+
+**A route declares its types in the decorator, and that is a runtime constraint, not a
+preference.** This runtime parses annotations and discards them — `def f(x: Undefined)` does
+not even raise — so there is no `__annotations__` to read and nothing to build a contract
+from. `API.md` §6.2 has the compiler change that adds them; when it lands, an annotation
+becomes the preferred spelling and fills in exactly the same spec this file already takes, so
+nothing here changes shape.
+
+**One entry, one crossing.** `App.handle` is the whole of what the server calls per request
+(§4.4). Everything above — matching, conversion, validation, the response rules — is Python
+on this side of that one call.
+"""
+
+import json
+
+from .routing import Route, Router
+
+__all__ = ["App", "HTTPError", "Response", "json_response", "text_response"]
+
+METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
+
+JSON_TYPE = "application/json"
+TEXT_TYPE = "text/plain; charset=utf-8"
+BYTES_TYPE = "application/octet-stream"
+
+
+class HTTPError(Exception):
+    """An answer, raised. `detail` is what the body's `detail` field says."""
+
+    def __init__(self, status, detail=None, headers=None):
+        Exception.__init__(self, detail or ("HTTP " + str(status)))
+        self.status = status
+        self.detail = detail if detail is not None else _reason(status)
+        self.headers = headers or []
+
+
+REASONS = {
+    400: "bad request",
+    401: "unauthorized",
+    403: "forbidden",
+    404: "not found",
+    405: "method not allowed",
+    409: "conflict",
+    413: "payload too large",
+    415: "unsupported media type",
+    422: "unprocessable entity",
+    429: "too many requests",
+    500: "internal server error",
+    503: "service unavailable",
+}
+
+
+def _reason(status):
+    return REASONS.get(status, "error")
+
+
+class Response:
+    """A body with a status, headers and a content type, when the shorthands are not enough."""
+
+    def __init__(self, body, status=200, headers=None, media_type=None):
+        if isinstance(body, str):
+            self.body = body.encode("utf-8")
+            media_type = media_type or TEXT_TYPE
+        elif isinstance(body, bytes):
+            self.body = body
+            media_type = media_type or BYTES_TYPE
+        else:
+            self.body = json.dumps(body).encode("utf-8")
+            media_type = media_type or JSON_TYPE
+        self.status = status
+        self.headers = list(headers or [])
+        self.media_type = media_type
+
+    def parts(self):
+        headers = [("content-type", self.media_type)]
+        headers.extend(self.headers)
+        return self.status, headers, self.body
+
+
+def json_response(data, status=200, headers=None):
+    return Response(data, status=status, headers=headers, media_type=JSON_TYPE)
+
+
+def text_response(body, status=200, headers=None):
+    return Response(body, status=status, headers=headers, media_type=TEXT_TYPE)
+
+
+def _params_of(handler):
+    """The names a handler takes. `co_varnames` is parameters first, `argcount` of them —
+    the runtime has no `inspect`, and this is the whole of what it would be used for."""
+    code = getattr(handler, "__code__", None)
+    if code is None:
+        return ()
+    names = getattr(code, "co_varnames", ())
+    count = getattr(code, "co_argcount", len(names))
+    return tuple(names[:count])
+
+
+def _convert(value, kind, where, name, errors):
+    """One raw string through one converter. A `frontage.schema` type validates and coerces;
+    a plain callable (`int`, `float`, `str`) converts; anything else is passed through."""
+    parse = getattr(kind, "parse", None)
+    if parse is not None:
+        try:
+            return parse(value, coerce=True)
+        except Exception as exc:
+            for path, message in getattr(exc, "errors", [("$", str(exc))]):
+                errors.append((where + "." + name + path.lstrip("$"), message))
+            return None
+    if kind is bool:
+        low = value.lower() if isinstance(value, str) else value
+        if low in (True, "1", "true", "yes", "on"):
+            return True
+        if low in (False, "0", "false", "no", "off", ""):
+            return False
+        errors.append((where + "." + name, "not a boolean"))
+        return None
+    if callable(kind):
+        try:
+            return kind(value)
+        except Exception:
+            errors.append((where + "." + name, "not a " + getattr(kind, "__name__", str(kind))))
+            return None
+    return value
+
+
+def parse_query(query_string):
+    """`a=1&b=two` to a dict. Last one wins, which is what a form does; `%` escapes and `+`
+    are decoded, because a query parameter that is a sentence is normal."""
+    out = {}
+    if not query_string:
+        return out
+    for pair in query_string.split("&"):
+        if not pair:
+            continue
+        if "=" in pair:
+            key, _, value = pair.partition("=")
+        else:
+            key, value = pair, ""
+        out[_unquote(key)] = _unquote(value)
+    return out
+
+
+def _unquote(s):
+    s = s.replace("+", " ")
+    if "%" not in s:
+        return s
+    out = []
+    i = 0
+    while i < len(s):
+        if s[i] == "%" and i + 2 < len(s) + 1:
+            try:
+                out.append(chr(int(s[i + 1 : i + 3], 16)))
+                i += 3
+                continue
+            except ValueError:
+                pass
+        out.append(s[i])
+        i += 1
+    return "".join(out)
+
+
+class App:
+    """The routes, and the one entry the server calls."""
+
+    def __init__(self, title="frontage-api"):
+        self.title = title
+        self.router = Router()
+
+    def route(self, method, path, path_types=None, query=None, body=None):
+        method = method.upper()
+        if method not in METHODS:
+            raise ValueError("not a method: " + repr(method))
+
+        def decorate(handler):
+            spec = {"path": path_types or {}, "query": query or {}, "body": body}
+            spec["params"] = _params_of(handler)
+            self.router.add(Route(method, path, handler, spec))
+            return handler
+
+        return decorate
+
+    # `get`, `post`, `put`, `patch`, `delete`, `head` and `options` are installed at the
+    # bottom of this file, one per method, rather than written out seven times.
+
+    async def handle(self, scope):
+        """One request in, `(status, headers, body)` out. The only thing the server calls."""
+        try:
+            return await self._handle(scope)
+        except HTTPError as exc:
+            return _problem(exc.status, exc.detail, exc.headers)
+        except Exception as exc:  # a handler's own failure, not the caller's
+            return _problem(500, _reason(500) + ": " + str(exc))
+
+    async def _handle(self, scope):
+        method = scope.get("method", "GET")
+        route, params = self.router.find(method, scope.get("path", "/"))
+        if route is None:
+            if params:
+                return _problem(405, "method not allowed", [("allow", ", ".join(sorted(params)))])
+            return _problem(404, "not found")
+        kwargs = _bind(route, params, scope)
+        result = route.handler(**kwargs)
+        if hasattr(result, "send") or hasattr(result, "__await__"):
+            result = await result
+        return _respond(result)
+
+
+def _bind(route, params, scope):
+    """Path, query and body into the handler's own parameter names."""
+    spec = route.spec
+    wanted = spec["params"]
+    errors = []
+    values = {}
+    for name, raw in params.items():
+        values[name] = _convert(raw, spec["path"].get(name, str), "path", name, errors)
+    if spec["query"]:
+        query = parse_query(scope.get("query_string", ""))
+        for name, kind in spec["query"].items():
+            if name in query:
+                values[name] = _convert(query[name], kind, "query", name, errors)
+    if spec["body"] is not None:
+        values["body"] = _body(scope, spec["body"], errors)
+    if errors:
+        raise HTTPError(422, [{"loc": where, "msg": message} for where, message in errors])
+    return {name: values[name] for name in wanted if name in values}
+
+
+def _body(scope, kind, errors):
+    raw = scope.get("body", b"")
+    if kind is bytes:
+        # The body untouched, for a route that is not JSON: an upload, a webhook signature,
+        # a proxy. Declared rather than inferred, so nothing is parsed by accident.
+        return raw
+    if not raw:
+        payload = None
+    else:
+        try:
+            payload = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+        except Exception:
+            raise HTTPError(400, "the body is not JSON") from None
+    if kind is True:
+        return payload
+    parse = getattr(kind, "parse", None)
+    if parse is None:
+        return payload
+    try:
+        return parse(payload)
+    except Exception as exc:
+        for path, message in getattr(exc, "errors", [("$", str(exc))]):
+            errors.append(("body" + path.lstrip("$"), message))
+        return None
+
+
+def _respond(result):
+    if isinstance(result, Response):
+        return result.parts()
+    if result is None:
+        return 204, [], b""
+    if isinstance(result, bytes):
+        return 200, [("content-type", BYTES_TYPE)], result
+    if isinstance(result, str):
+        return 200, [("content-type", TEXT_TYPE)], result.encode("utf-8")
+    return 200, [("content-type", JSON_TYPE)], json.dumps(result).encode("utf-8")
+
+
+def _problem(status, detail, headers=None):
+    """FastAPI's shape for an error body, because the fleet's pages already read it."""
+    body = json.dumps({"detail": detail}).encode("utf-8")
+    out = [("content-type", JSON_TYPE)]
+    out.extend(headers or [])
+    return status, out, body
+
+
+def _method_decorator(method):
+    def decorator(self, path, path_types=None, query=None, body=None):
+        return self.route(method, path, path_types=path_types, query=query, body=body)
+
+    decorator.__name__ = method.lower()
+    return decorator
+
+
+for _method in METHODS:
+    setattr(App, _method.lower(), _method_decorator(_method))
+del _method
