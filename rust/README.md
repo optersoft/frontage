@@ -58,6 +58,16 @@ A sample every 64 instructions: the time since the last one goes to the running 
 (exclusive) and to every code object on the frame stack (inclusive). About 30% overhead. The
 native core was built by it: `RUNTIME.md` §9's addendum has each step's number.
 
+## Where it differs from CPython, on purpose
+
+**`__annotations__` holds the annotation's source text, not its value.** This runtime has
+never evaluated an annotation — `def g(x: Undefined)` does not raise, and never did — and
+storing the text keeps that exactly, so no code that runs today can start failing. It is the
+shape `from __future__ import annotations` gives CPython, so a reader that expects strings is
+not surprised; a *string* annotation keeps its quotes, because that is what the source says.
+The keys and their order match CPython, which is what `py/tests/cases/annotations.py`
+asserts. `frontage_api` is the first consumer: a route's contract is read from it.
+
 ## What it is not, yet
 
 `__slots__` is accepted but not enforced (an instance keeps a dict); `eval` is not written

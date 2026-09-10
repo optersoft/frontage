@@ -37,22 +37,22 @@ async def echo(body):
     return body
 
 
-@app.get("/trips/{trip_id}", path_types={"trip_id": int})
-async def trip(trip_id):
+@app.get("/trips/{trip_id}")
+async def trip(trip_id: int):
     row = TRIPS.get(trip_id)
     if row is None:
         raise HTTPError(404, "no such trip")
     return row
 
 
-@app.post("/trips", body=Trip)
-async def create(body):
+@app.post("/trips")
+async def create(body: Trip):
     TRIPS[body["id"]] = body
     return {"stored": body["id"]}
 
 
-@app.get("/search", query={"q": str, "n": int})
-async def search(q="", n=10):
+@app.get("/search")
+async def search(q: str = "", n: int = 10):
     return {"q": q, "n": n}
 
 

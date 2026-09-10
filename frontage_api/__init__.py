@@ -55,6 +55,10 @@ __all__ = [
 
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
 
+#: Names the request itself supplies, which an annotation must not turn into a query
+#: parameter. `headers: Headers` should read as documentation, not as `?headers=`.
+RESERVED = ("headers", "scope", "path_params")
+
 JSON_TYPE = "application/json"
 TEXT_TYPE = "text/plain; charset=utf-8"
 BYTES_TYPE = "application/octet-stream"
@@ -143,6 +147,62 @@ def _params_of(handler):
     return tuple(names[:count])
 
 
+#: What an annotation's text may name, when the route does not say otherwise. Deliberately
+#: short: this is a router, not a type system, and anything else has to be declared.
+BUILTIN_TYPES = {
+    "int": int,
+    "float": float,
+    "str": str,
+    "bool": bool,
+    "bytes": bytes,
+}
+
+
+def _annotations_of(handler, namespace):
+    """A route's spec, read from the handler's signature.
+
+    ⚠ **The values are source text, not objects.** This runtime stores an annotation's
+    spelling and never evaluates it (`rust/README.md`), so `int` arrives as `"int"` and a
+    schema arrives as the name it was bound to — which is why `namespace` is the module the
+    handler came from. That also means an annotation this cannot resolve is *not* an error:
+    it is simply a parameter the route does not bind, exactly as before annotations existed.
+    """
+    out = {}
+    for name, value in getattr(handler, "__annotations__", {}).items():
+        if name == "return":
+            continue
+        kind = _resolve(value, namespace)
+        if kind is not None:
+            out[name] = kind
+    return out
+
+
+def _resolve(value, namespace):
+    """One annotation to a converter, whichever runtime wrote it.
+
+    ⚠ **Both shapes have to work.** On frontage's runtime an annotation is its *source text*
+    (`rust/README.md`), so `int` arrives as `"int"`; on CPython it is the object itself,
+    because this package is written and tested there. Handling only strings would crash every
+    annotated handler under pytest, which is exactly where they are first written.
+    """
+    if not isinstance(value, str):
+        return value if (callable(value) or hasattr(value, "parse")) else None
+    text = value.strip()
+    if len(text) > 1 and text[0] in "\"'" and text[-1] == text[0]:
+        text = text[1:-1].strip()  # a string annotation: what it says, not its quotes
+    kind = BUILTIN_TYPES.get(text)
+    if kind is None:
+        kind = namespace.get(text)
+    return kind
+
+
+def _namespace_of(handler):
+    globals_ = getattr(handler, "__globals__", None)
+    if isinstance(globals_, dict):
+        return globals_
+    return {}
+
+
 def _convert(value, kind, where, name, errors):
     """One raw string through one converter. A `frontage.schema` type validates and coerces;
     a plain callable (`int`, `float`, `str`) converts; anything else is passed through."""
@@ -169,6 +229,12 @@ def _convert(value, kind, where, name, errors):
             errors.append((where + "." + name, "not a " + getattr(kind, "__name__", str(kind))))
             return None
     return value
+
+
+def _path_names(path):
+    from .routing import compile_path
+
+    return compile_path(path)[1]
 
 
 class Headers:
@@ -275,13 +341,28 @@ class App:
             raise ValueError("not a method: " + repr(method))
 
         def decorate(handler):
+            params = _params_of(handler)
+            declared = _annotations_of(handler, _namespace_of(handler))
+            # The decorator wins where both speak, so a route can always override what a
+            # signature says without editing the signature.
+            names = _path_names(path)
             spec = {
-                "path": path_types or {},
-                "query": query or {},
+                "path": {n: declared[n] for n in names if n in declared},
+                "query": {},
                 "body": body,
                 "needs": needs or {},
-                "params": _params_of(handler),
+                "params": params,
             }
+            for name, kind in declared.items():
+                if name in names or name in spec["needs"] or name in RESERVED:
+                    continue
+                if name == "body":
+                    if spec["body"] is None:
+                        spec["body"] = kind
+                    continue
+                spec["query"][name] = kind
+            spec["path"].update(path_types or {})
+            spec["query"].update(query or {})
             self.router.add(Route(method, path, handler, spec))
             return handler
 

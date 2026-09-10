@@ -483,6 +483,18 @@ impl Vm {
                 let d = f.defaults.clone();
                 return Some(if d.is_empty() { Value::NONE } else { self.tuple(d) });
             }
+            if name == n.annotations {
+                // ⚠ **The values are the annotation's source text, not the annotation.** This
+                // runtime never evaluates one, which is why `def g(x: Undefined)` has always
+                // been legal here, and storing the text keeps that true. It is the same shape
+                // `from __future__ import annotations` gives CPython, so a reader that
+                // expects strings is not surprised. An unannotated function answers `{}`.
+                let a = f.annotations;
+                if !a.is_none() {
+                    return Some(a);
+                }
+                return Some(self.dict(crate::dict::PyDict::new()));
+            }
             if name == n.globals {
                 return Some(f.globals);
             }

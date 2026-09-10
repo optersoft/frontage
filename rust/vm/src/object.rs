@@ -81,6 +81,9 @@ pub struct Func {
     pub qualname: Value,
     /// `__doc__`, a rewritten `__name__`, anything an app hangs on a function.
     pub attrs: Option<Box<PyDict>>,
+    /// `__annotations__`: parameter name to the annotation's **source text**. `Value::NONE`
+    /// when the function has none, so an unannotated function costs nothing.
+    pub annotations: Value,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -310,6 +313,7 @@ impl Obj {
                     visit(k);
                     visit(v)
                 });
+                visit(f.annotations);
                 f.closure.iter().for_each(|&x| visit(x));
                 if let Some(a) = &f.attrs {
                     a.trace(&mut visit);

@@ -172,6 +172,7 @@ names! {
     traceback = "__traceback__", cause = "__cause__", context = "__context__",
     suppress_context = "__suppress_context__", self_ = "__self__", func = "__func__",
     code = "__code__", defaults = "__defaults__", closure = "__closure__", globals = "__globals__",
+    annotations = "__annotations__",
     wrapped = "__wrapped__", main = "__main__", args = "args", keys = "keys", get = "get",
     send = "send", throw = "throw", close = "close", value = "value", strings = "strings",
     interpolations = "interpolations", expression = "expression", conversion = "conversion",
@@ -1499,9 +1500,11 @@ impl Vm {
                 } else {
                     Vec::new()
                 };
+                // Deepest on the stack, so popped last. See `annotation_pairs` in codegen.
+                let annotations = if arg & 8 != 0 { pop!() } else { Value::NONE };
                 let globals = frame!().globals;
                 let qualname = self.string(code.qualname.clone());
-                let f = self.heap.alloc(Obj::Func(Box::new(Func { code, globals, defaults, kwdefaults, closure, name, qualname, attrs: None })));
+                let f = self.heap.alloc(Obj::Func(Box::new(Func { code, globals, defaults, kwdefaults, closure, name, qualname, attrs: None, annotations })));
                 push!(f);
             }
             Op::MakeClass => {

@@ -1043,6 +1043,22 @@ impl<'a> Gen<'a> {
         // Compile defaults now (consuming lambda scopes), then the function scope.
         let mut flags = 0;
         let p = &f.parameters;
+        // `__annotations__`, as the **source text** of each annotation rather than its value.
+        //
+        // This runtime has never evaluated an annotation — `def g(x: Undefined)` does not
+        // raise — and storing the text keeps that exactly, so no existing code can start
+        // failing. What it buys is a contract something can read: `frontage_api` builds a
+        // route's spec from it, and an editor could too. Pushed first, because MakeFunction
+        // pops in reverse and this is the deepest of the four.
+        let annotations = self.annotation_pairs(f);
+        if !annotations.is_empty() {
+            for (name, text) in &annotations {
+                self.emit_str(u, name);
+                self.emit_str(u, text);
+            }
+            self.emit(u, Op::BuildDict, annotations.len() as u32);
+            flags |= 8;
+        }
         let defaults: Vec<&Expr> = p.posonlyargs.iter().chain(p.args.iter()).filter_map(|a| a.default.as_deref()).collect();
         if !defaults.is_empty() {
             for d in &defaults {
@@ -1073,6 +1089,32 @@ impl<'a> Gen<'a> {
             self.emit(u, Op::Call, 1);
         }
         Ok(())
+    }
+
+    /// `(name, annotation source)` for every annotated parameter, and `"return"` for the
+    /// return annotation, in declaration order — which is the order they read in.
+    fn annotation_pairs<'ast>(&self, f: &'ast ast::StmtFunctionDef) -> Vec<(String, String)> {
+        let p = &f.parameters;
+        let mut out = Vec::new();
+        let mut push = |name: &str, ann: Option<&Expr>| {
+            if let Some(expr) = ann {
+                out.push((name.to_string(), self.source[expr.range()].trim().to_string()));
+            }
+        };
+        for a in p.posonlyargs.iter().chain(p.args.iter()) {
+            push(a.parameter.name.id.as_str(), a.parameter.annotation.as_deref());
+        }
+        if let Some(a) = &p.vararg {
+            push(a.name.id.as_str(), a.annotation.as_deref());
+        }
+        for a in p.kwonlyargs.iter() {
+            push(a.parameter.name.id.as_str(), a.parameter.annotation.as_deref());
+        }
+        if let Some(a) = &p.kwarg {
+            push(a.name.id.as_str(), a.annotation.as_deref());
+        }
+        push("return", f.returns.as_deref());
+        out
     }
 
     fn make_function_tail(&mut self, u: &mut Unit, code: Rc<Code>, qualname: &str, child_scope: usize, mut flags: u32) -> CResult {

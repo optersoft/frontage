@@ -521,15 +521,19 @@ model "thinks" about for 20 ms each. `Conversation.stream` is **unchanged**: an 
 generator is an async generator on either transport. What it needed was async generators in
 the runtime, which is the provider commit below.
 
-⚠ **A route declares its types in the decorator, and that is a runtime constraint.** This
-runtime parses annotations and *discards* them: `def f(x: Undefined)` does not raise, there is
-no `__annotations__` on a function, and `inspect` does not exist. So the spec comes from
-`@app.get("/trips/{trip_id}", path_types={"trip_id": int})` rather than from the signature,
-and §4.5's example is aspirational until the compiler stores annotations. **The next provider
-commit is that change**, and the shape it should take is annotations *as source strings*: the
-runtime already never evaluates them, `co_varnames` and `__defaults__` are already there, and
-storing the text changes no existing semantics while making the contract readable. When it
-lands it fills in exactly the spec this code already takes, so nothing above changes shape.
+✅ **A route reads its types from the signature, and §4.5's example is real.** It was not:
+this runtime parsed annotations and *discarded* them, so there was no `__annotations__` to
+read and the spec had to be spelled out in the decorator. The provider commit that fixed it
+took the shape this section predicted — **annotations as source text** — because the runtime
+already never evaluated them, so storing the spelling changes nothing that runs today and
+`def g(x: Undefined)` stays legal. It needed no bytecode format change either: the dict is
+built from string constants at function-definition time, the way defaults already are.
+
+The decorator still works and **wins where both speak**, so a route can override what a
+signature says without editing the signature. Two details worth stating: `_resolve` handles
+**both shapes**, because on CPython an annotation is the object itself and that is where
+handlers get written and tested; and an annotation nothing can resolve is **ignored, not an
+error**, so a parameter typed for a reader rather than for the router costs nothing.
 
 **What the surface costs, measured.** Same box and client as §6.1, one worker, 64 connections.
 `GET` is the 1 KB constant, `ECHO` reads a 1 KB body, `PATH PARAM` converts an integer out of

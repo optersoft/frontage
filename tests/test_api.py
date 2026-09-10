@@ -399,3 +399,55 @@ def test_an_event_stream_gets_the_headers_a_proxy_needs():
     assert names["cache-control"] == "no-cache"
     assert names["x-accel-buffering"] == "no", "a proxy would otherwise buffer the whole stream"
     assert _drain(body) == [b'data: {"n": 1}\n\n'], "the body is a source, not bytes"
+
+
+# --- a route read from the signature (API.md §6.2) -------------------------------------------
+
+
+def test_a_route_reads_its_types_from_annotations():
+    app = App()
+    Trip = record(("id", integer(ge=0)), ("note", optional(text()), None))
+
+    @app.get("/trips/{trip_id}")
+    async def trip(trip_id: int, verbose: bool = False):
+        return {"id": trip_id, "verbose": verbose}
+
+    @app.post("/trips")
+    async def create(body: Trip):
+        return {"stored": body}
+
+    client = Client(app)
+    assert client.get("/trips/7?verbose=true").json() == {"id": 7, "verbose": True}
+    assert client.get("/trips/nope").status == 422, "the path type came from the signature"
+    assert client.post("/trips", json={"id": 1}).json() == {"stored": {"id": 1, "note": None}}
+    assert client.post("/trips", json={"id": -1}).status == 422
+
+
+def test_the_decorator_still_wins_over_a_signature():
+    app = App()
+
+    @app.get("/n/{n}", path_types={"n": str})
+    async def n(n: int):
+        return {"n": n, "kind": type(n).__name__}
+
+    assert Client(app).get("/n/abc").json() == {"n": "abc", "kind": "str"}
+
+
+def test_a_request_name_is_not_turned_into_a_query_parameter():
+    app = App()
+
+    @app.get("/h")
+    async def h(headers: str = ""):
+        return {"kind": type(headers).__name__}
+
+    assert Client(app).get("/h").json() == {"kind": "Headers"}
+
+
+def test_an_annotation_nothing_can_resolve_is_ignored_not_an_error():
+    app = App()
+
+    @app.get("/x")
+    async def x(thing: "SomethingUndefined" = "default"):  # noqa: F821
+        return {"thing": thing}
+
+    assert Client(app).get("/x?thing=given").json() == {"thing": "default"}
