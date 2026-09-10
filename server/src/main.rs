@@ -15,6 +15,7 @@ fn main() {
     let mut file: Option<PathBuf> = None;
     let mut addr = String::from("127.0.0.1:8000");
     let mut workers: Option<usize> = None;
+    let mut stress = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--addr" => match args.next() {
@@ -25,8 +26,9 @@ fn main() {
                 Some(n) if n > 0 => workers = Some(n),
                 _ => fail("--workers needs a positive count"),
             },
+            "--stress" => stress = true,
             "-h" | "--help" => {
-                println!("usage: frontage-api APP.py [--addr HOST:PORT] [--workers N]");
+                println!("usage: frontage-api APP.py [--addr HOST:PORT] [--workers N] [--stress]");
                 return;
             }
             other if file.is_none() => file = Some(PathBuf::from(other)),
@@ -47,7 +49,7 @@ fn main() {
     // `--workers` is also what makes a comparison against another server fair, since it pins
     // both to the same core count.
     let workers = workers.unwrap_or_else(|| std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1));
-    if let Err(e) = server::serve(server::Config { dir, module, addr, workers }) {
+    if let Err(e) = server::serve(server::Config { dir, module, addr, workers, stress }) {
         fail(&e);
     }
 }

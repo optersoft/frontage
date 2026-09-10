@@ -47,7 +47,10 @@ def main():
     if not binary.exists():
         sys.exit(f"build it first: cargo build --release ({binary} is missing)")
     app = ROOT / "examples" / "spike" / "app.py"
-    proc = subprocess.Popen([str(binary), str(app), "--addr", f"127.0.0.1:{PORT}", "--workers", "2"],
+    extra = ["--stress"] if "--stress" in sys.argv else []
+    if extra:
+        print("  (GC stress: collecting at every safe point)")
+    proc = subprocess.Popen([str(binary), str(app), "--addr", f"127.0.0.1:{PORT}", "--workers", "2", *extra],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                             start_new_session=True)
     try:
@@ -94,7 +97,7 @@ def main():
 
         # One worker, many suspended requests: they must interleave, not queue.
         with subprocess.Popen([str(binary), str(app), "--addr", f"127.0.0.1:{PORT + 1}",
-                               "--workers", "1"], stdout=subprocess.DEVNULL,
+                               "--workers", "1", *extra], stdout=subprocess.DEVNULL,
                               stderr=subprocess.DEVNULL, start_new_session=True) as single:
             try:
                 one = f"http://127.0.0.1:{PORT + 1}/sleeps"
@@ -110,7 +113,8 @@ def main():
                     bodies = list(pool.map(lambda _: urllib.request.urlopen(one, timeout=10).read(),
                                            range(40)))
                 took = time.time() - started
-                check("40 suspended requests interleave on one worker", took < 0.20,
+                budget = 2.0 if extra else 0.20
+                check("40 suspended requests interleave on one worker", took < budget,
                       f"{took:.3f}s, serialized would be ~0.40s")
                 check("and every one of them is right",
                       all(b == b"slept on a tokio deadline" for b in bodies))

@@ -399,12 +399,28 @@ decorators.
 FastAPI on the same box, at the same concurrency**, reporting requests/s and p99 for both
 routes.
 
-**Status: the gate is met, on this laptop, 2026-09-10.** What exists is `server/` and
-`examples/spike/app.py`: axum 0.8.9, a `Vm` per worker thread in a thread-local, the app's
-`ROUTES` dict read once at load, the body handed to the handler whole as `bytes`, and `str`
-or `bytes` back. `async def` works as long as the coroutine does not suspend, which costs one
-`gen_resume` and no loop turn. **The host future hook of §4.3 is not written yet** and is the
-next commit; the runtime becomes thread-per-core with it, for the reason in `server.rs`.
+**Status: the gate is met, on this laptop, 2026-09-10, and §4.3 is written.** What exists is
+`server/`, `examples/spike/app.py` and `tests/routes.py`: axum 0.8.9, one OS thread per worker
+with a `current_thread` runtime and a `Vm` of its own, the app's `ROUTES` dict read once at
+load, the body handed to the handler whole as `bytes`, and `str` or `bytes` back.
+
+**A handler can await.** `_host.sleep` is the hook of §4.3 — a tokio deadline settling a
+Python future, the shape every native module in §6.4 will use. A coroutine is driven in Rust
+rather than by an asyncio `Task`: `send(None)`, a `StopIteration` is the answer, a yielded
+`Future` means suspend. That costs no Task object and no callback per step, and **an
+`async def` that never suspends never touches the event loop at all**, which is what keeps
+the budget below. Thread-per-core is what makes a suspended handler correct: a task on a
+`current_thread` runtime never migrates, so a coroutine resumes on the VM it started on. The
+VM is never borrowed across an `.await`, so only `Send` values cross one and the router stays
+a plain `axum::Router` — which is what `hive-server` takes in §4.8.
+
+**`tests/routes.py` is thirteen assertions over the real binary**, and the one that matters
+most is the last: **40 suspended requests on a single worker interleave in 88 ms** rather than
+queueing for 400. Two ordering bugs it caught are worth naming, because both look like a
+deadlock and neither is. Polling before pumping declares every awaiting handler stuck, since
+a turn of the loop settles the last future and reports "nothing scheduled" in the same breath.
+And a delay measured before a poll is stale the moment that poll advances the coroutine into
+a *new* await, which declared a two-await handler stuck between its two sleeps.
 
 M4 MacBook, 10 cores, macOS 25.6, one worker, 64 connections, 6 s, 1 KB bodies both ways,
 `oha` as the client. Two runs differ by under 1%; the second is shown.

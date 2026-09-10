@@ -35,7 +35,12 @@ pub struct App {
     /// rather than Rust maps, because a `Value` in a Rust map is invisible to the collector.
     coros: Value,
     waits: Value,
-    next_token: u64,
+    /// ⚠ **`u32`, and that is load-bearing.** `vm.int` keeps an `i32` in the value itself and
+    /// puts anything larger on the heap, and a heap `Value` held across a call that runs
+    /// Python can be collected under it. A token is used as a dict key on both sides of
+    /// `drive`, so a token that never leaves `i32` range makes that whole class of bug
+    /// impossible rather than unlikely.
+    next_token: u32,
     n_done: Value,
 }
 
@@ -48,7 +53,7 @@ pub struct Answer {
 /// A handler either finished inside the one call, or suspended and needs the loop pumped.
 pub enum Started {
     Done(Answer),
-    Running(u64),
+    Running(u32),
 }
 
 /// What one `poll` did. **`Advanced` is not a detail:** it says the coroutine was resumed and
@@ -73,8 +78,14 @@ fn fault(vm: &mut Vm, exc: Value) -> String {
 
 impl App {
     /// Import `module` from `dir` and read its `ROUTES` table.
-    pub fn load(dir: PathBuf, module: &str) -> Result<App, String> {
+    ///
+    /// `stress` collects at every safe point, the way `fpy --stress` does. It is how the
+    /// rooting in this file is actually tested rather than reasoned about: a `Value` held in
+    /// a Rust local across a call into Python is invisible to the collector, and under
+    /// stress that mistake fails immediately instead of once a month in production.
+    pub fn load(dir: PathBuf, module: &str, stress: bool) -> Result<App, String> {
         let mut vm = Vm::new(Box::new(StdHost::new(vec![dir])));
+        vm.heap.stress = stress;
         frontage_compile::install(&mut vm);
         hostmod::install(&mut vm);
         let m = match vm.import_module(module) {
@@ -165,7 +176,10 @@ impl App {
             Progress::Done(a) => Ok(Started::Done(a)),
             Progress::Waiting(fut) => {
                 let token = self.next_token;
-                self.next_token += 1;
+                self.next_token = self.next_token.wrapping_add(1).max(1);
+                // Registering roots both: until these two lines run, the coroutine and the
+                // future it waits on are reachable from Rust locals only, which the collector
+                // cannot see. Nothing between here and there may call into Python.
                 let key = self.vm.int(token as i64);
                 self.vm.dict_set(self.coros, key, value);
                 self.vm.dict_set(self.waits, key, fut);
@@ -193,7 +207,7 @@ impl App {
 
     /// Has the future this request waits on settled? If so, resume; if not, say so and let
     /// the caller yield to tokio.
-    pub fn poll(&mut self, token: u64) -> Result<Poll, String> {
+    pub fn poll(&mut self, token: u32) -> Result<Poll, String> {
         let key = self.vm.int(token as i64);
         if let Some(fut) = self.vm.dict_get(self.waits, key) {
             let ready = match self.vm.get_attr(fut, self.n_done) {
@@ -220,6 +234,9 @@ impl App {
                 Ok(Poll::Done(a))
             }
             Ok(Progress::Waiting(fut)) => {
+                // `drive` ran Python, so re-derive the key rather than reuse the one from
+                // the top of this function.
+                let key = self.vm.int(token as i64);
                 self.vm.dict_set(self.waits, key, fut);
                 Ok(Poll::Advanced)
             }
@@ -230,12 +247,12 @@ impl App {
         }
     }
 
-    fn give_up(&mut self, token: u64, exc: Value) -> String {
+    fn give_up(&mut self, token: u32, exc: Value) -> String {
         self.forget(token);
         fault(&mut self.vm, exc)
     }
 
-    fn forget(&mut self, token: u64) {
+    fn forget(&mut self, token: u32) {
         let key = self.vm.int(token as i64);
         self.vm.dict_remove(self.coros, key);
         self.vm.dict_remove(self.waits, key);

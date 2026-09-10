@@ -27,7 +27,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 /// Where the app module lives, for the workers that have not built their VM yet.
-static SOURCE: OnceLock<(PathBuf, String)> = OnceLock::new();
+static SOURCE: OnceLock<(PathBuf, String, bool)> = OnceLock::new();
 
 /// A request body past this is refused rather than buffered.
 const MAX_BODY: usize = 8 * 1024 * 1024;
@@ -47,18 +47,21 @@ pub struct Config {
     pub module: String,
     pub addr: String,
     pub workers: usize,
+    /// Collect at every safe point. Slow on purpose; it is what proves the rooting.
+    pub stress: bool,
 }
 
 /// Load the app once here to fail loudly at startup, then hand a clone of the listener to
 /// every worker.
 pub fn serve(config: Config) -> Result<(), String> {
-    let _ = SOURCE.set((config.dir.clone(), config.module.clone()));
-    let paths = App::load(config.dir.clone(), &config.module)?.paths();
+    let _ = SOURCE.set((config.dir.clone(), config.module.clone(), config.stress));
+    let paths = App::load(config.dir.clone(), &config.module, config.stress)?.paths();
 
     let listener = std::net::TcpListener::bind(&config.addr).map_err(|e| format!("{}: {e}", config.addr))?;
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     let local = listener.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| config.addr.clone());
-    println!("frontage-api: {} on http://{local}, {} worker(s)", config.module, config.workers);
+    println!("frontage-api: {} on http://{local}, {} worker(s){}", config.module, config.workers,
+             if config.stress { ", GC stress" } else { "" });
     for p in &paths {
         println!("  {p}");
     }
@@ -118,7 +121,7 @@ async fn handle(request: Request) -> Response {
 
 /// Pump this thread's loop until the request's coroutine finishes, yielding to tokio in
 /// between so the worker keeps answering other connections.
-async fn park(token: u64) -> Response {
+async fn park(token: u32) -> Response {
     loop {
         // ⚠ Pump, *then* poll, and never the other way round. A turn of the loop settles the
         // future and reports "nothing scheduled" in the same breath — the timer it was
@@ -160,8 +163,8 @@ fn with_app<T>(f: impl FnOnce(&mut App) -> T) -> Result<T, String> {
     APP.with(|cell| {
         let mut slot = cell.borrow_mut();
         if slot.is_none() {
-            let (dir, module) = SOURCE.get().ok_or("serve() was not called")?;
-            *slot = Some(App::load(dir.clone(), module)?);
+            let (dir, module, stress) = SOURCE.get().ok_or("serve() was not called")?;
+            *slot = Some(App::load(dir.clone(), module, *stress)?);
         }
         Ok(f(slot.as_mut().expect("just loaded")))
     })
