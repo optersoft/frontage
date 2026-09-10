@@ -169,6 +169,7 @@ pub fn install(vm: &mut Vm) {
     ty!(classmethod, "classmethod", Builtin::ClassMethod);
     ty!(generator, "generator", Builtin::Generator);
     ty!(coroutine, "coroutine", Builtin::Coroutine);
+    ty!(async_generator, "async_generator", Builtin::AsyncGenerator);
     ty!(template, "Template", Builtin::Template);
     ty!(interpolation, "Interpolation", Builtin::Interpolation);
     ty!(iterator, "iterator", Builtin::Iterator);
@@ -552,6 +553,17 @@ pub fn install(vm: &mut Vm) {
     add_method(vm, c, "throw", gen_throw);
     add_method(vm, c, "close", gen_close);
     add_method(vm, c, "__await__", generic_iter);
+    // An async generator is the same object with a different protocol on it: `__anext__`
+    // hands back an awaitable that resumes the frame until it *yields* rather than *awaits*.
+    // The awaitable is Python (`_asyncgen.ANext`), because propagating an inner `await`
+    // means `yield`ing it, which only a generator function can do.
+    let ag = vm.t.async_generator;
+    add_method(vm, ag, "send", gen_send);
+    add_method(vm, ag, "throw", gen_throw);
+    add_method(vm, ag, "close", gen_close);
+    add_method(vm, ag, "__aiter__", generic_iter);
+    add_method(vm, ag, "__anext__", async_gen_anext);
+    add_method(vm, ag, "_async_yielded", async_gen_yielded);
     let it = vm.t.iterator;
     add_method(vm, it, "__next__", gen_next);
     add_method(vm, it, "__iter__", generic_iter);
@@ -3007,6 +3019,30 @@ fn gen_close(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
 }
 
 /// `generator.close()`: GeneratorExit thrown in, its `finally` blocks run.
+/// `agen.__anext__()` -> `_asyncgen.ANext(agen)`, whose `__await__` drives the frame.
+fn async_gen_anext(vm: &mut Vm, args: &[Value], _kwargs: &[(Value, Value)]) -> PyResult {
+    check_args(vm, args, 1, 1, "__anext__")?;
+    let module = vm.import_module("_asyncgen")?;
+    let name = vm.intern("ANext");
+    let class = vm.get_attr(module, name)?;
+    vm.call(class, &[args[0]], &[])
+}
+
+/// Did the last suspension come from a `yield` (the next item) or an `await` (the loop's)?
+fn async_gen_yielded(vm: &mut Vm, args: &[Value], _kwargs: &[(Value, Value)]) -> PyResult {
+    check_args(vm, args, 1, 1, "_async_yielded")?;
+    Ok(match vm.heap.get(args[0]) {
+        Obj::Generator(g) => {
+            if g.async_yield {
+                Value::TRUE
+            } else {
+                Value::FALSE
+            }
+        }
+        _ => Value::FALSE,
+    })
+}
+
 pub fn generator_close(vm: &mut Vm, g: Value) -> PyResult {
     let finished = match vm.heap.get(g) {
         Obj::Generator(gen) => gen.finished || gen.frame.as_ref().map(|f| f.pc == 0).unwrap_or(true),

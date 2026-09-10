@@ -1135,6 +1135,7 @@ fn mod_gc(vm: &mut Vm) -> PyResult {
 // -- modules written in Python -----------------------------------------------------------------------
 
 pub const PY_MODULES: &[(&str, &str)] = &[
+    ("_asyncgen", include_str!("lib/_asyncgen.py")),
     ("asyncio", include_str!("lib/asyncio.py")),
     ("html", include_str!("lib/html.py")),
     ("html.parser", include_str!("lib/html_parser.py")),

@@ -127,6 +127,28 @@ class Conversation:
 
         return router
 
+    def api(self, path="/api/chat", static=None, cors=None):
+        """A `frontage_api.App`: the same route, on frontage's own server.
+
+        The alternative to `app()`, which needs FastAPI, uvicorn and a CPython to run them.
+        This one runs on the runtime the page already uses — one static binary, one
+        interpreter per worker, no GIL — and `stream` is unchanged, because an async
+        generator is an async generator on either.
+        """
+        from frontage_api import App, HTTPError, Stream
+
+        api = App(title="chat", cors=cors, static=static)
+
+        @api.post(path, body=True)
+        async def post(body):
+            try:
+                parse(body, self.max_turns, self.max_chars)
+            except ChatRequestError as exc:
+                raise HTTPError(400, str(exc)) from None
+            return Stream(self.stream(body), media_type="text/event-stream")
+
+        return api
+
     def app(self, path="/api/chat", static=None, cors=None):
         """A FastAPI app: the route, and optionally the built page served beside it.
 

@@ -510,8 +510,16 @@ rules, and `frontage_api.testing.Client` — a client with no server under it, b
 run has no socket in it. 21 tests on CPython, and `rust/api/tests/routes.py` runs the same
 surface on the real runtime, 20 assertions, all of them also under `--stress`.
 
-**Still to build here:** `Depends`, lifespan, `StreamingResponse` and SSE, static files and
-CORS — which together are what the gate below needs, so the gate is not met yet.
+**Built since**: `Depends` (resolved once per request, generator dependencies closing after
+the response), lifespan (`on_startup`/`on_shutdown`, per *worker* — one interpreter per thread
+means N times per process), `Stream` with Server-Sent Events, static files served by Rust, and
+CORS as a constructor argument rather than a middleware to remember.
+
+✅ **The gate is met.** `frontage.chat`'s server half runs on this, its 28 tests pass, and the
+real binary streams a conversation token by token — 35 ms, 58 ms, 79 ms for three tokens a
+model "thinks" about for 20 ms each. `Conversation.stream` is **unchanged**: an async
+generator is an async generator on either transport. What it needed was async generators in
+the runtime, which is the provider commit below.
 
 ⚠ **A route declares its types in the decorator, and that is a runtime constraint.** This
 runtime parses annotations and *discards* them: `def f(x: Undefined)` does not raise, there is
@@ -546,6 +554,19 @@ that axis favours FastAPI and this is still not close — because **the validato
 costs**, the server around it is. The same reading in the other direction: on `PATH PARAM` we
 are within half a percent of hand-written ASGI with no framework at all (118,612 against
 117,998), so the framework is costing about what having no framework costs.
+
+⚠ **Async generators were missing from the runtime, and the gate could not be met without
+them.** `async def` with a `yield` produced a plain generator, so `async for` refused it —
+and `frontage.chat`'s reply function is exactly that shape, as is every streaming model
+client. The fix needed no compiler change at all, which is the part worth keeping: both
+`await` and `yield` suspend the same frame, so a driver has to tell them apart, and CPython
+wraps the yielded value to mark it. Here the two spellings are *already different opcodes*
+(`Yield` against `GetAwaitable` + `YieldFrom`), so the VM records which one suspended the
+frame and that is the whole discriminator. `__anext__` returns `_asyncgen.ANext`, which is
+Python rather than Rust for one reason: propagating an inner `await` means `yield`ing it, and
+only a generator function can do that. A differential case matches CPython 3.14 byte for byte, and it costs the browser
+**2,398 raw bytes** of runtime (673,967 raw, 214,784 brotli), which is what a language feature
+this central should cost. 61 browser tests pass on the rebuilt wasm.
 
 ⚠ **Two things this cost, and both are the kind that only appear when code runs.**
 `frontage.schema` imported `re` at module scope, and this runtime's `re` is implemented over

@@ -90,6 +90,7 @@ pub struct Types {
     pub classmethod: Value,
     pub generator: Value,
     pub coroutine: Value,
+    pub async_generator: Value,
     pub template: Value,
     pub interpolation: Value,
     pub iterator: Value,
@@ -198,6 +199,9 @@ pub struct Vm {
     pub handling: Vec<Value>,
     /// Temporary roots for native code that calls back into Python.
     pub roots: Vec<Value>,
+    /// Set by the opcode that last suspended a frame, read by `gen_resume` on its way out:
+    /// `true` after `Yield`, `false` after `YieldFrom`. See `Generator::async_yield`.
+    pub suspended_by_yield: bool,
     pub compiler: Option<CompileFn>,
     pub builtin_modules: HashMap<&'static str, fn(&mut Vm) -> PyResult<Value>>,
     pub depth: u32,
@@ -246,6 +250,7 @@ impl Vm {
             n: Names::default(),
             handling: Vec::new(),
             roots: Vec::new(),
+            suspended_by_yield: false,
             compiler: None,
             builtin_modules: HashMap::new(),
             depth: 0,
@@ -797,11 +802,23 @@ impl Vm {
     /// A fresh generator: the frame comes off the stack into its own window.
     fn suspend_new(&mut self, mut frame: Frame, func: Value) -> Value {
         frame.saved = self.stack.split_off(frame.base);
-        let (is_coroutine, name) = match self.heap.get(func) {
-            Obj::Func(f) => (f.code.flags & FLAG_COROUTINE != 0, f.name),
-            _ => (false, Value::NONE),
+        let (is_coroutine, is_async_gen, name) = match self.heap.get(func) {
+            Obj::Func(f) => (
+                f.code.flags & FLAG_COROUTINE != 0,
+                f.code.flags & crate::code::FLAG_ASYNC_GENERATOR != 0,
+                f.name,
+            ),
+            _ => (false, false, Value::NONE),
         };
-        self.heap.alloc(Obj::Generator(Generator { frame: Some(Box::new(frame)), running: false, finished: false, is_coroutine, name }))
+        self.heap.alloc(Obj::Generator(Generator {
+            frame: Some(Box::new(frame)),
+            running: false,
+            finished: false,
+            is_coroutine,
+            is_async_gen,
+            async_yield: false,
+            name,
+        }))
     }
 
     /// Resume a generator with `sent` (or an exception to throw); `Ok(Some(v))` on a yield,
@@ -862,9 +879,11 @@ impl Vm {
     fn gen_finish(&mut self, gen: Value, r: PyResult<Exit>, ret: &mut Value) -> PyResult<Option<Value>> {
         match r {
             Ok(Exit::Yield(v, frame)) => {
+                let by_yield = self.suspended_by_yield;
                 if let Obj::Generator(g) = self.heap.get_mut(gen) {
                     g.running = false;
                     g.frame = Some(frame);
+                    g.async_yield = by_yield;
                 }
                 Ok(Some(v))
             }
@@ -1781,6 +1800,8 @@ impl Vm {
             }
             Op::Yield => {
                 let v = pop!();
+                // A real `yield`: for an async generator this is the next item, not an await.
+                self.suspended_by_yield = true;
                 return Ok(Flow::Yield(v));
             }
             Op::YieldFrom => {
@@ -1791,6 +1812,8 @@ impl Vm {
                     Some(yielded) => {
                         *pc -= 1;
                         self.frames[fi].pc = *pc;
+                        // `await` (and `yield from`): this belongs to whoever drives us.
+                        self.suspended_by_yield = false;
                         return Ok(Flow::Yield(yielded));
                     }
                     None => {

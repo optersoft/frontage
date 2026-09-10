@@ -111,6 +111,7 @@ pub enum Builtin {
     Interpolation,
     Generator,
     Coroutine,
+    AsyncGenerator,
     Cell,
     Iterator,
     NotImplementedType,
@@ -194,6 +195,16 @@ pub struct Generator {
     pub running: bool,
     pub finished: bool,
     pub is_coroutine: bool,
+    /// `async def` with a `yield` in it: an async generator, not a coroutine.
+    pub is_async_gen: bool,
+    /// Did the last suspension come from a `yield`, or from an `await`?
+    ///
+    /// Both suspend the same frame, so an async generator's driver has to tell them apart:
+    /// a `yield` is the next item, an `await` belongs to the event loop. CPython wraps the
+    /// yielded value to mark it; here the two spellings are already different opcodes
+    /// (`Yield` against `GetAwaitable` + `YieldFrom`), so recording which one ran is enough
+    /// and the compiler needs no change at all.
+    pub async_yield: bool,
     pub name: Value,
 }
 

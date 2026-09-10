@@ -64,7 +64,9 @@ impl Vm {
             Obj::ClassMethod(_) => self.t.classmethod,
             Obj::Iter(_) => self.t.iterator,
             Obj::Generator(g) => {
-                if g.is_coroutine {
+                if g.is_async_gen {
+                    self.t.async_generator
+                } else if g.is_coroutine {
                     self.t.coroutine
                 } else {
                     self.t.generator

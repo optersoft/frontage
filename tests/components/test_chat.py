@@ -1,6 +1,7 @@
 """`frontage.chat`: the conversation, the two views, and the server half's wire format."""
 
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 import frontage.chat
 from frontage import h
 from frontage.chat import STYLESHEET, Chat, ChatError, Message, chat_input, chat_log, feedback, message
+from frontage.chat._server import DONE
 from frontage.chat.server import ChatRequestError, Conversation, parse, sse
 from frontage.testing import App
 
@@ -246,3 +248,50 @@ def test_the_route_streams_and_refuses_a_bad_body():
     bad = client.post("/api/chat", json={"messages": [{"role": "root", "content": "hi"}]})
     assert bad.status_code == 400
     assert "role must be one of" in bad.json()["detail"]
+
+
+# --- the same conversation on frontage's own server (API.md §6.2's gate) ---------------------
+
+
+def test_a_conversation_runs_on_frontage_api():
+    """`Conversation.stream` is an async generator, unchanged; only the transport differs."""
+    from frontage_api.testing import Client
+
+    chat = Conversation()
+
+    @chat.reply
+    async def answer(messages):
+        for word in ("hello", " ", "there"):
+            yield word
+
+    client = Client(chat.api())
+    reply = client.post("/api/chat", json={"messages": [{"role": "user", "content": "hi"}]})
+    assert reply.status == 200
+    assert reply.header("content-type") == "text/event-stream"
+
+    frames = asyncio.run(_collect(reply.body))
+    assert frames[-1] == DONE
+    assert "".join(json.loads(f[6:]) for f in frames[:-1]) == "hello there"
+
+
+async def _collect(chunks):
+    out = []
+    while True:
+        piece = await chunks.next()
+        if piece is None:
+            return out
+        out.append(piece.decode())
+
+
+def test_a_bad_conversation_is_400_on_frontage_api_too():
+    from frontage_api.testing import Client
+
+    chat = Conversation()
+
+    @chat.reply
+    async def answer(messages):
+        yield "never"
+
+    reply = Client(chat.api()).post("/api/chat", json={"messages": []})
+    assert reply.status == 400
+    assert "non-empty" in reply.json()["detail"]
