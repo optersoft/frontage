@@ -45,5 +45,9 @@ getrandom = { version = "0.3", optional = true }
 urlencoding = { version = "2", optional = true }
 
 [features]
-default = ["auth"]
+default = ["auth", "http"]
+# `_http`, the native module a handler reaches the network through (`API.md` §6.4). It shares
+# the gate's reqwest rather than bringing a second client: one connection pool per worker
+# thread, one TLS backend in the graph.
+http = ["dep:reqwest"]
 auth = ["dep:reqwest", "dep:jsonwebtoken", "dep:serde", "dep:serde_json", "dep:base64", "dep:sha2", "dep:getrandom", "dep:urlencoding"]

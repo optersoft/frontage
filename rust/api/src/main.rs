@@ -13,6 +13,8 @@ mod app;
 #[cfg(feature = "auth")]
 mod auth;
 mod hostmod;
+#[cfg(feature = "http")]
+mod http;
 mod server;
 
 use std::path::PathBuf;

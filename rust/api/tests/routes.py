@@ -56,7 +56,8 @@ def main():
     if "--stress" in sys.argv:
         print("  (GC stress: collecting at every safe point)")
     # `/stamp` reads this back out of `os.environ`, which is the whole point of that route.
-    env = dict(os.environ, FRONTAGE_API_KEY="sekret")
+    # `/stamp` reads the key back; the `_http` routes talk to this same server.
+    env = dict(os.environ, FRONTAGE_API_KEY="sekret", FRONTAGE_API_SELF=BASE)
     proc = subprocess.Popen([str(binary), str(app), "--addr", f"127.0.0.1:{PORT}", "--workers", "2", *extra],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                             start_new_session=True, env=env)
@@ -164,6 +165,44 @@ def main():
         spread = arrivals[-1][0] - arrivals[0][0] if len(arrivals) > 1 else 0
         check("and its pieces arrive apart, not together", spread > 0.02,
               f"first to last {spread * 1000:.0f}ms, three 20ms sleeps")
+
+        # `_http` (§6.4): a handler reaching outside the process at all, and the streamed
+        # form, which is the only one `frontage.chat` can be built on. The peer is this same
+        # server — no network, no second process, and the loopback proves the shape.
+        status, body, _ = get("/fetch")
+        got = json.loads(body) if status == 200 else {}
+        check("a handler fetches over _http", got.get("status") == 200 and got.get("len") == 1024,
+              f"{status} {body[:80]!r}")
+
+        status, body, _ = get("/forward", b"through and back")
+        check("a body goes out and comes back", body == b"through and back", repr(body[:40]))
+
+        arrivals = []
+        started = time.time()
+        with urllib.request.urlopen(BASE + "/relay", timeout=10) as response:
+            while True:
+                line = response.readline()
+                if not line:
+                    break
+                if line.strip():
+                    arrivals.append((time.time() - started, line.decode().strip()))
+        check("a streamed response relays every frame", len(arrivals) == 4, str(len(arrivals)))
+        spread = arrivals[-1][0] - arrivals[0][0] if len(arrivals) > 1 else 0
+        # The whole case: buffering the upstream would deliver these together at the end,
+        # which is what a chat that does not stream looks like from the outside.
+        check("and relays them as they arrive", spread > 0.02,
+              f"first to last {spread * 1000:.0f}ms, three 20ms sleeps upstream")
+
+        status, body, took = get("/unreachable", timeout=6)
+        got = json.loads(body) if status == 200 else {}
+        check("a connection that cannot be made raises OSError", got.get("failed") is True,
+              f"{status} {body[:80]!r}")
+        check("and does not hang", took < 2.0, f"{took:.3f}s")
+
+        status, body, _ = get("/refused")
+        got = json.loads(body) if status == 200 else {}
+        check("raise_for_status carries the response", got.get("status") == 404,
+              f"{status} {body[:80]!r}")
 
         # One worker, many suspended requests: they must interleave, not queue.
         with subprocess.Popen([str(binary), str(app), "--addr", f"127.0.0.1:{PORT + 1}",

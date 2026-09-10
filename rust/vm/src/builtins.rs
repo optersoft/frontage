@@ -534,11 +534,17 @@ pub fn install(vm: &mut Vm) {
     let b = vm.t.bytes;
     add_method(vm, b, "decode", bytes_decode);
     add_method(vm, b, "hex", bytes_hex);
+    add_method(vm, b, "find", bytes_find);
+    add_method(vm, b, "startswith", bytes_startswith);
+    add_method(vm, b, "endswith", bytes_endswith);
     add_method(vm, b, "__len__", generic_len);
     add_method(vm, b, "__getitem__", generic_getitem);
     let ba = vm.t.bytearray;
     add_method(vm, ba, "decode", bytes_decode);
     add_method(vm, ba, "hex", bytes_hex);
+    add_method(vm, ba, "find", bytes_find);
+    add_method(vm, ba, "startswith", bytes_startswith);
+    add_method(vm, ba, "endswith", bytes_endswith);
     add_method(vm, ba, "append", bytearray_append);
     add_method(vm, ba, "extend", bytearray_extend);
     add_method(vm, ba, "__len__", generic_len);
@@ -2944,6 +2950,57 @@ fn int_index(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
 fn float_is_integer(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
     let v = arg(vm, args, 0, "is_integer")?;
     Ok(Value::bool(vm.as_f64(v).map(|f| f.fract() == 0.0).unwrap_or(false)))
+}
+/// The receiver of a bytes method, and any bytes-like argument to one. `str` is deliberately
+/// NOT accepted: CPython refuses `b"a".find("a")` and a runtime that quietly obliged would
+/// let a `str` needle search a `bytes` haystack, which is the encoding bug this rejects.
+fn this_bytes(vm: &mut Vm, args: &[Value], i: usize, name: &str) -> PyResult<Vec<u8>> {
+    let v = arg(vm, args, i, name)?;
+    if v.is_obj() {
+        if let Obj::Bytes(b) | Obj::ByteArray(b) = vm.heap.get(v) {
+            return Ok(b.clone());
+        }
+    }
+    let t = vm.type_name(v);
+    Err(vm.type_error(format!("{name}: expected a bytes-like object, not '{t}'")))
+}
+/// `[start:end]` clamped the way CPython clamps it, in bytes rather than characters.
+fn byte_window(len: usize, start: Option<i64>, end: Option<i64>) -> (usize, usize) {
+    let clamp = |i: i64| -> usize {
+        if i < 0 { (len as i64 + i).max(0) as usize } else { (i as usize).min(len) }
+    };
+    let a = start.map(clamp).unwrap_or(0);
+    let b = end.map(clamp).unwrap_or(len);
+    (a, b.max(a))
+}
+fn bytes_find(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    let s = this_bytes(vm, args, 0, "find")?;
+    let sub = this_bytes(vm, args, 1, "find")?;
+    let (a, b) = byte_window(s.len(), opt_int(vm, args, 2, "start")?, opt_int(vm, args, 3, "end")?);
+    let hay = &s[a..b];
+    let pos = if sub.is_empty() {
+        Some(0)
+    } else {
+        hay.windows(sub.len()).position(|w| w == sub.as_slice())
+    };
+    Ok(match pos {
+        Some(p) => vm.int((a + p) as i64),
+        None => Value::int(-1),
+    })
+}
+fn bytes_affix(vm: &mut Vm, args: &[Value], ends: bool) -> PyResult {
+    let name = if ends { "endswith" } else { "startswith" };
+    let s = this_bytes(vm, args, 0, name)?;
+    let affix = this_bytes(vm, args, 1, name)?;
+    let (a, b) = byte_window(s.len(), opt_int(vm, args, 2, "start")?, opt_int(vm, args, 3, "end")?);
+    let hay = &s[a..b];
+    Ok(Value::bool(if ends { hay.ends_with(&affix) } else { hay.starts_with(&affix) }))
+}
+fn bytes_startswith(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    bytes_affix(vm, args, false)
+}
+fn bytes_endswith(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
+    bytes_affix(vm, args, true)
 }
 fn bytes_decode(vm: &mut Vm, args: &[Value], _k: &[(Value, Value)]) -> PyResult {
     let v = arg(vm, args, 0, "decode")?;

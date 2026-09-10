@@ -125,6 +125,8 @@ impl App {
         vm.heap.stress = stress;
         frontage_compile::install(&mut vm);
         hostmod::install(&mut vm);
+        #[cfg(feature = "http")]
+        crate::http::install(&mut vm);
         let m = match vm.import_module(module) {
             Ok(m) => m,
             Err(exc) => return Err(fault(&mut vm, exc)),
@@ -351,6 +353,10 @@ impl App {
         if let Err(exc) = hostmod::expire(&mut self.vm) {
             return Err(fault(&mut self.vm, exc));
         }
+        #[cfg(feature = "http")]
+        if let Err(exc) = crate::http::settle(&mut self.vm) {
+            return Err(fault(&mut self.vm, exc));
+        }
         let turned = self.vm.call(self.run_once, &[], &[]);
         let loop_delay = match turned {
             Ok(v) if v.is_none() => None,
@@ -361,6 +367,11 @@ impl App {
         // `_host.sleep`, and a deadline read beforehand would miss it and call the request
         // deadlocked. That is what it did.
         let host_delay = hostmod::next_delay(&self.vm);
+        #[cfg(feature = "http")]
+        let host_delay = match (host_delay, crate::http::next_delay()) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
         Ok(match (loop_delay, host_delay) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),

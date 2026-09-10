@@ -728,10 +728,38 @@ One crate each, behind cargo features so a server pays only for what it imports:
 
 | module | crate | first consumer |
 |---|---|---|
-| `_http` | `reqwest` | `frontage.chat` — hold the key, stream the answer |
+| `_http` ✅ | `reqwest` | `frontage.chat` — hold the key, stream the answer |
 | `_polars` | `polars` (lazy, parquet, csv) | `frontage.remote` — **polars is Rust, so it is no exception** |
 | `_turso` | `turso` | the fleet's own data story |
 | `_datetime`, `_env`, `_log`, `_fs` | `chrono`, `std`, `tracing`, `tokio::fs` | everything |
+
+**`_http` is built (2026-09-10), and it is `_host`'s shape rather than a new one.**
+`_http.request(method, url, headers, body, timeout, stream)` answers an asyncio future a
+tokio task settles, and the pump carries it across — the same three moving parts §4.3 proved
+with a sleep, which is what made this a day's work instead of a design. Two things in it are
+worth keeping in mind. A **streamed** response never enters the interpreter: its `Response`
+stays in Rust behind a token, owned by a task that pulls one chunk at a time into a channel
+of capacity one, so a slow reader slows the transfer instead of buffering a model's whole
+answer into a page's memory. And an **in-flight request has to answer a delay of its own**,
+because `park_value` reads "no deadline anywhere" as a handler awaiting something nobody will
+complete — without that, the very first `await client.get(...)` is declared a deadlock and
+answered 500. It polls at 1 ms while anything is outstanding; a per-thread notification would
+remove the poll and is the same machinery `server.rs`'s `MAX_PARK` note defers.
+
+The Python half is `frontage_api/client.py`: a `Client` holding a base URL, headers and a
+timeout, `get`/`post`/…, and a `Response` with `json()`, `raise_for_status()` and — for the
+streamed form — `chunks()` and `lines()`. `lines()` is the one that earns its place: a chunk
+boundary lands anywhere, so a partial line is held until the rest of it arrives, which is the
+bug every hand-rolled SSE reader has. It reassembles in **bytes**, not text, because a
+multi-byte character split across two chunks does not decode — which is what asked the
+runtime for `bytes.find`/`startswith`/`endswith` (`rust/README.md`).
+
+**Gate, and it is met:** the spike app's `/relay` fetches its own `/slowfeed` with
+`stream=True` and re-emits each frame as it lands, and `tests/routes.py` asserts the frames
+arrive **apart** rather than together — buffering the upstream is exactly what a chat that
+does not stream looks like from the outside, and it passes every test that checks only *what*
+arrived. Six assertions, no network: the peer is the same server. `--stress` passes too,
+which is what says the pending futures are rooted where the collector can see them.
 
 **`_polars` is the interesting one and the reason this section is not an afterthought.**
 Polars' Python package is a PyO3 wrapper over the `polars` crate, so a native module exposes

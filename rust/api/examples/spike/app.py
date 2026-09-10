@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 import _host
 from frontage.schema import integer, optional, record, text
 from frontage_api import SSE_DONE, App, HTTPError, Response, Stream, sse
+from frontage_api.client import Client, HttpError
 
 app = App(title="the spike")
 
@@ -123,3 +124,60 @@ async def stamp():
         "day": now.strftime("%A"),
         "year": now.year,
     }
+
+
+# -- `_http`: a handler that talks to something else (`API.md` §6.4) ---------------------
+#
+# The peer is this same server, so the test needs no network and no second process — and the
+# three routes below are exactly `frontage.chat`'s shape: hold a key, forward a body, relay
+# an answer token by token.
+
+SELF = Client(os.getenv("FRONTAGE_API_SELF", "http://127.0.0.1:8791"), timeout=5.0)
+
+
+@app.get("/fetch")
+async def fetch():
+    """A whole response, read at once."""
+    answer = await SELF.get("/hello")
+    return {"status": answer.status, "len": len(answer.body), "type": answer.header("content-type")}
+
+
+@app.post("/forward", body=bytes)
+async def forward(body):
+    """A body out and the same body back, which is what a proxy is."""
+    answer = await SELF.post("/echo", data=body)
+    return Response(answer.body, media_type="application/octet-stream")
+
+
+@app.get("/relay")
+async def relay():
+    """The whole point: a streamed answer re-emitted as it arrives, not collected first."""
+
+    async def produce(send):
+        answer = await SELF.get("/slowfeed", stream=True)
+        async with answer:
+            async for line in answer.lines():
+                if line:
+                    await send(line + "\n\n")
+
+    return Stream(produce, media_type="text/event-stream")
+
+
+@app.get("/unreachable")
+async def unreachable():
+    """A connection that cannot be made is an OSError, not a hang and not a 500."""
+    try:
+        await SELF.get("http://127.0.0.1:9/nothing", timeout=1.0)
+    except OSError as exc:
+        return {"failed": True, "why": str(exc)[:40]}
+    return {"failed": False}
+
+
+@app.get("/refused")
+async def refused():
+    """`raise_for_status` carries the response, because the body of a 404 is the reason."""
+    try:
+        (await SELF.get("/nope")).raise_for_status()
+    except HttpError as exc:
+        return {"status": exc.status, "body": exc.response.text()[:20]}
+    return {"status": 0}

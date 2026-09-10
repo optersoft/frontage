@@ -38,11 +38,13 @@ package, `API.md` the plan with the measurements.
 
 ### Next, and the order is not the plan's
 
-⚠ **A handler could not reach anything, and that outranked OpenAPI.** `os` and `datetime`
-landed on 2026-09-10, so a handler can now hold a key and date a row. What it still cannot do
-is **talk to anything**: no `urllib`, no `socket`, no `_http`. `frontage.chat`'s whole purpose
-— hold the key, forward to the model — is still impossible, which is why `_http` is next and
-§6.4's *small* modules are not "the standard library, later".
+✅ **A handler can now reach outside the process, and that is what outranked OpenAPI.** `os`
+and `datetime` landed on 2026-09-10 so a handler could hold a key and date a row; `_http`
+landed the same day so it can *use* the key. `frontage.chat`'s whole shape — hold the key,
+forward the body, relay the answer token by token — runs on the spike app as `/relay`. §6.4's
+*small* modules were never "the standard library, later"; they were the difference between a
+server and a demo. What is next is OpenAPI, and then getting any of this out of this
+checkout.
 
 - [x] `_env` and `_datetime` (and `time.strftime`): `os` (environ, getenv — there is no file
       system to wrap), `datetime` (date/time/datetime/timedelta/timezone, CPython byte for
@@ -55,9 +57,23 @@ is **talk to anything**: no `urllib`, no `socket`, no `_http`. `frontage.chat`'s
       the host compiles, the way every framework module already travels — `cli/graph.py`
       resolving `import datetime` to a stdlib source in the wheel. Until then it is embedded,
       because an `ImportError` in a page for a module the server has is worse than 7 KB.
-- [ ] `_http` over `reqwest`: the smallest native module that matters, and the one
-      `frontage.chat` needs to do the thing it exists to do. Streaming response bodies through
-      the same `Chunks` shape `Stream` already uses.
+- [x] `_http` over `reqwest`, and `frontage_api.client` over it: a `Client`, a `Response`
+      with `json()`/`raise_for_status()`, and the streamed form as `chunks()`/`lines()`. The
+      gate is the spike's `/relay` — it fetches its own `/slowfeed` with `stream=True` and
+      re-emits each frame as it lands, asserted to arrive **apart** rather than together,
+      because buffering the upstream passes every test that checks only what arrived. Six
+      assertions with no network in them, green under `--stress` too. ⚠ Two things the
+      implementation turned on, both in `API.md` §6.4: a streamed body never enters the
+      interpreter (its `Response` stays in Rust behind a token, one chunk ahead of the
+      reader), and an in-flight request has to report a delay of its own or `park_value`
+      calls the first `await client.get(...)` a deadlock.
+- [ ] The relay's 1 ms poll. While anything is in flight `_http` answers a fixed delay, so a
+      relayed token waits up to a millisecond that it need not. A per-thread `Notify` is the
+      fix and it is the same machinery `server.rs`'s `MAX_PARK` note defers — do it when a
+      profile of a real relay says the millisecond shows.
+- [ ] `bytes` is `decode`, `hex`, `find`, `startswith`, `endswith` and nothing else. The
+      three new ones came from the SSE reader; `split`, `strip` and `replace` will come from
+      the next thing that parses a body, one differential case each.
 - [ ] §6.3 OpenAPI and a docs page. Much cheaper now that annotations exist and
       `schema/jsonschema.py` already emits JSON Schema. Gate: §4.6's shared record produces a
       document that validates what the form accepts.

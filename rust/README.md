@@ -85,6 +85,13 @@ server and `None` in a page instead of failing to import.
 glibc's behaviour and not macOS's. The platforms disagree, so `py/tests/cases/time_calendar.py`
 deliberately asserts nothing about it.
 
+**`bytes` is a short list of methods, grown by need.** `decode`, `hex`, `find`,
+`startswith`, `endswith`, indexing, slicing and `+` — enough to reassemble a streamed body,
+which is what asked for the last three (`py/tests/cases/bytes_search.py`). `split`, `strip`,
+`replace` and `join` are not written. ⚠ A `str` argument is a `TypeError`, as it is in
+CPython: obliging it would let a `str` needle search a `bytes` haystack, which is the
+encoding bug the refusal exists to catch.
+
 ## What it is not, yet
 
 `__slots__` is accepted but not enforced (an instance keeps a dict); `eval` is not written

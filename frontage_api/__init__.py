@@ -27,6 +27,9 @@ from. `API.md` §6.2 has the compiler change that adds them; when it lands, an a
 becomes the preferred spelling and fills in exactly the same spec this file already takes, so
 nothing here changes shape.
 
+`frontage_api.client` is the other direction: `_http` over reqwest, for a handler that has to
+talk to something else — a `Client`, and a response whose body can arrive in pieces.
+
 **One entry, one crossing.** `App.handle` is the whole of what the server calls per request
 (§4.4). Everything above — matching, conversion, validation, the response rules — is Python
 on this side of that one call.
