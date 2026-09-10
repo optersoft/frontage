@@ -34,9 +34,20 @@ on this side of that one call.
 
 import json
 
+from . import depends as _depends
+from .cors import Cors
+from .depends import Depends
 from .routing import Route, Router
 
-__all__ = ["App", "HTTPError", "Response", "json_response", "text_response"]
+__all__ = [
+    "App",
+    "Cors",
+    "Depends",
+    "HTTPError",
+    "Response",
+    "json_response",
+    "text_response",
+]
 
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
 
@@ -106,6 +117,17 @@ def text_response(body, status=200, headers=None):
     return Response(body, status=status, headers=headers, media_type=TEXT_TYPE)
 
 
+def _awaitable(value):
+    """Is this a thing to `await`?
+
+    ⚠ **`hasattr(x, "send")` is not the test**, though it reads like one: a plain generator
+    has `send` too, so a generator dependency was being awaited instead of being stepped, and
+    a handler that returned a generator would have gone the same way. `__await__` is on a
+    coroutine and not on a generator, on CPython and on this runtime alike.
+    """
+    return hasattr(value, "__await__")
+
+
 def _params_of(handler):
     """The names a handler takes. `co_varnames` is parameters first, `argcount` of them —
     the runtime has no `inspect`, and this is the whole of what it would be used for."""
@@ -143,6 +165,31 @@ def _convert(value, kind, where, name, errors):
             errors.append((where + "." + name, "not a " + getattr(kind, "__name__", str(kind))))
             return None
     return value
+
+
+class Headers:
+    """The request's headers, read by lowercase name. A list of pairs underneath, because a
+    header may legitimately repeat and `get_all` is what a `set-cookie` reader needs."""
+
+    def __init__(self, pairs):
+        self.pairs = list(pairs or [])
+
+    def get(self, name, default=None):
+        name = name.lower()
+        for key, value in self.pairs:
+            if key.lower() == name:
+                return value
+        return default
+
+    def get_all(self, name):
+        name = name.lower()
+        return [value for key, value in self.pairs if key.lower() == name]
+
+    def __contains__(self, name):
+        return self.get(name) is not None
+
+    def __iter__(self):
+        return iter(self.pairs)
 
 
 def parse_query(query_string):
@@ -184,18 +231,53 @@ def _unquote(s):
 class App:
     """The routes, and the one entry the server calls."""
 
-    def __init__(self, title="frontage-api"):
+    def __init__(self, title="frontage-api", cors=None, static=None):
         self.title = title
         self.router = Router()
+        self.cors = cors if isinstance(cors, Cors) or cors is None else Cors(cors)
+        # Read by the server at load: files are served by Rust, not by walking a directory
+        # through an interpreter. A page and its API from one process is the simple
+        # deployment and the one with no CORS in it.
+        self.static = static
+        self._startup = []
+        self._shutdown = []
 
-    def route(self, method, path, path_types=None, query=None, body=None):
+    def on_startup(self, fn):
+        """Run once per **worker**, which is the part to hold on to: there is one interpreter
+        per thread, so this runs N times per process. Anything that must happen once for the
+        process belongs outside the app."""
+        self._startup.append(fn)
+        return fn
+
+    def on_shutdown(self, fn):
+        self._shutdown.append(fn)
+        return fn
+
+    async def startup(self):
+        for fn in self._startup:
+            result = fn()
+            if _awaitable(result):
+                await result
+
+    async def shutdown(self):
+        for fn in reversed(self._shutdown):
+            result = fn()
+            if _awaitable(result):
+                await result
+
+    def route(self, method, path, path_types=None, query=None, body=None, needs=None):
         method = method.upper()
         if method not in METHODS:
             raise ValueError("not a method: " + repr(method))
 
         def decorate(handler):
-            spec = {"path": path_types or {}, "query": query or {}, "body": body}
-            spec["params"] = _params_of(handler)
+            spec = {
+                "path": path_types or {},
+                "query": query or {},
+                "body": body,
+                "needs": needs or {},
+                "params": _params_of(handler),
+            }
             self.router.add(Route(method, path, handler, spec))
             return handler
 
@@ -206,33 +288,49 @@ class App:
 
     async def handle(self, scope):
         """One request in, `(status, headers, body)` out. The only thing the server calls."""
+        headers = Headers(scope.get("headers"))
+        origin = headers.get("origin")
+        finalizers = []
         try:
-            return await self._handle(scope)
+            answer = await self._handle(scope, headers, finalizers)
         except HTTPError as exc:
-            return _problem(exc.status, exc.detail, exc.headers)
+            answer = _problem(exc.status, exc.detail, exc.headers)
         except Exception as exc:  # a handler's own failure, not the caller's
-            return _problem(500, _reason(500) + ": " + str(exc))
+            answer = _problem(500, _reason(500) + ": " + str(exc))
+        problems = _depends.finish(finalizers)
+        for problem in problems:
+            _warn("a dependency failed while closing: " + str(problem))
+        if self.cors is not None:
+            status, out, body = answer
+            answer = (status, out + self.cors.headers_for(origin), body)
+        return answer
 
-    async def _handle(self, scope):
+    async def _handle(self, scope, headers, finalizers):
         method = scope.get("method", "GET")
-        route, params = self.router.find(method, scope.get("path", "/"))
+        path = scope.get("path", "/")
+        route, params = self.router.find(method, path)
         if route is None:
+            # A preflight asks about a route that exists under another method, so answer it
+            # from what that path *does* accept rather than from a fixed list.
+            if method == "OPTIONS" and self.cors is not None and params:
+                allowed = self.cors.headers_for(headers.get("origin"), preflight=True)
+                return 204, allowed + [("allow", ", ".join(sorted(params)))], b""
             if params:
                 return _problem(405, "method not allowed", [("allow", ", ".join(sorted(params)))])
             return _problem(404, "not found")
-        kwargs = _bind(route, params, scope)
+        kwargs = await _bind(route, params, scope, headers, finalizers)
         result = route.handler(**kwargs)
-        if hasattr(result, "send") or hasattr(result, "__await__"):
+        if _awaitable(result):
             result = await result
         return _respond(result)
 
 
-def _bind(route, params, scope):
-    """Path, query and body into the handler's own parameter names."""
+async def _bind(route, params, scope, headers, finalizers):
+    """Path, query, body, headers and dependencies into the handler's parameter names."""
     spec = route.spec
     wanted = spec["params"]
     errors = []
-    values = {}
+    values = {"headers": headers, "scope": scope, "path_params": params}
     for name, raw in params.items():
         values[name] = _convert(raw, spec["path"].get(name, str), "path", name, errors)
     if spec["query"]:
@@ -244,6 +342,8 @@ def _bind(route, params, scope):
         values["body"] = _body(scope, spec["body"], errors)
     if errors:
         raise HTTPError(422, [{"loc": where, "msg": message} for where, message in errors])
+    if spec["needs"]:
+        values.update(await _depends.resolve(spec["needs"], values, {}, finalizers))
     return {name: values[name] for name in wanted if name in values}
 
 
@@ -293,9 +393,14 @@ def _problem(status, detail, headers=None):
     return status, out, body
 
 
+def _warn(message):
+    """Something worth saying that must not replace a correct answer."""
+    print("frontage-api: " + message)
+
+
 def _method_decorator(method):
-    def decorator(self, path, path_types=None, query=None, body=None):
-        return self.route(method, path, path_types=path_types, query=query, body=body)
+    def decorator(self, path, path_types=None, query=None, body=None, needs=None):
+        return self.route(method, path, path_types=path_types, query=query, body=body, needs=needs)
 
     decorator.__name__ = method.lower()
     return decorator

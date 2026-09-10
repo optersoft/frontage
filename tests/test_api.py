@@ -3,7 +3,7 @@
 import pytest
 
 from frontage.schema import integer, optional, record, text
-from frontage_api import App, HTTPError, text_response
+from frontage_api import App, Cors, Depends, HTTPError, text_response
 from frontage_api.routing import Route, Router, compile_path
 from frontage_api.testing import Client
 
@@ -167,3 +167,150 @@ def test_the_same_record_checks_a_form_and_a_body():
     # What the page accepts from a form, from the very same object, strings and all.
     assert Booking.validate({"email": "a@b.c", "nights": "2"}, coerce=True)[1] == []
     assert Booking.validate({"email": "a@b.c", "nights": "99"}, coerce=True)[1] != []
+
+
+# --- dependencies, lifespan and CORS (API.md §4.7, §4.8) ------------------------------------
+
+
+def test_a_dependency_is_resolved_and_shared_within_one_request():
+    calls = []
+
+    def counter():
+        calls.append(1)
+        return len(calls)
+
+    app = App()
+
+    def inner(headers):
+        return counter()
+
+    @app.get("/twice", needs={"a": Depends(inner), "b": Depends(inner)})
+    async def twice(a, b):
+        return {"a": a, "b": b}
+
+    answer = Client(app).get("/twice")
+    assert answer.json() == {"a": 1, "b": 1}, "resolved once, shared by both"
+    assert len(calls) == 1
+
+
+def test_a_dependency_reads_the_request_the_way_a_handler_does():
+    app = App()
+
+    def who(headers):
+        token = headers.get("authorization")
+        if token is None:
+            raise HTTPError(401, "sign in")
+        return token.replace("Bearer ", "")
+
+    @app.get("/me", needs={"user": Depends(who)})
+    async def me(user):
+        return {"user": user}
+
+    client = Client(app)
+    assert client.get("/me", headers=[("authorization", "Bearer ada")]).json() == {"user": "ada"}
+    assert client.get("/me").status == 401
+
+
+def test_a_generator_dependency_runs_its_second_half_after_the_answer():
+    order = []
+
+    def handle():
+        order.append("open")
+        yield "the handle"
+        order.append("close")
+
+    app = App()
+
+    @app.get("/use", needs={"h": Depends(handle)})
+    async def use(h):
+        order.append("handler")
+        return {"h": h}
+
+    answer = Client(app).get("/use")
+    assert answer.json() == {"h": "the handle"}
+    assert order == ["open", "handler", "close"]
+
+
+def test_an_async_dependency_is_awaited():
+    app = App()
+
+    async def slow():
+        return 7
+
+    @app.get("/n", needs={"n": Depends(slow)})
+    async def n(n):
+        return {"n": n}
+
+    assert Client(app).get("/n").json() == {"n": 7}
+
+
+def test_headers_and_scope_reach_a_handler_by_name():
+    app = App()
+
+    @app.get("/echo-header")
+    async def echo_header(headers, scope):
+        return {"ua": headers.get("user-agent"), "path": scope["path"]}
+
+    answer = Client(app).get("/echo-header", headers=[("User-Agent", "probe")])
+    assert answer.json() == {"ua": "probe", "path": "/echo-header"}
+
+
+def test_cors_answers_a_listed_origin_and_ignores_another():
+    app = App(cors=["https://example.com"])
+
+    @app.get("/data")
+    async def data():
+        return {"ok": True}
+
+    client = Client(app)
+    good = client.get("/data", headers=[("origin", "https://example.com")])
+    assert good.header("access-control-allow-origin") == "https://example.com"
+    assert good.header("vary") == "origin"
+    other = client.get("/data", headers=[("origin", "https://evil.example")])
+    assert other.header("access-control-allow-origin") is None
+
+
+def test_a_preflight_is_answered_from_what_the_path_accepts():
+    app = App(cors=["*"])
+
+    @app.post("/submit")
+    async def submit(body):
+        return body
+
+    answer = Client(app).request("OPTIONS", "/submit", headers=[("origin", "https://any.example")])
+    assert answer.status == 204
+    assert answer.header("access-control-allow-origin") == "*"
+    assert "POST" in answer.header("access-control-allow-methods")
+    assert answer.header("allow") == "POST"
+
+
+def test_star_with_credentials_echoes_the_origin_rather_than_a_star():
+    """`*` is not a legal answer with credentials, and a browser refuses the pair."""
+    app = App(cors=Cors(["*"], credentials=True))
+
+    @app.get("/who")
+    async def who():
+        return {}
+
+    answer = Client(app).get("/who", headers=[("origin", "https://a.example")])
+    assert answer.header("access-control-allow-origin") == "https://a.example"
+    assert answer.header("access-control-allow-credentials") == "true"
+
+
+def test_lifespan_runs_per_worker_in_order():
+    order = []
+    app = App()
+
+    @app.on_startup
+    def up():
+        order.append("up")
+
+    @app.on_shutdown
+    async def down():
+        order.append("down")
+
+    import asyncio
+
+    asyncio.run(app.startup())
+    asyncio.run(app.shutdown())
+    assert order == ["up", "down"]
