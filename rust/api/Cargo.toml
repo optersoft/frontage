@@ -26,3 +26,24 @@ tower-http = { version = "0.6", features = ["fs"] }
 tower = { version = "0.5", features = ["util"] }
 frontage-vm = { path = "../vm" }
 frontage-compile = { path = "../compile" }
+
+
+# The sign-in gate (`API.md` §5a). Default on, because the binary that ships is the one a
+# private site is deployed behind; `--no-default-features` builds the server without it and
+# without reqwest, jsonwebtoken and their graph.
+# ⚠ `default-features = false` matters: reqwest's features are additive across a whole
+# dependency graph, so enabling its defaults here would drag native-tls (and OpenSSL) in.
+# Unlike `axum-oauth`, which borrows a TLS backend from its consumer's graph, this binary is
+# the whole graph — so it names rustls itself, or the token exchange has no way to speak TLS.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+jsonwebtoken = { version = "9", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+base64 = { version = "0.22", optional = true }
+sha2 = { version = "0.10", optional = true }
+getrandom = { version = "0.3", optional = true }
+urlencoding = { version = "2", optional = true }
+
+[features]
+default = ["auth"]
+auth = ["dep:reqwest", "dep:jsonwebtoken", "dep:serde", "dep:serde_json", "dep:base64", "dep:sha2", "dep:getrandom", "dep:urlencoding"]

@@ -22,4 +22,24 @@ cd rust && cargo build -p frontage-api --profile api
 rust/target/api/frontage-api rust/api/examples/spike/app.py     # from the repository root
 python3 rust/api/tests/routes.py                                # 13 assertions
 python3 rust/api/tests/routes.py --stress                       # the same, collecting at every safe point
+python3 rust/api/tests/gate.py                                  # 15 assertions about the sign-in gate
 ```
+
+## A private site
+
+`--auth google` puts Google sign-in in front of everything the server answers, the static
+files included, and lets nobody in who is not on the list (`API.md` §5a):
+
+```sh
+export FRONTAGE_AUTH_GOOGLE_CLIENT_ID=…            # or AXUM_OAUTH_*, the fleet's namespace
+export FRONTAGE_AUTH_GOOGLE_CLIENT_SECRET=…        # $CREDENTIALS_DIRECTORY beats the environment
+export FRONTAGE_AUTH_BASE_URL=https://governor.optersoft.com
+export FRONTAGE_AUTH_ALLOWED_EMAILS=someone@optersoft.com,another@optersoft.com
+frontage-api app.py --auth google --auth-label governor
+```
+
+The OAuth client's *Authorized redirect URI* is `{BASE_URL}/auth/google/callback` and nothing
+else: the state cookie is scoped to `/auth/google`, so a callback registered anywhere else
+never receives it and every sign-in ends at "state missing". `rust/api/examples/private/` is
+the whole shape — a `www/` of prerendered pages, plus the `/healthz` and `/version` a deploy
+probes, which are the only paths that answer without a session.

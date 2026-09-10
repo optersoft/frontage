@@ -28,6 +28,13 @@ package, `API.md` the plan with the measurements.
       Both are differential cases; both are in `rust/README.md`.
 - [x] §6.2b the validator compiled once instead of walked per value: **21% off validation**,
       5.5% off a validated request, no wasm bytes, and the page gets it too.
+- [x] §5a the **sign-in gate**: `--auth google` puts Google OIDC in front of everything the
+      server answers, static files included. Asked for by `governor`, whose 25 private pages
+      have been readable only on a laptop because the fleet's gateway has no browser-facing
+      sign-in. ⚠ It is a **knowing second copy of `axum-oauth`** — this repository is public
+      and cargo resolves every workspace member's manifest, so a path dependency on a private
+      sibling breaks CI. **Fix the flow in one, fix it in both.** `tests/gate.py` is 15
+      assertions with no network in them.
 
 ### Next, and the order is not the plan's
 
@@ -54,6 +61,14 @@ is **talk to anything**: no `urllib`, no `socket`, no `_http`. `frontage.chat`'s
 - [ ] §6.3 OpenAPI and a docs page. Much cheaper now that annotations exist and
       `schema/jsonschema.py` already emits JSON Schema. Gate: §4.6's shared record produces a
       document that validates what the form accepts.
+- [ ] **Deploy `governor` behind the gate** — the reason §5a exists, and none of what is
+      left is in this repository. It needs, in order: a Google OAuth client whose *Authorized
+      redirect URI* is `https://governor.optersoft.com/auth/google/callback` (console, by
+      hand); an `app.py` + Docker pipeline in `governor/` serving its built `www/` through
+      this binary, which today means **building `frontage-api` in that image** because §6.5
+      has not shipped one; uncommenting `[apps.governor]` in `hive-deploy/fleet.toml`; and the
+      gateway tenant + DNS. The fleet.toml block's smoke already asserts the gate rather than
+      the pages — an anonymous `GET /` answering `200` is the failure.
 - [ ] §6.5 ship it. **Nothing outside this checkout can use any of this**: there is no
       `frontage_api` wheel (§7 decided two, and only one exists) and no binary. A wheel, a
       binary per platform on a tag, `hive-server` as the front door.

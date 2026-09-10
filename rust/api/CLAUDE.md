@@ -30,5 +30,16 @@ where code should go.
 - **Count the crossings.** §4.4 is a budget: a handler that never suspends costs one
   `vm.call` and never touches the event loop. Granian's own numbers (125,539 → 63,181
   requests/s on a body read) are why.
+- **The gate is a second copy of `axum-oauth`, knowingly.** `API.md` §5a is the decision and
+  the reason (this repository is public; cargo resolves every workspace member's manifest, so a
+  path dependency on a private sibling breaks CI). The consequence is the rule: **a fix to the
+  flow in `src/auth/` is a fix to `axum/axum-oauth/src/` too**, and the other way round.
+- **Nothing about the gate is an app's to declare.** No `App(auth=…)`, no Python API, no route
+  a handler can mark public: it is `--auth google` on the command line and env, so a page
+  cannot open a hole in the site it is served from. The public paths are the four flow routes
+  plus `/healthz` and `/version`, and that list is in `src/auth/mod.rs`, not in a config file.
+- **Every misconfiguration is fatal before the socket binds**, the empty allow-list included —
+  a private site nobody can open beats one anybody can, and a worker that discovers this at
+  request time would have already served a page.
 - **Clean room, as everywhere here.** Granian's and FastAPI's docs and specifications are fine;
   their source is not opened. The RSGI *shape* is copied from its specification, nothing else.

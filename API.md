@@ -394,8 +394,10 @@ Naming these is worth more than pretending they are coming, the way `COMPONENTS.
   FastAPI, and this repository's README should say so in its first paragraph.**
 - **The full polars expression API on day one.** §6.4 takes the subset `frontage.remote`
   uses and grows it by case.
-- **Security utilities.** `axum-oauth` is the fleet's OIDC stack and it is Rust; a second
-  implementation in Python would be a liability, not a feature.
+- **Security utilities *in Python*.** A validator, a session, a token check written in the
+  handler language would be a liability, not a feature. ⚠ **The sign-in gate is not an
+  exception to this and §5a says why** — it is Rust, it is the server's, and an app declares
+  nothing.
 - **WebSockets, at first.** `frontage.remote` chose Server-Sent Events on purpose — *"a
   session per client is Streamlit's model and the reason to avoid one has not changed"* — so
   SSE is milestone 2 and WebSockets wait for an app that needs them.
@@ -403,6 +405,58 @@ Naming these is worth more than pretending they are coming, the way `COMPONENTS.
   its own benchmark shows.
 - **A plugin ecosystem, an admin, an ORM.** A `_turso` module and `frontage.schema` are the
   data story.
+
+## 5a. The sign-in gate, and a rule this repository broke on purpose
+
+**Built 2026-09-10.** `frontage-api APP.py --auth google` puts Google sign-in in front of an
+app: `/login`, `/logout`, `/auth/google/start`, `/auth/google/callback`, and a middleware over
+everything else — a valid session passes, `/api/*` without one gets a bare `401`, and any other
+path gets a `303` to the login page carrying where it was going. The gate sits **above the
+static files**, which is the point of the whole exercise: a private site is a directory of
+prerendered HTML, and `ServeDir` would otherwise hand it to anyone with the URL.
+
+**What asked for it.** `governor`, the company's private strategy folder, is 25 prose pages
+built by `frontage site` and it has been readable only on a laptop, because the fleet's gateway
+has no browser-facing sign-in: `require_secret` is a header a fronting proxy presents, which a
+browser cannot. The commented `[apps.governor]` block in `hive-deploy/fleet.toml` has been
+waiting on exactly this, and its smoke asserts the gate rather than the pages — an anonymous
+`GET /` answering `200` is the failure, not the success.
+
+**Why it is here and not in `axum-oauth`, which already has it.** It should have been. That
+crate is the fleet's one OIDC stack, and §5 named it as the reason this repository writes no
+security utilities. What blocks it is not design, it is distribution: **this repository is
+public and its CI resolves the whole cargo workspace**, and cargo reads every member's
+manifest — a path dependency on a private sibling is a broken checkout on every Actions run,
+optional or not. The alternatives were a git dependency needing forge credentials in a public
+repo's CI, or moving the gated binary out to the private side, which trades one file here for a
+Rust toolchain and a deploy pipeline in a repository of Markdown. So the flow is here, and
+`rust/api/src/auth/` says at the top of every file that it is the second copy.
+
+**It is a copy on purpose, decision for decision.** The state cookie scoped to `/auth/google`;
+`leeway = 0` on cookies this process signed and the provider's default on the `id_token`; the
+forced JWKS refetch on a `kid` miss; `email_verified` accepted as a bool or the string Google
+used to send; the client secret read from `$CREDENTIALS_DIRECTORY` before the environment; the
+signing secret persisted `0600` so a deploy does not sign everyone out. Where one of those
+turns out to be wrong, **both files change** — that is the standing cost this section is the
+receipt for.
+
+**What it deliberately is not.** No users, no roles, no per-path rules, and no Python API: an
+allow-list of addresses either contains you or does not, the session claims are `{sub, exp}`,
+and an app that wants more than "everyone I named may read everything" wants a different tool.
+The gate re-checks nothing per request, so a session's lifetime is the revocation window —
+30 days by default, and that is a knob (`…_SESSION_TTL_SECS`), not a promise.
+
+**Configuration** is env, read under `FRONTAGE_AUTH_*` first and `AXUM_OAUTH_*` second,
+first-found-wins and never a union: `…_GOOGLE_CLIENT_ID`, `…_GOOGLE_CLIENT_SECRET`,
+`…_BASE_URL` (which settles both the callback URL and whether cookies carry `Secure`, so the
+two cannot drift apart — unset reads as production), `…_ALLOWED_EMAILS`, and the two optional
+ones above. **Every missing piece is fatal at startup**, including an empty allow-list: a
+private site nobody can open is a better failure than one anybody can.
+
+**Gate:** `python3 rust/api/tests/gate.py` — 15 assertions against the real binary with no
+network in them, because everything up to the consent screen is ours (the redirect, the PKCE
+challenge, the state cookie) and the authenticated half is minted from the secret the server
+persisted, which is the only honest way to assert that a signed-in visitor gets the page.
 
 ## 6. The plan, in order, with its gates
 

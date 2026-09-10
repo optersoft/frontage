@@ -16,6 +16,8 @@
 //! the body arrives whole, Python is entered once, and the response leaves in one piece. A
 //! handler that does not suspend never touches the event loop at all.
 
+#[cfg(feature = "auth")]
+use crate::auth::Auth;
 use crate::app::{Answer, App, Body, Poll, Started};
 use axum::extract::Request;
 use axum::http::{HeaderName, HeaderValue, StatusCode};
@@ -23,6 +25,8 @@ use axum::response::{IntoResponse, Response};
 use axum::Router;
 use std::cell::RefCell;
 use std::path::PathBuf;
+#[cfg(feature = "auth")]
+use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 use axum::body::Bytes;
@@ -59,6 +63,11 @@ pub struct Config {
     pub search: Vec<PathBuf>,
     /// Collect at every safe point. Slow on purpose; it is what proves the rooting.
     pub stress: bool,
+    /// `--auth google`: put a sign-in gate in front of everything, app and files alike.
+    pub auth: bool,
+    /// What names the session cookie and titles the login page. Default: the app's module.
+    #[cfg_attr(not(feature = "auth"), allow(dead_code))]
+    pub auth_label: Option<String>,
 }
 
 /// Load the app once here to fail loudly at startup, then hand a clone of the listener to
@@ -77,6 +86,21 @@ pub fn serve(config: Config) -> Result<(), String> {
     let _ = STATIC_DIR.set(statics);
     drop(probe);
 
+    // The gate is read once here, not per worker: a failure is a configuration error and
+    // must stop the process before it binds, rather than surface as one worker in four
+    // serving a private site to nobody in particular.
+    #[cfg(feature = "auth")]
+    let auth: Option<Arc<Auth>> = if config.auth {
+        let label = config.auth_label.clone().unwrap_or_else(|| config.module.clone());
+        Some(Arc::new(Auth::from_env(&label, &config.dir)?))
+    } else {
+        None
+    };
+    #[cfg(not(feature = "auth"))]
+    if config.auth {
+        return Err("this build has no sign-in gate: rebuild without --no-default-features".into());
+    }
+
     let listener = std::net::TcpListener::bind(&config.addr).map_err(|e| format!("{}: {e}", config.addr))?;
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     let local = listener.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| config.addr.clone());
@@ -88,13 +112,21 @@ pub fn serve(config: Config) -> Result<(), String> {
     if let Some(Some(dir)) = STATIC_DIR.get() {
         println!("  files from {}", dir.display());
     }
+    #[cfg(feature = "auth")]
+    if let Some(auth) = &auth {
+        println!("  {}", auth.summary());
+    }
 
     let mut threads = Vec::with_capacity(config.workers);
     for i in 0..config.workers {
         let socket = listener.try_clone().map_err(|e| e.to_string())?;
+        #[cfg(feature = "auth")]
+        let gate = auth.clone();
+        #[cfg(not(feature = "auth"))]
+        let gate = ();
         let worker = std::thread::Builder::new()
             .name(format!("worker-{i}"))
-            .spawn(move || worker(socket))
+            .spawn(move || worker(socket, gate))
             .map_err(|e| e.to_string())?;
         threads.push(worker);
     }
@@ -108,15 +140,36 @@ pub fn serve(config: Config) -> Result<(), String> {
     Ok(())
 }
 
-fn worker(socket: std::net::TcpListener) -> Result<(), String> {
+#[cfg(feature = "auth")]
+type Gate = Option<Arc<Auth>>;
+#[cfg(not(feature = "auth"))]
+type Gate = ();
+
+fn worker(socket: std::net::TcpListener, gate: Gate) -> Result<(), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|e| format!("tokio: {e}"))?;
     runtime.block_on(async move {
         let listener = tokio::net::TcpListener::from_std(socket).map_err(|e| e.to_string())?;
-        axum::serve(listener, Router::new().fallback(handle)).await.map_err(|e| e.to_string())
+        axum::serve(listener, router(gate)).await.map_err(|e| e.to_string())
     })
+}
+
+/// The app itself is the fallback — every path is Python's until it says otherwise, and a
+/// file answers after that. With `--auth`, the four sign-in routes and the gate go around it,
+/// so the middleware sees the static files too: a directory of prerendered HTML is exactly
+/// what a private site is, and `ServeDir` would otherwise hand it to anyone with the URL.
+fn router(gate: Gate) -> Router {
+    let router = Router::new().fallback(handle);
+    #[cfg(feature = "auth")]
+    let router = match gate {
+        Some(auth) => crate::auth::wrap(router, auth),
+        None => router,
+    };
+    #[cfg(not(feature = "auth"))]
+    let _ = gate;
+    router
 }
 
 async fn handle(request: Request) -> Response {
