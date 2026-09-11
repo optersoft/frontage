@@ -228,7 +228,11 @@ jobs:
         working-directory: packaging/api
       # Same check as above, and the one that matters more here: the server's package is
       # pure Python and useless without the binary, so this proves at least that it imports.
-      - run: uv run --isolated --no-project --with api-dist/*.whl -- python -c "import frontage_api; print(frontage_api.App)"
+      # ⚠ `--with dist/*.whl` as well, and it is not belt and braces: the wheel pins
+      # `frontage==` this exact version, which PyPI does not have yet — the publish below is
+      # what puts it there. Resolving against PyPI alone fails with "no version of
+      # frontage==X.Y.Z", which reads like a bad pin and is really a chicken and egg.
+      - run: uv run --isolated --no-project --with dist/*.whl --with api-dist/*.whl -- python -c "import frontage_api; print(frontage_api.App)"
       # The wheel is half a release: the other half is the asset the `server` job just
       # uploaded, and `frontage-api` is the script that goes and gets it. Run it against the
       # binary built right here rather than downloading, because the release this tag makes
@@ -237,7 +241,7 @@ jobs:
         working-directory: rust
       - run: |
           FRONTAGE_API_BIN="$PWD/rust/target/api/frontage-api" \
-            uv run --isolated --no-project --with api-dist/*.whl -- frontage-api --help
+            uv run --isolated --no-project --with dist/*.whl --with api-dist/*.whl -- frontage-api --help
       - run: uv publish --trusted-publishing always
       # ⚠ A SECOND trusted publisher, registered on PyPI for the project `frontage-api` with
       # this same owner/repo/workflow/environment. The failure is silent in the usual way: a

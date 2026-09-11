@@ -95,6 +95,19 @@ def test_the_ci_matrix_and_the_asset_names_are_the_same_list():
     assert uploaded == wanted
 
 
+def test_the_wheel_checks_resolve_against_the_local_frontage():
+    """⚠ The release's own chicken and egg, and it failed the first v0.14.0 run. The server's
+    wheel pins `frontage==` the version being released, which PyPI does not have until the
+    publish step below it — so every check that installs the api wheel has to be handed the
+    local `frontage` wheel too, or it fails with "no version of frontage==X.Y.Z", which reads
+    like a bad pin and is really an ordering problem."""
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    using = [line for line in workflow.splitlines() if "api-dist/*.whl" in line and "--with" in line]
+    assert using, "no step installs the api wheel"
+    for line in using:
+        assert "--with dist/*.whl" in line, line
+
+
 def test_windows_says_so_rather_than_404ing_later():
     with pytest.raises(SystemExit, match="Windows"):
         _binary.asset_name("Windows", "AMD64")
