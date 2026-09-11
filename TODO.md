@@ -126,9 +126,16 @@ checkout.
 - [ ] §6.5, the half that is the fleet: `hive-server` as the front door, `mk server.deploy`
       like every other fleet app, and `frontage.chat`/`frontage.remote`'s extras changed from
       `fastapi` + `uvicorn` to this.
-- [ ] Point `governor`'s Dockerfile at the released binary instead of compiling this
-      checkout — **unblocked since 0.14.0**, and it is what §6.5 was for. A change in the
-      other repository.
+- [x] `governor` deploys the **released binary** instead of compiling this checkout
+      (2026-09-11): `FRONTAGE_API_VERSION` pins the asset, `mk server.build` fetches and
+      verifies it on the host, and its Dockerfile is two `COPY`s into `scratch`. **163s → 8.3s**,
+      no Rust toolchain in the image, no emulation hazard at all — and, the point, an
+      uncommitted edit here no longer ships to its production. First consumer of §6.5.
+- [ ] `/version` answers `frontage-api 0.0.1` — the cargo workspace version, which is `0.0.1`
+      for every release while the wheel is `0.14.0`. A deployed server that cannot say which
+      release it is, is a server you have to guess about; `BUILD_ID` covers the fleet's own
+      apps and says nothing to anyone else. Either bump the crate with the wheel or have
+      `/version` report the wheel's.
 - [ ] The floor. Every route pays **8.44 µs** before any user code runs, against 5.55 µs for
       §6.1's hand-rolled dispatch — so the surface is ~2.9 µs of it. Profile it the way
       §6.2b profiled the validator, with `_frontage.profile_start()`, and fix what the
