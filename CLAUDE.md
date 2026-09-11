@@ -323,10 +323,14 @@ publisher**. `--serve DIR` is the same server with **no app and no interpreter**
   the `frontage` on PyPI; the page's code blocks must match its `app/app.py`, and a wheel bump
   is a commit in **thirteen** repos too (the two pipeline files pin `pip install
   frontage==X.Y.Z`; Ship's copies of them say the same). ✅ **The chapters are current as of
-  0.13.1** (2026-09-09): nineteen pages, `islands.md`, `content.md` and `sites.md` added,
-  every pipeline on 0.13.1 — `frontage-content`'s and `frontage-sites`' install the
-  `content` **extra**, and `frontage-sites`' runs `frontage site` rather than `build` — and
-  every chapter app rebuilt and `frontage check`ed against the published wheel.
+  0.14.0** (2026-09-11): **twenty** pages — `api.md` added, `frontage-api` in a new index
+  section "A server of your own" before `polars` — every one of the thirteen pipelines green
+  on 0.14.0, `frontage check` clean over the pages *and* the chapter apps, and every app
+  rebuilt against the published wheel by its own pipeline. ⚠ **`api` has no repository of its
+  own**: `chat` and `polars` already point at an example in *this* repo with no `website:`,
+  which is right for a server, since one cannot deploy to GitLab Pages. Its app is
+  `examples/api/`. (`frontage-content`'s and `frontage-sites`' pipelines install the `content`
+  **extra**, and `frontage-sites`' runs `frontage site` rather than `build`.)
   ⚠ **A frontage *site* needs to be served at a root**, because its links are absolute.
   GitLab Pages gives every project its own domain, so the chapter's own site is fine; a
   GitHub Pages project site (`user.github.io/repo/`) would not be. The claim that

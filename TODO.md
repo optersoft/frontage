@@ -115,14 +115,20 @@ checkout.
       execs itself forever; `frontage` is pinned `==` because the binary's runtime executes
       its modules; and the second project needs its own **PyPI trusted publisher**, which is
       silent until a tag answers `422 invalid-publisher`.
+      ✅ **Shipped in 0.14.0 (2026-09-11).** `frontage-api` 0.14.0 is on PyPI — the second
+      project's first release, on its own trusted publisher — with four binaries on the
+      GitHub release, and `uvx --from frontage-api frontage-api --help` fetches the right one
+      from a clean cache. ⚠ The first tag **failed**, and the cause is worth keeping: the
+      step that imports the api wheel resolved `frontage==0.14.0` against PyPI, which the
+      publish step *below it* had not created yet. The `==` pin is right and the ordering was
+      not. Both steps take `--with dist/*.whl` now and a test asserts every such step does.
+      Nothing was published by the failed run, so the version was never burned.
 - [ ] §6.5, the half that is the fleet: `hive-server` as the front door, `mk server.deploy`
       like every other fleet app, and `frontage.chat`/`frontage.remote`'s extras changed from
-      `fastapi` + `uvicorn` to this. ⚠ **Nothing has been released yet**, so the download path
-      above has never fetched a real asset — the first tag is what proves it, and the CI job
-      that would catch a mistake runs only then.
+      `fastapi` + `uvicorn` to this.
 - [ ] Point `governor`'s Dockerfile at the released binary instead of compiling this
-      checkout. It is what §6.5 was for; it needs the first tag to exist first, and it is a
-      change in the other repository.
+      checkout — **unblocked since 0.14.0**, and it is what §6.5 was for. A change in the
+      other repository.
 - [ ] The floor. Every route pays **8.44 µs** before any user code runs, against 5.55 µs for
       §6.1's hand-rolled dispatch — so the surface is ~2.9 µs of it. Profile it the way
       §6.2b profiled the validator, with `_frontage.profile_start()`, and fix what the
