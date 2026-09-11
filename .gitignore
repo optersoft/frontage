@@ -17,6 +17,9 @@ test-results/
 .vscode/
 .DS_Store
 /www/
+# An example's built page (`frontage build examples/<x> --out examples/<x>/www`), which the
+# api example's server serves as its static directory.
+examples/*/www/
 .wrangler/
 /build/
 node_modules/
