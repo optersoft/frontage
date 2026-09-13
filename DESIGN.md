@@ -36,12 +36,18 @@ budget of ~4,000 Python lines is realistic because Solid did it.
 **Solid 2.0 is the direction, not the target.** Its core is seven times larger than 1.x to
 put async, transitions and optimistic writes inside the graph. Frontage takes its *names and
 shapes* (two-phase effects, `Loading` / `Errored`, one `For` with keying modes, draft-based
-store writes, a `Renderer` interface) and leaves the machinery for a later major version.
+store writes, a `Renderer` interface) and not the machinery.
+
+⚠ **More of it transferred than this paragraph used to admit** (corrected 2026-09-13). It
+said transitions were left for a later major version, and M7–M9 shipped them: `transition`,
+`use_transition`, `is_pending`, `Optimistic` and async memos are all in `frontage.reactive`,
+on the synchronous graph. §9 has what is genuinely still Solid's alone.
 
 **What transfers from all three** is in the sections below. What does not: Rust's typed
 view tree and arena handles, JSX and the Babel compiler (Python 3.14 template strings do
 that job at runtime), Solid's proxy-based store internals (Python has no `Proxy`; it has
-dunder methods, which are enough), transitions and time slicing.
+dunder methods, which are enough), **microtask propagation** (decision 4, and reads-after-write
+is why) and **time slicing**.
 
 ## 2b. The Python-first frameworks, and the WebAssembly test
 
@@ -346,11 +352,28 @@ One rule, documented and enforced with a dev-mode warning because Python makes i
 get wrong: **read every reactive input before the first `await`.** After an `await` the
 tracking context is gone. Solid 2.0 states the same rule for its async memos.
 
-Solid 2.0's async-in-the-graph (memos returning awaitables, `is_pending`, `latest`,
-`refresh`, generator-based transactional actions, optimistic values) is the model Frontage
-1.0 should grow toward once 0.x has users. It is written down here so 0.x does not paint
-over it: `Resource` is designed to be replaceable by an async `Memo` without changing the
-`Loading` / `Errored` boundaries.
+**What is left of Solid 2.0's async-in-the-graph, precisely** (2026-09-13). Memos returning
+awaitables, `is_pending` and optimistic values are **built** — M7 and M9, on the synchronous
+graph. Three things are not, and each is a real behaviour rather than a spelling:
+
+- **`latest`**: reading a pending async node's *previous* value instead of suspending, chosen
+  per read. Today the choice is per boundary — a `Loading` shows its fallback, or `keep=True`
+  keeps the content for a refetch — and not per reader.
+- **`refresh`**: re-running an async node while *keeping* the graph consistent, rather than
+  `.refetch()`'s "start again and let the boundary decide".
+- **Generator-based transactional actions**: an action that yields its stages, so a failure
+  half way is unwound by the graph. `Optimistic` covers the common case — a write that shows
+  at once and is reverted on commit — but the unwinding is one value deep, not a transaction.
+
+⚠ **And the consistency one, which is the real difference and is not on that list.** Two async
+nodes derived from the same signal resolve when they resolve: outside a transition the page
+paints each as it lands, so a reader can see one new value beside one old one. A graph that
+knows a node is pending can hold the whole derived set until it is consistent. Frontage can
+do that *inside* a `transition()`; Solid 2.0 does it as the default. That is the benefit worth
+naming when someone asks what async-in-the-graph buys.
+
+`Resource` is designed to be replaceable by an async `Memo` without changing the `Loading` /
+`Errored` boundaries, so none of this is painted over.
 
 ## 10. Router (`frontage.router`)
 
